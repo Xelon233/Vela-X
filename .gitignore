@@ -1,0 +1,29 @@
+# ===== 构建产物 =====
+build/
+dist/
+*.o
+*.log
+
+# ===== Swift / Xcode =====
+*.xcodeproj
+xcuserdata/
+.swiftpm/
+DerivedData/
+
+# ===== macOS 杂项 =====
+.DS_Store
+.AppleDouble
+.AppleDesktop
+.Spotlight-V100
+.Trashes
+
+# ===== 签名钥匙串（含本地自签证书，绝不可入库） =====
+*.keychain-db
+*.keychain
+*.keychain-db.locked-bak
+
+# ===== 编辑器 / 系统 =====
+*.swp
+*~
+.idea/
+.vscode/

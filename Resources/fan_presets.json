@@ -1,0 +1,124 @@
+{
+  "schema": "asus-rog-fan-presets/1",
+  "generated_by": "SMCAsusFan",
+  "generated_at": "2026-10-29T23:09:00+08:00",
+
+  "device": {
+    "model": "ASUS ROG Strix G513RM",
+    "ec": "ITE IT5571",
+    "ec_firmware": "TI5825_G513_1027",
+    "mmio": {
+      "it55": "0xFE700600",
+      "mb00": "0xFE700B00",
+      "mc00": "0xFE700C00"
+    },
+    "note": "it55 = 转速/温度/功耗；mb00 = FANM 模式镜像(0xF9)；mc00 = 风扇曲线邮箱"
+  },
+
+  "mailbox": {
+    "opcodes": {
+      "write_curve": 0,
+      "read_curve": 1,
+      "read_limits": 2
+    },
+    "fan_id": {
+      "cpu": "0x00110024",
+      "gpu": "0x00110025"
+    },
+    "fan_id_rpm": {
+      "cpu": "0x00110013",
+      "gpu": "0x00110014",
+      "note": "读实时转速用这一对，别和曲线用的那对混"
+    },
+    "registers": {
+      "arg1": "0x5C",
+      "arg2": "0x60",
+      "arg3": "0x64",
+      "arg4": "0x68",
+      "result": "0x6C",
+      "busy": "0x7C",
+      "opcode": "0x7D"
+    }
+  },
+
+  "curve_format": {
+    "points": 8,
+    "layout": "temps[8] 在前，duties[8] 在后；打包成 4 个 u32（小端）",
+    "temp_unit": "degC",
+    "duty_unit": "percent",
+    "constraints": {
+      "temps": "单调不减，20..110",
+      "duties": "单调不减，0..100"
+    }
+  },
+
+  "presets": {
+    "silent": {
+      "label": "静音",
+      "desc": "曲线起点抬到 62°C，风扇尽量少转",
+      "cpu": {
+        "temp": [62, 66, 70, 74, 78, 82, 82, 98],
+        "duty": [1, 9, 18, 24, 32, 41, 41, 41]
+      },
+      "gpu": {
+        "temp": [62, 66, 70, 74, 78, 82, 82, 98],
+        "duty": [1, 9, 20, 23, 32, 44, 44, 44]
+      }
+    },
+
+    "balanced": {
+      "label": "平衡",
+      "desc": "EC 默认曲线",
+      "cpu": {
+        "temp": [50, 55, 62, 66, 70, 74, 78, 98],
+        "duty": [1, 13, 18, 24, 32, 41, 52, 58]
+      },
+      "gpu": {
+        "temp": [50, 55, 62, 66, 70, 74, 78, 98],
+        "duty": [1, 12, 20, 23, 32, 44, 51, 63]
+      }
+    },
+
+    "performance": {
+      "label": "性能",
+      "desc": "占空整体抬高约 20 个点，散热优先",
+      "cpu": {
+        "temp": [50, 54, 58, 63, 67, 71, 74, 98],
+        "duty": [24, 30, 41, 52, 58, 71, 83, 100]
+      },
+      "gpu": {
+        "temp": [50, 54, 58, 63, 67, 71, 74, 98],
+        "duty": [23, 27, 44, 51, 63, 69, 83, 100]
+      }
+    }
+  },
+
+  "smc_interface": {
+    "note": "别的 App 若不想直接碰 EC，可以通过这些 SMC 键让 kext 代办（写键需要 root）",
+    "keys": {
+      "AFMd": { "type": "ui8", "attr": "读写", "desc": "FANM 模式镜像（写它不控速，仅同步显示）" },
+      "AFMf": { "type": "ui8", "attr": "读写", "desc": "选风扇：0=CPU 1=GPU" },
+      "AFMq": { "type": "ui8", "attr": "读写", "desc": "触发邮箱：高4位=opcode，低4位=曲线序号（只读操作）" },
+      "AFW1": { "type": "ui32", "attr": "读写", "desc": "写曲线参数1 = 温度 1-4" },
+      "AFW2": { "type": "ui32", "attr": "读写", "desc": "写曲线参数2 = 温度 5-8" },
+      "AFW3": { "type": "ui32", "attr": "读写", "desc": "写曲线参数3 = 占空 1-4" },
+      "AFW4": { "type": "ui32", "attr": "读写", "desc": "写曲线参数4 = 占空 5-8" },
+      "AFWg": { "type": "ui8", "attr": "读写", "desc": "写 1 触发写入" }
+    },
+    "readouts_ioreg": {
+      "AFWRes": "写入结果（written / failed）",
+      "AFWBackC": "写后回读的 CPU 预设槽位（注意：不代表刚写入的值）",
+      "AFWBackG": "写后回读的 GPU 预设槽位",
+      "AFCurC0..3": "CPU 三个预设槽位（开机扫描）",
+      "AFCurG0..3": "GPU 三个预设槽位",
+      "AFTachCPU": "CPU 转速原始 tach"
+    },
+    "u32_packing": "每个 u32 = b0 | b1<<8 | b2<<16 | b3<<24（小端），值写进 SMC 键时按大端传"
+  },
+
+  "measured": {
+    "note": "本机实测：同负载空闲下切换档位的转速变化",
+    "performance_from_balanced": { "cpu_delta_rpm": 2040, "gpu_delta_rpm": 1440 },
+    "silent_from_performance": { "cpu_delta_rpm": -1980, "gpu_delta_rpm": -1140 }
+  }
+}
