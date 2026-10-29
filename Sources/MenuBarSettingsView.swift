@@ -57,6 +57,7 @@ struct MenuBarSettingsView: View {
                         // 部署目标还是 13.0，用了会在老系统上崩
                         .onChange(of: netMode) { newValue in
                             MenuBarPrefs.setNetMode(newValue)
+                            store.menuBarPreferencesDidChange()
                         }
 
                         HStack(spacing: 5) {
@@ -79,17 +80,22 @@ struct MenuBarSettingsView: View {
             Card {
                 VStack(alignment: .leading, spacing: 8) {
                     SectionTitle(text: "标题栏预览")
-                    Text(store.menuBarTitle)
-                        .font(.system(size: 14, weight: .medium).monospacedDigit())
-                        .foregroundStyle(Palette.text)
+                    MenuBarTitleView(segments: store.menuBarSegments, preview: true)
                         .padding(.vertical, 6)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(
                             RoundedRectangle(cornerRadius: Palette.cornerRadius, style: .continuous)
                                 .fill(Color.primary.opacity(0.05))
                         )
-                    Text("这是状态栏上那个按钮现在的样子。项目太多会被系统截断，"
-                         + "建议控制在 4 项以内。")
+                    if selected.isEmpty {
+                        Text("还没有勾选监控项。")
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(Palette.textTertiary)
+                    } else {
+                        MenuBarOrderEditor(selected: $selected, onChange: persistMenuBarOrder)
+                    }
+                    Text("这是状态栏上那个按钮现在的样子。拖动标签或点击箭头可调整顺序；"
+                         + "项目太多会被系统截断，建议控制在 4 项以内。")
                         .font(.system(size: 10.5))
                         .foregroundStyle(Palette.textTertiary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -163,7 +169,13 @@ struct MenuBarSettingsView: View {
                     selected.removeAll { $0 == metric }
                 }
                 MenuBarPrefs.setEnabled(selected)
+                store.menuBarPreferencesDidChange()
             }
         )
+    }
+
+    private func persistMenuBarOrder() {
+        MenuBarPrefs.setEnabled(selected)
+        store.menuBarPreferencesDidChange()
     }
 }

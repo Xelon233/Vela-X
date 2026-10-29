@@ -1,4 +1,7 @@
-# Vela X（原 AsusControl / ROG X）
+# Vela X
+
+> **原仓库：** [https://github.com/Xelon233/Vela-X](https://github.com/Xelon233/Vela-X)  
+> **声明：** 本项目仅基于原仓库进行二次修改，并非原作者发布；原项目版权及 GPLv3 许可归原作者所有。
 
 > macOS 上的华硕 / ROG 笔记本控制中心 —— [G-Helper](https://github.com/seerge/g-helper) 的 macOS 对应实现。  
 > 性能模式、风扇曲线、键盘背光与 Aura 灯效、传感器监控、菜单栏多指标、NVIDIA 驱动管理，  
@@ -25,9 +28,12 @@
 | 键盘背光      | HID 写入（report ID `0x5A`），0–3 档亮度                             |
 | Aura 灯效   | HID 写入（report ID `0x5D`），12 种灯效模式                            |
 | 传感器监控     | CPU / GPU 温度、负载、频率、内存、网速、功耗                                  |
-| 菜单栏       | 可勾选 7 项指标实时拼接进菜单栏标题                                          |
+| 菜单栏       | 可勾选 7 项指标并为每项显示图标；拖动标签或点击箭头自定义顺序，顺序同步到标题栏和弹出面板 |
 | NVIDIA 驱动 | 检查 / 下载 / 安装 NullMoth 的 macOS NVIDIA 驱动                      |
 | 命令行       | 同源 CLI：`vela status` / `vela fan ...` / `vela aura ...`      |
+
+菜单栏支持为每项指标显示对应图标，并可在「菜单栏 → 标题栏预览」中拖动标签或使用左右箭头调整顺序。
+调整后的顺序会同步到顶部菜单栏标题和弹出的指标列表。
 
 ---
 
@@ -189,6 +195,8 @@ Sources/                    Swift 源码
   AuraEffects.swift / AuraPanel.swift   Aura 灯效（report ID 0x5D）
   SystemLoad.swift / SystemInfo.swift  负载与硬件信息
   MenuMetrics.swift            菜单栏指标采集（网速、温度、内存…）
+  MenuBarTitleView.swift       菜单栏标题的图标与数值合成
+  MenuBarOrderEditor.swift     菜单栏指标拖拽排序与顺序持久化
   NvidiaUpdate.swift / NvidiaView.swift  NVIDIA 驱动检查、下载安装
   MonitorView.swift / LoadViews.swift / SensorStore.swift  监控与负载页面
   Prefs.swift / CLI.swift / AppInfo.swift  偏好、命令行、版本信息

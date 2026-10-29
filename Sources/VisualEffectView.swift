@@ -87,7 +87,10 @@ enum WindowChrome {
         if !AppEnv.selftest || AppEnv.glassInSelftest {
             window.isOpaque = false
             window.backgroundColor = .clear
-            window.isMovableByWindowBackground = true
+            // 不能开启背景任意位置拖窗：主窗口内还有 SwiftUI 拖放（菜单栏排序），
+            // 否则鼠标一按就被 NSWindow 抢走，排序永远收不到拖拽事件。
+            // 标题栏仍可正常拖动窗口。
+            window.isMovableByWindowBackground = false
         }
 
         // 让 contentView 覆盖整个窗口（含标题栏）：SwiftUI 的背景因此能用 ignoresSafeArea

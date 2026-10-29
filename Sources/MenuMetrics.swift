@@ -286,6 +286,15 @@ enum MenuMetric: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
+    /// 菜单栏空间很窄：网速仍用方向文字表达上下行，这里用单个网络图标，
+    /// 避免和数值前的 ↓ / ↑ 重复。
+    var menuBarIcon: String {
+        switch self {
+        case .netSpeed: return "network"
+        default:        return icon
+        }
+    }
+
     /// 采集通道说明，设置页里给用户看
     var backend: String {
         switch self {
@@ -298,6 +307,14 @@ enum MenuMetric: String, CaseIterable, Identifiable, Hashable {
         case .power:    return "AppleSMC 功耗键（PSTR / PCPC）"
         }
     }
+}
+
+/// 菜单栏标题中的一个「图标 + 紧凑数值」分段。
+struct MenuBarSegment: Identifiable {
+    let metric: MenuMetric
+    let text: String
+
+    var id: MenuMetric { metric }
 }
 
 /// 某一项当前的值（无法采集时给出原因）

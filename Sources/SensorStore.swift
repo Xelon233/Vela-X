@@ -601,10 +601,23 @@ final class SensorStore: ObservableObject {
         }
     }
 
-    /// 菜单栏标题：按「菜单栏」页里勾选的项目拼一段紧凑文本
+    /// 菜单栏标题的分段数据：每项保留自己的图标，预览和状态栏共用。
+    var menuBarSegments: [MenuBarSegment] {
+        MenuBarPrefs.enabled.compactMap { metric in
+            shortText(metric).map { MenuBarSegment(metric: metric, text: $0) }
+        }
+    }
+
+    /// 菜单栏标题的纯文本形式，供 CLI、诊断和可访问性兜底使用。
     var menuBarTitle: String {
-        let picked = MenuBarPrefs.enabled.compactMap { shortText($0) }
+        let picked = menuBarSegments.map(\.text)
         return picked.isEmpty ? "Vela X" : picked.joined(separator: " ")
+    }
+
+    /// 菜单栏内容由 UserDefaults 里的勾选列表决定；顺序或内容变化时主动通知
+    /// MenuBarExtra 重绘，避免等到下一次传感器采样才更新。
+    func menuBarPreferencesDidChange() {
+        objectWillChange.send()
     }
 
     /// 菜单栏窗口里每一行的完整显示（带项目名）

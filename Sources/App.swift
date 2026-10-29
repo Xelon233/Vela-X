@@ -33,7 +33,7 @@ struct AsusControlApp: App {
             MenuBarView()
                 .environmentObject(store)
         } label: {
-            Text(store.menuBarTitle)
+            MenuBarTitleView(segments: store.menuBarSegments)
         }
         .menuBarExtraStyle(.window)
     }
@@ -47,9 +47,9 @@ struct MenuBarView: View {
     /// 早先这里写死成 16 档，在 HID 机型上会给出设备根本不认的档位。
     private var maxLevel: Int { store.kbdMaxLevel }
 
-    /// 用户在「菜单栏」页勾选的监控项。菜单栏窗口每次弹出都会重建，
-    /// 这里在 onAppear 里重读一次，保证改完设置立刻能看到
-    @State private var metrics: [MenuMetric] = MenuBarPrefs.enabled
+    /// 直接读取共享顺序，不保留本地快照；设置页调整后由 SensorStore
+    /// 主动通知这里重绘，菜单栏弹窗会和标题栏保持同一顺序。
+    private var metrics: [MenuMetric] { MenuBarPrefs.enabled }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -128,7 +128,6 @@ struct MenuBarView: View {
         // 菜单栏是临时窗口，打开时重新探一次通道，
         // 这样刚在「输入监控」里勾完授权，不必重启整个程序就能拿到新档位
         .onAppear {
-            metrics = MenuBarPrefs.enabled
             store.recheckBacklightPermission()
         }
     }
