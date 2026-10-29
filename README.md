@@ -4,7 +4,7 @@
 > 性能模式、风扇曲线、键盘背光与 Aura 灯效、传感器监控、菜单栏多指标、NVIDIA 驱动管理，  
 > 全部跑在原生 SwiftUI + Liquid Glass 界面里。
 
-- 版本：**1.1.0**（build 7）
+- 版本：**1.3.0**（build 9）
 - 界面：macOS 26 Liquid Glass（透明窗 + behindWindow 玻璃 + 26pt 窗口圆角）
 - 最低系统：**macOS 13.0**（Liquid Glass 效果在 macOS 26 上最完整）
 - 架构：Universal（x86_64 + arm64）
@@ -13,6 +13,9 @@
 > 本项目与华硕（ASUS）无任何官方关联，是社区第三方实现。详情见文末[商标声明](#商标声明)。
 
 ---
+## 截图预览
+<img width="2000" height="1460" alt="QQ_1793296894476" src="https://github.com/user-attachments/assets/c4911f27-caf3-470f-ac4d-ea12167151a0" />
+<img width="2000" height="1460" alt="QQ_1793296905554" src="https://github.com/user-attachments/assets/d3f64068-1f57-44a5-af37-156e78f1773d" />
 
 ## 功能
 
@@ -277,3 +280,8 @@ ASUS_SELFTEST=1 ASUS_PAGE=overview ASUS_THEME=dark ASUS_SELFTEST_DELAY=10 \
 - 奥创中心（Armoury Crate）— 设备协议参考
 - [NullMoth](https://github.com/nullmoth/nvidia-macos-driver) — macOS NVIDIA 驱动
 - angus666888 — EC 灯效修复思路
+
+## 捐赠
+本项目用全程开源，如果您觉得好用，可以请我喝杯快乐水助力我后续开发，谢谢！
+<img width="3026" height="2160" alt="IMG_20261030_020020" src="https://github.com/user-attachments/assets/0f1c643a-0169-44ae-8f90-bdcc462fde05" />
+
