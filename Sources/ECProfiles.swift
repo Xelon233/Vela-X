@@ -24,6 +24,40 @@ public enum ModelMatch: String {
     case mismatched
 }
 
+/// 这套 EC 配置的可信程度。
+///
+/// 区分它是必要的：「机型代码能对上」和「曲线在这台机器上真的跑过」是两回事。
+/// 前者只说明 EC 布局一致，后者才说明写进去的曲线确实让风扇转起来了。
+public enum CurveVerification: String {
+    /// 已在本机型实机下发过，转速/温度响应符合预期
+    case verifiedOnDevice
+    /// 逆向得到的布局 + 沿用同族机型的曲线，但**没在这台机器上实机跑过**
+    case reverseEngineered
+
+    /// 状态行短标签
+    public var label: String {
+        switch self {
+        case .verifiedOnDevice: return "实机已验证"
+        case .reverseEngineered: return "逆向未实机验证"
+        }
+    }
+
+    /// 首次使用时的额外提醒（未验证的机型才会返回非 nil）
+    public var caveat: String? {
+        switch self {
+        case .verifiedOnDevice:
+            return nil
+        case .reverseEngineered:
+            return """
+                这套曲线来自逆向分析，尚未在本机型实机验证过。\
+                首次上机请先做只读验证：确认能读到转速、且转速随负载变化，\
+                再下发曲线并观察转速是否真的响应、温度是否真的下降。\
+                EC 不回显写入结果，判断是否生效只能看转速。
+                """
+        }
+    }
+}
+
 /// 一台机型的 EC 配置（逆向产物）。风扇曲线、邮箱寄存器、MMIO 地址、曲线格式都随机型不同。
 public struct ECProfile: Identifiable, Hashable {
     public var id: String { familyName }
@@ -43,6 +77,8 @@ public struct ECProfile: Identifiable, Hashable {
     public let mmio: [String: String]
     public let note: String
     public let source: String
+    /// 这套配置的可信程度：实机验证过，还是仅逆向得到
+    public let verification: CurveVerification
 
     public func matches(_ code: String) -> MatchLevel {
         let c = code.uppercased()
@@ -98,7 +134,33 @@ public enum ECProfiles {
             curvePoints: 8, tempMin: 20, tempMax: 110, dutyMin: 0, dutyMax: 100,
             mmio: ["it55": "0xFE700600", "mb00": "0xFE700B00", "mc00": "0xFE700C00"],
             note: "SMCAsusFan v9-curvewrite 逆向，8 点曲线",
-            source: "内置（SMCAsusFan 交付包 v14）"
+            source: "内置（SMCAsusFan 交付包 v14）",
+            verification: .verifiedOnDevice
+        ),
+        ECProfile(
+            // 注意 familyPrefixes 收窄成 "G713P" 而不是 "G713"：
+            // 写 "G713" 会把魔霸6 Plus（G713RW / G713RS，2022）也吸进这套配置，
+            // 但那批机器的曲线没验证过。收窄后 6 Plus 会落到 MatchLevel.unknown
+            // （没有 EC 配置），而不是被当成「兼容」放行 —— 宁可不给，也不给错的。
+            modelCodes: ["G713PV", "G713PI", "G713PY", "G713P"],
+            familyPrefixes: ["G713P"],
+            familyName: "ROG Strix G17 / 魔霸7 Plus (2023)",
+            ecChip: "ITE IT5571",
+            ecFirmware: "ITE EC-V14.6",
+            curvePoints: 8, tempMin: 20, tempMax: 110, dutyMin: 0, dutyMax: 100,
+            mmio: ["it55": "0xFE700600", "mb00": "0xFE700B00", "mc00": "0xFE700C00"],
+            note: """
+                G713PV 逆向（ACPI 46 表反编译 + BIOS 剥离 EC 双重核对）：
+                tach CPU=IT55+0x02(FA1L) / GPU=IT55+0x24(FA2L)；FANM=MB00+0xF9；
+                曲线邮箱=MC00 0x58(选风扇)/0x5C/0x60/0x64/0x68/0x6C/0x7C/0x7D；
+                WMI devid：曲线 0x00110024(CPU)/0x00110025(GPU)、
+                转速 0x00110013/14、限速 0x00110026/27。
+                布局与 G513RM 逐项一致。
+                三档曲线沿用 G513RM 实测值，尚未在魔霸7 Plus 实机验证 ——
+                首次使用请先做只读验证（能读转速且随负载变化）再下发。
+                """,
+            source: "内置（G713PV 逆向包 v10-ecprobe）",
+            verification: .reverseEngineered
         )
     ]
 

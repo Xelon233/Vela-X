@@ -117,16 +117,56 @@ vela model set G513RM --i-understand   # 不匹配但确认风险，强制写入
 vela model clear               # 清除手动选择，回到自动检测
 ```
 
-已知机型目录在 `Sources/ECProfiles.swift`。想给新机型加支持，往里加一条即可：
+### 已收录机型
+
+| 机型代码 | 机型 | EC | 曲线可信度 |
+|---|---|---|---|
+| `G513RM` `G513` `GA50358` `GA503Q` `GA503` | ROG Strix G15 / 幻15 (2022) | ITE IT5571 · `TI5825_G513_1027` | ✅ 实机已验证 |
+| `G713PV` `G713PI` `G713PY` `G713P` | ROG Strix G17 / **魔霸7 Plus** (2023) | ITE IT5571 · `ITE EC-V14.6` | ⚠️ 逆向未实机验证 |
+
+**「机型能对上」不等于「曲线在这台机器上跑过」**，所以每个机型还带一个 `verification` 标记：
+
+- `verifiedOnDevice` —— 已在本机型实机下发过，转速/温度响应符合预期
+- `reverseEngineered` —— EC 布局已逆向确认，但曲线**没在这台机器上实机验证过**。
+  界面与 CLI 都会显示黄色提示，要求先做只读验证（能读到转速且随负载变化），
+  再下发曲线并观察转速是否真的响应
+
+给新机型加支持，往 `Sources/ECProfiles.swift` 的 `catalog` 加一条，曲线放到
+`Resources/fan_presets-<MODEL>.json`（`build.sh` 会带进 bundle），其它代码不用动：
 
 ```swift
-ECProfile(code: "G513RM", family: "G513", vendor: "ASUS",
-          ec: "ITE IT5571", fans: 2,
-          mmio: 0xFE700C00, mailbox: 0x..., status: .verified)
+ECProfile(
+    modelCodes: ["G713PV", "G713PI", "G713PY", "G713P"],
+    familyPrefixes: ["G713P"],
+    familyName: "ROG Strix G17 / 魔霸7 Plus (2023)",
+    ecChip: "ITE IT5571",
+    ecFirmware: "ITE EC-V14.6",
+    curvePoints: 8, tempMin: 20, tempMax: 110, dutyMin: 0, dutyMax: 100,
+    mmio: ["it55": "0xFE700600", "mb00": "0xFE700B00", "mc00": "0xFE700C00"],
+    note: "...",
+    source: "内置",
+    verification: .reverseEngineered      // 没有实机验证过就别写成 .verifiedOnDevice
+)
 ```
+
+> `familyPrefixes` 要收窄到已验证的范围。比如魔霸7 Plus 只写 `G713P` 而不是 `G713`，
+> 否则会把魔霸6 Plus（G713RW / G713RS，2022）也吸进来套用未验证的曲线。
+> 收窄后 6 Plus 会落到「未收录」（没有 EC 配置），而不是被当成「兼容」放行 —— 宁可不给，也不给错的。
 
 > 新机型的 MMIO / 邮箱寄存器需要重新逆向。交付包里的 `tools/mkconfig.py --capture`
 > 可以从 Windows 下的 Armoury Crate 抓取通信记录，再用 `mkconfig.py` 生成配置。
+
+### 确认实际用的是哪份曲线
+
+多机型共存时，**三档曲线的数值可能完全一样**（例如魔霸7 Plus 沿用了幻15 的实测值），
+光看数值分辨不出加载了哪份文件。`vela fan list` 会打印来源：
+
+```bash
+$ vela model set G713PV --i-understand
+$ vela fan list
+来源         .../Resources/fan_presets-G713PV.json
+针对机型     ASUS ROG Strix G17 G713PV
+```
 
 ---
 
@@ -150,6 +190,8 @@ Sources/                    Swift 源码
   MonitorView.swift / LoadViews.swift / SensorStore.swift  监控与负载页面
   Prefs.swift / CLI.swift / AppInfo.swift  偏好、命令行、版本信息
 Resources/                   Info.plist、图标、品牌标、fan_presets.json
+                             + fan_presets-<MODEL>.json（机型专属曲线，如 G713PV）
+                             + device_profile-<MODEL>.h（kext 用的机型 EC 常量，重新编译 kext 时参考）
 Tools/                       make_signing_cert.sh、make_dmg.sh、图标生成脚本
 MIGRATION.md                 v2.x 更名（AsusControl → Vela X）迁移说明
 ```

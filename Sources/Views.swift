@@ -1209,14 +1209,33 @@ struct PerformanceView: View {
                             Text("EC 配置")
                                 .font(.system(size: 10))
                                 .foregroundStyle(Palette.textTertiary)
-                            Text("\(p.ecChip) · \(p.ecFirmware) · \(p.note)")
+                            Text("\(p.ecChip) · \(p.ecFirmware)")
                                 .font(.system(size: 10))
                                 .foregroundStyle(Palette.textSecondary)
+                            Text("· \(p.verification.label)")
+                                .font(.system(size: 10))
+                                .foregroundStyle(p.verification == .verifiedOnDevice
+                                                 ? Palette.ok : Palette.warn)
                             if fan.ecLevel == .compatible {
                                 Text("（家族兼容，未本机验证）")
                                     .font(.system(size: 9.5))
                                     .foregroundStyle(Palette.warn)
                             }
+                        }
+
+                        // 逆向未实机验证的机型：把「先做只读验证」讲清楚，
+                        // 别让人误以为和实机验证过的机型一样可以放心直接下发
+                        if let caveat = p.verification.caveat {
+                            HStack(alignment: .top, spacing: 6) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(Palette.warn)
+                                Text(caveat)
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(Palette.warn)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .padding(.top, 2)
                         }
                     }
                 }

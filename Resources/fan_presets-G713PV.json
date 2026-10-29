@@ -1,0 +1,182 @@
+{
+  "schema": "asus-rog-fan-presets/1",
+  "generated_by": "SMCAsusFan (G713PV ACPI+EC 逆向)",
+  "generated_at": "2026-10-30T01:20:00+08:00",
+
+  "device": {
+    "model": "ASUS ROG Strix G17 G713PV",
+    "retail_cn": "ROG 魔霸7 Plus",
+    "ec": "ITE IT5571",
+    "ec_firmware": "ITE EC-V14.6",
+    "mmio": {
+      "it55": "0xFE700600",
+      "mb00": "0xFE700B00",
+      "mc00": "0xFE700C00"
+    },
+    "note": "it55 = 转速/温度/功耗（CPU tach @0x02 = FA1L，GPU tach @0x24 = FA2L）；mb00 = FANM 模式镜像(@0xF9)；mc00 = 风扇曲线邮箱(@0x58..0x7D)"
+  },
+
+  "mailbox": {
+    "opcodes": {
+      "write_curve": 0,
+      "read_curve": 1,
+      "read_limits": 2
+    },
+    "fan_id": {
+      "cpu": "0x00110024",
+      "gpu": "0x00110025"
+    },
+    "fan_id_rpm": {
+      "cpu": "0x00110013",
+      "gpu": "0x00110014",
+      "note": "读实时转速用这一对，别和曲线用的那对混"
+    },
+    "fan_id_limits": {
+      "cpu": "0x00110026",
+      "gpu": "0x00110027",
+      "note": "读写风扇转速上下限，Vela X 目前未使用"
+    },
+    "registers": {
+      "fan_select": "0x58",
+      "arg1": "0x5C",
+      "arg2": "0x60",
+      "arg3": "0x64",
+      "arg4": "0x68",
+      "result": "0x6C",
+      "busy": "0x7C",
+      "opcode": "0x7D"
+    }
+  },
+
+  "curve_format": {
+    "points": 8,
+    "layout": "temps[8] 在前，duties[8] 在后；打包成 4 个 u32（小端）",
+    "temp_unit": "degC",
+    "duty_unit": "percent",
+    "constraints": {
+      "temps": "单调不减，20..110",
+      "duties": "单调不减，0..100"
+    }
+  },
+
+  "presets": {
+    "silent": {
+      "label": "静音",
+      "desc": "曲线起点抬到 62°C，风扇尽量少转",
+      "cpu": {
+        "temp": [62, 66, 70, 74, 78, 82, 82, 98],
+        "duty": [1, 9, 18, 24, 32, 41, 41, 41]
+      },
+      "gpu": {
+        "temp": [62, 66, 70, 74, 78, 82, 82, 98],
+        "duty": [1, 9, 20, 23, 32, 44, 44, 44]
+      }
+    },
+
+    "balanced": {
+      "label": "平衡",
+      "desc": "同族机型实机验证过的默认曲线",
+      "cpu": {
+        "temp": [50, 55, 62, 66, 70, 74, 78, 98],
+        "duty": [1, 13, 18, 24, 32, 41, 52, 58]
+      },
+      "gpu": {
+        "temp": [50, 55, 62, 66, 70, 74, 78, 98],
+        "duty": [1, 12, 20, 23, 32, 44, 51, 63]
+      }
+    },
+
+    "performance": {
+      "label": "性能",
+      "desc": "占空整体抬高约 20 个点，散热优先",
+      "cpu": {
+        "temp": [50, 54, 58, 63, 67, 71, 74, 98],
+        "duty": [24, 30, 41, 52, 58, 71, 83, 100]
+      },
+      "gpu": {
+        "temp": [50, 54, 58, 63, 67, 71, 74, 98],
+        "duty": [23, 27, 44, 51, 63, 69, 83, 100]
+      }
+    }
+  },
+
+  "provenance": {
+    "presets_source": "沿用 G513RM（同 EC 参考设计）已在真机实测通过的档位",
+    "why_reused": "G713PV 的 EC/WMI 布局经 ACPI(46 表反编译) + EC 固件双重核对，与 G513RM 逐项一致：MMIO 三窗同为 0xFE700600/B00/C00，tach 同为 CPU@0x02(FA1L)、GPU@0x24(FA2L)，FANM 同为 MB00@0xF9，邮箱同为 MC00@0x58..0x7D，WMI devid 同为 曲线 0x00110024/25、转速 0x00110013/14、限速 0x00110026/27。",
+    "ec_firmware_table": "本机型 EC 固件里另有 5 条内置表，见 firmware_curves —— 它们 duty 起点在 37~58%（低温就有四到六成转速），因此未直接用作默认档位"
+  },
+
+  "firmware_curves": {
+    "note": "G713PV ec.bin 里连续排列的 5 条 18 字节表（格式：8×(温度,占空)交错 + 7F 00 结尾），仅作参考，未在 Vela X 里启用",
+    "curves": [
+      {
+        "offset": "0x803D",
+        "temp": [46, 51, 56, 61, 66, 71, 76, 76],
+        "duty": [42, 47, 52, 57, 62, 67, 72, 72]
+      },
+      {
+        "offset": "0x804F",
+        "temp": [41, 46, 51, 56, 61, 66, 71, 76],
+        "duty": [37, 42, 47, 52, 57, 62, 67, 72]
+      },
+      {
+        "offset": "0x8061",
+        "temp": [52, 57, 62, 67, 72, 77, 77, 77],
+        "duty": [48, 53, 58, 63, 68, 73, 73, 73]
+      },
+      {
+        "offset": "0x8073",
+        "temp": [60, 63, 66, 69, 72, 75, 85, 85],
+        "duty": [58, 61, 64, 67, 70, 73, 76, 76]
+      },
+      {
+        "offset": "0x8085",
+        "temp": [57, 60, 63, 66, 69, 72, 75, 85],
+        "duty": [52, 58, 61, 64, 67, 70, 73, 76]
+      }
+    ]
+  },
+
+  "smc_interface": {
+    "note": "别的 App 若不想直接碰 EC，可以通过这些 SMC 键让 kext 代办（写键需要 root）",
+    "keys": {
+      "AFMd": { "type": "ui8", "attr": "读写", "desc": "FANM 模式镜像（写它不控速，仅同步显示）" },
+      "AFMf": { "type": "ui8", "attr": "读写", "desc": "选风扇：0=CPU 1=GPU" },
+      "AFMq": { "type": "ui8", "attr": "读写", "desc": "触发邮箱：高4位=opcode，低4位=曲线序号（只读操作）" },
+      "AFW1": { "type": "ui32", "attr": "读写", "desc": "写曲线参数1 = 温度 1-4" },
+      "AFW2": { "type": "ui32", "attr": "读写", "desc": "写曲线参数2 = 温度 5-8" },
+      "AFW3": { "type": "ui32", "attr": "读写", "desc": "写曲线参数3 = 占空 1-4" },
+      "AFW4": { "type": "ui32", "attr": "读写", "desc": "写曲线参数4 = 占空 5-8" },
+      "AFWg": { "type": "ui8", "attr": "读写", "desc": "写 1 触发写入" },
+      "AFRs": { "type": "ui8", "attr": "读写", "desc": "触发一次 EC 快照转储（排障用）" }
+    },
+    "readouts_ioreg": {
+      "AFWRes": "写入结果（written / failed）",
+      "AFTachCPU": "CPU 转速原始 tach"
+    },
+    "u32_packing": "每个 u32 = b0 | b1<<8 | b2<<16 | b3<<24（小端），值写进 SMC 键时按大端传"
+  },
+
+  "verification": {
+    "status": "reverse_engineered_unverified",
+    "status_cn": "已逆向，尚未在魔霸7 Plus 实机验证",
+    "verified_items": [
+      "EC MMIO 三窗地址（ACPI OperationRegion + EC 固件双重核对）",
+      "CPU/GPU 转速字段偏移 FA1L@0x02 / FA2L@0x24",
+      "FANM 模式寄存器 MB00@0xF9",
+      "曲线邮箱槽位 MC00@0x58..0x7D",
+      "WMI devid：曲线 0x00110024/25、转速 0x00110013/14、限速 0x00110026/27",
+      "device_profile.h 已编译进 SMCAsusFan.kext（编译通过，Mach-O 64-bit kext bundle）"
+    ],
+    "unverified_items": [
+      "三档曲线在魔霸7 Plus 上的实际转速响应",
+      "写入是否真的改变风扇行为（EC 不回显，只能看转速）"
+    ],
+    "before_trusting": [
+      "只读：确认 F0Ac/F1Ac 能读到转速，且转速随负载变化",
+      "读曲线：通过 AFMq 读出 8 点，确认单调",
+      "写曲线：写入 performance 后确认转速真的上升、温度真的下降",
+      "确认设备确实识别为 IT5571（若 EC 芯片不同，本配置完全不适用）"
+    ]
+  }
+}

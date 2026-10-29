@@ -404,10 +404,16 @@ enum CLI {
             ]
             if let p = profile {
                 lines.append("收录级别     \(level == .verified ? "精确匹配" : "家族兼容（未本机验证）")")
+                lines.append("曲线可信度   \(p.verification.label)")
             }
             if !matched {
                 lines.append("")
                 lines.append(ModelDisclaimer.short(selected: selected, detected: detected.detectedCode))
+            }
+            // 逆向未实机验证的机型：把验证步骤打出来，别让人直接下发
+            if let caveat = profile?.verification.caveat {
+                lines.append("")
+                lines.append(caveat)
             }
             emit(lines.joined(separator: "\n"), printOutput: printOutput)
             return 0
@@ -421,11 +427,21 @@ enum CLI {
         let sub = args.first ?? "status"
         let ctrl = FanController()
 
+        /// 按「当前生效机型」加载曲线：手动覆盖优先，否则用检测到的机型。
+        /// 必须与 FanControl 的解析逻辑一致，否则 CLI 会静默用错机型的曲线
+        /// （多机型共存时数值可能完全一样，看输出分辨不出来）。
+        func currentModel() -> String {
+            let override = Prefs.string("fan.modelOverride")
+            return (override ?? MachineModel.detect().detectedCode)
+                .trimmingCharacters(in: .whitespaces)
+        }
+
         func loadPresets() -> FanPresets? {
             do {
-                return try FanPresets.load()
+                return try FanPresets.load(for: currentModel())
             } catch {
-                emit("ERR 读不到 fan_presets.json：\(error.localizedDescription)", printOutput: printOutput)
+                emit("ERR 读不到风扇曲线配置（机型 \(currentModel())）：\(error.localizedDescription)",
+                     printOutput: printOutput)
                 return nil
             }
         }
@@ -446,6 +462,15 @@ enum CLI {
         case "list", "presets":
             guard let presets = loadPresets() else { return 1 }
             var lines: [String] = []
+            // 打印实际读取的文件：多机型共存时，光看曲线数值分辨不出用的是哪份
+            // （比如 G713PV 与 G513RM 的三档数值完全相同），必须让用户看到来源。
+            if let src = presets.sourceURL?.path {
+                lines.append("来源         \(src)")
+            }
+            if let dev = presets.deviceModel {
+                lines.append("针对机型     \(dev)")
+            }
+            lines.append("")
             for name in FanControl.order {
                 guard let p = presets.preset(name) else { continue }
                 lines.append("\(name)\t\(p.label ?? "")\t\(curveSummary(p.cpu))")

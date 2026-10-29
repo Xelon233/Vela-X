@@ -31,6 +31,9 @@ enum ModelCatalog {
         // ROG 魔霸 / 枪神（Strix 系列）
         ASUSModel(code: "G513", china: "ROG 魔霸6", global: "ROG Strix G15", note: "2022"),
         ASUSModel(code: "G713", china: "ROG 魔霸6 Plus", global: "ROG Strix G17", note: "2022"),
+        // "G713P" 5 字符，在 lookup() 的最长前缀匹配里会压过 "G713"，
+        // 所以 G713PV 会正确显示成「魔霸7 Plus」而不是「魔霸6 Plus」
+        ASUSModel(code: "G713P", china: "ROG 魔霸7 Plus", global: "ROG Strix G17", note: "2023"),
         ASUSModel(code: "G533", china: "ROG 枪神6", global: "ROG Strix SCAR 15", note: "2022"),
         ASUSModel(code: "G733", china: "ROG 枪神6 Plus", global: "ROG Strix SCAR 17", note: "2022"),
         ASUSModel(code: "G614", china: "ROG 枪神8", global: "ROG Strix G16", note: "2024"),
