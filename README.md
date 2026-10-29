@@ -89,6 +89,45 @@ sudo vela fan set silent|balanced|performance   # 下发曲线（写 SMC 需 roo
 > ⚠️ 写 EC 风扇曲线有风险：错误的曲线可能导致风扇失控。操作前建议用  
 > `tools/curve.py read 0` 备份原始曲线；真出问题时断电重启即可回到出厂曲线。
 
+### 机型与 EC 配置识别
+
+不同机型的 EC（嵌入式控制器）布局不同——MMIO 地址、邮箱寄存器、曲线格式、风扇数量都不一样。
+**把 A 机型的曲线写进 B 机型，可能损坏硬件。** 所以程序会先做机型识别，并在不一致时强制确认。
+
+程序从 EC / 电池上报的 `DeviceName` 读取真实 ASUS 型号代码（如 `GA50358`），OpenCore 的 SMBIOS
+伪装不会覆盖它。识别结果分三档，显示在「性能与风扇」页顶部的机型卡上：
+
+| 状态 | 含义 | 能否下发曲线 |
+|---|---|---|
+| ✅ **机型匹配** | 检测到的机型与所选 EC 配置一致（或属于同一机型族） | 可以直接下发 |
+| ⚠️ **未收录机型** | 检测到的机型不在已知目录里，沿用默认配置 | 可以下发，但需知悉风险 |
+| ⛔ **机型不匹配** | 检测到的机型与所选配置不是同一族 | **必须先确认免责声明** |
+
+**机主可以手动选择机型**（按 model 名，例如 `G513RM`）：机型卡上有已知机型菜单，
+也可以直接输入型号代码。一旦所选机型与检测到的硬件**不属于同一机型族**，页面会显示红色警告卡，
+点「查看风险并继续」后弹出免责声明，逐条说明可能的后果（风扇失控、EC 锁死、散热失效导致
+CPU/GPU 过热降频甚至永久损坏、电池与供电异常、保修失效），**必须显式确认才允许下发曲线**。
+
+命令行同源：
+
+```bash
+vela model                     # 显示检测到的机型、所选机型、匹配状态、EC 配置
+vela model set G513RM          # 手动选择机型（不匹配时会打印免责声明并拒绝）
+vela model set G513RM --i-understand   # 不匹配但确认风险，强制写入
+vela model clear               # 清除手动选择，回到自动检测
+```
+
+已知机型目录在 `Sources/ECProfiles.swift`。想给新机型加支持，往里加一条即可：
+
+```swift
+ECProfile(code: "G513RM", family: "G513", vendor: "ASUS",
+          ec: "ITE IT5571", fans: 2,
+          mmio: 0xFE700C00, mailbox: 0x..., status: .verified)
+```
+
+> 新机型的 MMIO / 邮箱寄存器需要重新逆向。交付包里的 `tools/mkconfig.py --capture`
+> 可以从 Windows 下的 Armoury Crate 抓取通信记录，再用 `mkconfig.py` 生成配置。
+
 ---
 
 ## 目录结构
@@ -102,6 +141,7 @@ Sources/                    Swift 源码
   Theme.swift / UIComponents.swift  调色板、主题、通用控件
   SMC.swift / SMCBridge.{h,c}       SMC 读写（温度、风扇、功耗）
   SMCClient.swift / FanPresets.swift / FanControl.swift  风扇曲线（接 SMCAsusFan）
+  ECProfiles.swift                 机型/EC 配置目录、机型检测、匹配状态、免责声明
   HIDBacklight.swift               键盘背光（report ID 0x5A）
   AuraEffects.swift / AuraPanel.swift   Aura 灯效（report ID 0x5D）
   SystemLoad.swift / SystemInfo.swift  负载与硬件信息

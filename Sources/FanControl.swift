@@ -5,6 +5,11 @@
 //  数据来源：SMCAsusFan.kext 暴露的 SMC 键（AFMd 版本号、AFMf 选风扇、AFW1..4 曲线参数、AFWg 提交），
 //  以及 F0Ac / F1Ac 两个转速键。
 //
+//  机型识别：
+//    不同机型的 EC 配置不同，所以这里先认出真实机型（MachineModel.detect），
+//    再按机主选择的机型加载对应曲线。机主可以手动选机型（按型号名），
+//    但一旦所选机型与检测到的硬件不一致，写曲线前必须先确认「硬件损坏风险」免责声明。
+//
 //  权限边界：
 //    · 读转速、判断 kext 是否在跑 —— 普通用户即可（本页每 2 秒刷一次）
 //    · 下发曲线要写 SMC 键 —— 必须 root，走 Admin 提权执行本程序自己的 CLI：
@@ -24,6 +29,31 @@ final class FanControl: ObservableObject {
 
     /// 界面上的固定顺序（json 里是字典，顺序不可靠）
     static let order = ["silent", "balanced", "performance"]
+
+    // MARK: 机型
+
+    /// 检测到的真实机型（EC/电池 DeviceName）
+    let detected = MachineModel.detect()
+
+    /// 机主选择的机型代码（默认 = 检测到的；可手动覆盖）
+    @Published private(set) var selectedCode: String
+    /// 匹配状态：选中 == 检测到 → matched；否则 mismatched
+    var status: ModelMatch {
+        selectedCode.trimmingCharacters(in: .whitespaces).uppercased()
+            == detected.detectedCode.trimmingCharacters(in: .whitespaces).uppercased()
+            ? .matched : .mismatched
+    }
+    /// 所选机型对应的已知 EC 配置（可能为空 = 未收录）
+    var ecProfile: ECProfile? { ECProfiles.match(selectedCode).profile }
+    var ecLevel: MatchLevel { ECProfiles.match(selectedCode).level }
+
+    /// 机主是否已确认「机型不匹配」的硬件损坏风险
+    @Published private(set) var acknowledgedMismatch: Bool
+
+    private let modelOverrideKey = "fan.modelOverride"
+    private let mismatchAckKey = "fan.mismatchAck"
+
+    // MARK: 风扇状态
 
     @Published private(set) var kextLoaded = false
     @Published private(set) var kextBuild: String?
@@ -51,16 +81,42 @@ final class FanControl: ObservableObject {
     }
 
     private init() {
+        selectedCode = (Prefs.string(modelOverrideKey) ?? detected.detectedCode)
+            .trimmingCharacters(in: .whitespaces)
+        acknowledgedMismatch = Prefs.bool(mismatchAckKey)
         lastApplied = Prefs.string(presetKey) ?? FanControl.toolStatePreset
-        do {
-            presets = try FanPresets.load()
-        } catch {
-            loadError = error.localizedDescription
-        }
+        reloadPresets()
         refresh()
     }
 
     var isReady: Bool { kextLoaded && presets != nil }
+
+    /// 按所选机型重新加载曲线配置
+    private func reloadPresets() {
+        do {
+            presets = try FanPresets.load(for: selectedCode)
+            loadError = nil
+        } catch {
+            loadError = error.localizedDescription
+        }
+    }
+
+    /// 机主选择/输入机型（按型号名）。切换后重置免责确认，并重新加载对应曲线。
+    func selectModel(_ code: String) {
+        let c = code.trimmingCharacters(in: .whitespaces)
+        guard !c.isEmpty, c.uppercased() != selectedCode.uppercased() else { return }
+        selectedCode = c
+        Prefs.set(c, for: modelOverrideKey)
+        acknowledgedMismatch = false
+        Prefs.set(false, for: mismatchAckKey)
+        reloadPresets()
+        if status == .mismatched {
+            message = ModelDisclaimer.short(selected: selectedCode, detected: detected.detectedCode)
+        } else {
+            message = "已切换到检测到的机型 \(selectedCode)，曲线随之更新"
+        }
+        refresh()
+    }
 
     /// 只读刷新。SMC 读 + IORegistry 遍历都放后台，回主线程只写几个 @Published。
     func refresh() {
@@ -86,12 +142,24 @@ final class FanControl: ObservableObject {
     /// 下发一条档位（CPU + GPU 两条曲线各写一次）
     func apply(_ name: String) {
         guard applying == nil else { return }
+
+        // 机型不匹配且尚未确认风险 → 拒绝，提示先确认（UI 负责弹免责声明）
+        if status == .mismatched, !acknowledgedMismatch {
+            message = ModelDisclaimer.short(selected: selectedCode, detected: detected.detectedCode)
+            return
+        }
+
         guard let preset = presets?.preset(name) else {
             message = "没有这个档位：\(name)"
             return
         }
-        guard preset.cpu.isValid, preset.gpu.isValid else {
-            message = "曲线非法：需要 8 个点、单调不减、温度 ≤110、占空比 ≤100"
+        guard preset.cpu.isValid(points: ecProfile?.curvePoints ?? 8,
+                                 tempRange: (ecProfile?.tempMin ?? 20)...(ecProfile?.tempMax ?? 110),
+                                 dutyRange: (ecProfile?.dutyMin ?? 0)...(ecProfile?.dutyMax ?? 100)),
+              preset.gpu.isValid(points: ecProfile?.curvePoints ?? 8,
+                                 tempRange: (ecProfile?.tempMin ?? 20)...(ecProfile?.tempMax ?? 110),
+                                 dutyRange: (ecProfile?.dutyMin ?? 0)...(ecProfile?.dutyMax ?? 100)) else {
+            message = "曲线非法：需要 \(ecProfile?.curvePoints ?? 8) 个点、温度 \(ecProfile?.tempMin ?? 20)..\(ecProfile?.tempMax ?? 110)、占空比 ≤\(ecProfile?.dutyMax ?? 100)"
             return
         }
         applying = name
@@ -112,5 +180,16 @@ final class FanControl: ObservableObject {
                 self.refresh()
             }
         }
+    }
+
+    /// UI 在免责弹窗里点了「我已知晓风险并继续」：标记确认风险（后续应用不再拦截）
+    func acknowledgeMismatch() {
+        acknowledgedMismatch = true
+        Prefs.set(true, for: mismatchAckKey)
+    }
+
+    /// 仅确认风险（不应用具体档位）后的提示
+    func noteConfirmed() {
+        message = "已确认风险，现在可以应用曲线了"
     }
 }

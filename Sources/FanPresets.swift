@@ -21,14 +21,18 @@ public struct FanCurve: Codable, Equatable {
     public let temp: [Int]      // 8 个温度点，°C，单调不减
     public let duty: [Int]      // 8 个占空比，%，单调不减
 
-    /// 简单校验，避免把非法曲线写进 EC
-    public var isValid: Bool {
-        guard temp.count == 8, duty.count == 8 else { return false }
+    /// 默认校验（8 点、温区 20..110、占空 0..100）
+    public var isValid: Bool { isValid() }
+
+    /// 参数化校验：不同机型的 EC 曲线格式可能不同（点数 / 温区 / 占空范围）
+    public func isValid(points: Int = 8,
+                        tempRange: ClosedRange<Int> = 20...110,
+                        dutyRange: ClosedRange<Int> = 0...100) -> Bool {
+        guard temp.count == points, duty.count == points else { return false }
         guard zip(temp, temp.dropFirst()).allSatisfy({ $0 <= $1 }) else { return false }
         guard zip(duty, duty.dropFirst()).allSatisfy({ $0 <= $1 }) else { return false }
-        guard let t0 = temp.first, let t1 = temp.last,
-              let dMax = duty.max() else { return false }
-        return t0 >= 20 && t1 <= 110 && dMax <= 100
+        guard let t0 = temp.first, let t1 = temp.last, let dMax = duty.max() else { return false }
+        return t0 >= tempRange.lowerBound && t1 <= tempRange.upperBound && dMax <= dutyRange.upperBound
     }
 }
 
@@ -43,14 +47,29 @@ public struct FanPreset: Codable, Equatable {
     }
 }
 
-public struct FanPresets: Codable {
+public struct FanPresets: Decodable {
     public let schema: String
     public let presets: [String: FanPreset]
+    /// 这份预设针对的机型（取自 json 的 device.model），用于和检测到的机型比对
+    public let deviceModel: String?
     /// 实际读取的文件路径（不参与解码）
     public private(set) var sourceURL: URL? = nil
 
+    private struct DeviceMeta: Codable {
+        let model: String?
+        let ec: String?
+        let ec_firmware: String?
+    }
+
     private enum CodingKeys: String, CodingKey {
-        case schema, presets
+        case schema, presets, device
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        schema = try c.decode(String.self, forKey: .schema)
+        presets = try c.decode([String: FanPreset].self, forKey: .presets)
+        deviceModel = try c.decodeIfPresent(DeviceMeta.self, forKey: .device)?.model
     }
 
     public func preset(_ name: String) -> FanPreset? { presets[name] }
@@ -58,8 +77,33 @@ public struct FanPresets: Codable {
 
     // MARK: 加载
 
-    public static func searchPaths() -> [URL] {
+    /// 按机型加载：优先找 `fan_presets-<MODEL>.json`（机主自己放的对应该机型的曲线），
+    /// 找不到再退回通用的 `fan_presets.json`。
+    public static func load(for model: String? = nil) throws -> FanPresets {
+        for url in searchPaths(for: model) where FileManager.default.fileExists(atPath: url.path) {
+            return try load(from: url)
+        }
+        let looked = searchPaths(for: model).map(\.path).joined(separator: ", ")
+        throw NSError(domain: "VelaX", code: 1, userInfo: [
+            NSLocalizedDescriptionKey: "找不到 fan_presets.json（已查找：\(looked)）"
+        ])
+    }
+
+    public static func searchPaths(for model: String? = nil) -> [URL] {
         var list: [URL] = []
+        // 机型专属文件优先（raw + 全大写两种写法都试，文件名大小写容错）
+        if let model, !model.trimmingCharacters(in: .whitespaces).isEmpty {
+            let m = model.trimmingCharacters(in: .whitespaces)
+            list.append(contentsOf: [
+                Bundle.main.url(forResource: "fan_presets-\(m)", withExtension: "json"),
+                Bundle.main.url(forResource: "fan_presets-\(m.uppercased())", withExtension: "json")
+            ].compactMap { $0 })
+            if let exe = Bundle.main.executablePath ?? CommandLine.arguments.first {
+                let dir = URL(fileURLWithPath: exe).deletingLastPathComponent()
+                list.append(dir.appendingPathComponent("../Resources/fan_presets-\(m).json").standardizedFileURL)
+                list.append(dir.appendingPathComponent("fan_presets-\(m.uppercased()).json").standardizedFileURL)
+            }
+        }
         if let url = Bundle.main.url(forResource: "fan_presets", withExtension: "json") {
             list.append(url)
         }
@@ -76,15 +120,6 @@ public struct FanPresets: Codable {
         }
         list.append(URL(fileURLWithPath: "/Library/Application Support/SMCAsusFan/fan_presets.json"))
         return list
-    }
-
-    public static func load() throws -> FanPresets {
-        for url in searchPaths() where FileManager.default.fileExists(atPath: url.path) {
-            return try load(from: url)
-        }
-        throw NSError(domain: "VelaX", code: 1, userInfo: [
-            NSLocalizedDescriptionKey: "找不到 fan_presets.json（已查找：\(searchPaths().map(\.path).joined(separator: ", "))）"
-        ])
     }
 
     public static func load(from url: URL) throws -> FanPresets {

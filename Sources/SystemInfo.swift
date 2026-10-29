@@ -145,12 +145,9 @@ enum SystemProbe {
         let v = ProcessInfo.processInfo.operatingSystemVersion
         info.osVersion = "macOS \(v.majorVersion).\(v.minorVersion).\(v.patchVersion)"
 
-        // 型号线索来自 EC / 电池设备（OpenCore 的 SMBIOS 覆盖会隐藏真实 DMI）
-        if let name = ioregString("AppleSmartBattery", "DeviceName"), !name.isEmpty {
-            info.modelCode = name
-        } else {
-            info.modelCode = sysctlString("hw.model") ?? "ASUS"
-        }
+        // 型号线索统一走 MachineModel.detect()（EC/电池 DeviceName，避开 OpenCore 的 SMBIOS 覆盖）
+        let machine = MachineModel.detect()
+        info.modelCode = machine.detectedCode
         info.modelName = friendlyModel(info.modelCode)
         applyProductName(to: &info)
 

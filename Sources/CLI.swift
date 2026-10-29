@@ -251,6 +251,9 @@ enum CLI {
         case "fan", "fans":
             return fanCommand(Array(args.dropFirst()), printOutput: printOutput)
 
+        case "model":
+            return modelCommand(Array(args.dropFirst()), printOutput: printOutput)
+
         case "about", "version", "-v", "--version":
             emit("""
             \(AppInfo.name) \(AppInfo.displayVersion) (build \(AppInfo.build))
@@ -348,8 +351,70 @@ enum CLI {
 
     // MARK: - 子命令
 
-    // MARK: - 风扇（SMCAsusFan.kext 通道）
+    // MARK: - 机型识别（安全相关：机型不匹配可能损坏硬件）
 
+    /// 机型识别与 EC 配置选择。
+    ///   vela model              显示检测到的机型、当前选择、匹配状态、EC 配置
+    ///   vela model set <代码>   选择机型；与检测到的硬件不匹配时必须加 --i-understand
+    ///   vela model clear        清除覆盖，恢复使用检测到的机型
+    private static func modelCommand(_ args: [String], printOutput: Bool) -> Int32 {
+        let detected = MachineModel.detect()
+        let override = Prefs.string("fan.modelOverride")
+        let selected = (override ?? detected.detectedCode).trimmingCharacters(in: .whitespaces)
+        let matched = selected.uppercased() == detected.detectedCode.uppercased()
+        let (profile, level) = ECProfiles.match(selected)
+
+        let sub = args.first ?? ""
+
+        switch sub {
+        case "set":
+            guard args.count >= 2 else {
+                emit("用法：vela model set <机型代码> [--i-understand]", printOutput: printOutput)
+                return 2
+            }
+            let code = args[1]
+            let understand = args.contains("--i-understand")
+            let nowMatched = code.trimmingCharacters(in: .whitespaces).uppercased()
+                == detected.detectedCode.uppercased()
+            if !nowMatched, !understand {
+                emit(ModelDisclaimer.body(selected: code, detected: detected.detectedCode), printOutput: printOutput)
+                emit("\n⚠️ 机型不匹配。确认风险后加 --i-understand 再执行：", printOutput: printOutput)
+                emit("    vela model set \(code) --i-understand", printOutput: printOutput)
+                return 2
+            }
+            Prefs.set(code, for: "fan.modelOverride")
+            if !nowMatched { Prefs.set(true, for: "fan.mismatchAck") }
+            emit("已选择机型 \(code)。重启 Vela X 后 GUI 会按此机型加载曲线。", printOutput: printOutput)
+            return 0
+
+        case "clear", "reset":
+            Prefs.set(nil as String?, for: "fan.modelOverride")
+            Prefs.set(false, for: "fan.mismatchAck")
+            emit("已清除机型覆盖，恢复使用检测到的 \(detected.detectedCode)。", printOutput: printOutput)
+            return 0
+
+        default:
+            var lines = [
+                "检测到机型   \(detected.detectedCode)（\(detected.detectedName)）",
+                "检测来源     \(detected.source)",
+                "当前选择     \(selected)",
+                "匹配状态     \(matched ? "匹配" : "不匹配 ⚠️")",
+                "EC 配置      " + (profile.map { "\($0.ecChip) · \($0.ecFirmware)" }
+                                 ?? "未收录（无对应曲线，应用需谨慎）")
+            ]
+            if let p = profile {
+                lines.append("收录级别     \(level == .verified ? "精确匹配" : "家族兼容（未本机验证）")")
+            }
+            if !matched {
+                lines.append("")
+                lines.append(ModelDisclaimer.short(selected: selected, detected: detected.detectedCode))
+            }
+            emit(lines.joined(separator: "\n"), printOutput: printOutput)
+            return 0
+        }
+    }
+
+    // MARK: - 风扇（SMCAsusFan.kext 通道）
     /// 风扇档位：读状态免 root，下发曲线必须 root。
     /// GUI 点「应用」时会以管理员身份重新执行本程序，走的就是 `fan set`。
     private static func fanCommand(_ args: [String], printOutput: Bool) -> Int32 {
@@ -634,6 +699,8 @@ enum CLI {
           fan status          风扇转速 + SMCAsusFan kext 状态
           fan list            列出风扇曲线档位（静音/平衡/性能）
           fan set <档位>       下发风扇曲线（需 root）
+          model               显示检测到的机型 / 当前选择 / 匹配状态
+          model set <代码>    手动选择机型（不匹配时须加 --i-understand）
           smc list            列出全部 SMC 键
           smc read <KEY>      读取某个 SMC 键
           smc write <KEY> <HEX>  写入 SMC 键（需 root）

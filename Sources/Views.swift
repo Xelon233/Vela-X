@@ -1059,8 +1059,19 @@ struct KeyboardView: View {
 
 struct PerformanceView: View {
     @EnvironmentObject var store: SensorStore
-    /// 风扇档位状态（kext 状态、双风扇转速、下发进度）
+    /// 风扇档位状态（kext 状态、双风扇转速、下发进度、机型选择）
     @StateObject private var fan = FanControl.shared
+    /// 手动输入机型代码的临时文本
+    @State private var manualModel = ""
+    /// 免责声明弹窗的当前任务（nil = 不显示）。preset 为要应用的档位，nil 表示仅确认
+    @State private var disclaimerItem: DisclaimerItem?
+
+    /// 免责弹窗要确认的任务
+    private struct DisclaimerItem: Identifiable {
+        let id = UUID()
+        /// 确认后要应用的档位名；nil 表示只是「查看风险并继续」的确认
+        let preset: String?
+    }
 
     struct ModeInfo: Identifiable {
         let id = UUID()
@@ -1109,6 +1120,108 @@ struct PerformanceView: View {
             SectionTitle(text: "风扇曲线",
                          trailing: fan.kextLoaded ? (fan.kextBuild ?? "kext 已加载") : "kext 未加载")
 
+            // MARK: 机型识别
+            // 不同机型 EC 配置不同：先认出真实机型，机主可手动选（按型号名），
+            // 所选机型与检测到的硬件不一致时，应用曲线前必须确认硬件损坏风险。
+            Card {
+                VStack(alignment: .leading, spacing: 11) {
+                    HStack(spacing: 10) {
+                        Text("机型")
+                            .font(.system(size: 12, weight: .semibold))
+                        Spacer(minLength: 6)
+                        // 匹配状态指示
+                        let matched = fan.status == .matched
+                        HStack(spacing: 4) {
+                            Circle().fill(matched ? Palette.ok : Palette.bad)
+                                .frame(width: 6, height: 6)
+                            Text(matched ? "机型匹配" : "机型不匹配")
+                                .font(.system(size: 9.5, weight: .medium))
+                                .foregroundStyle(matched ? Palette.ok : Palette.bad)
+                        }
+                        // 快速选择菜单（检测到的机型 + 已收录机型族）
+                        Menu {
+                            Button {
+                                fan.selectModel(fan.detected.detectedCode)
+                            } label: {
+                                Label("使用检测到的机型（推荐）", systemImage: "checkmark.circle")
+                            }
+                            Divider()
+                            ForEach(ECProfiles.catalog, id: \.id) { p in
+                                Button {
+                                    fan.selectModel(p.modelCodes.first ?? p.familyName)
+                                } label: {
+                                    Text("\(p.familyName)  ·  \(p.modelCodes.first ?? "")")
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(fan.selectedCode.isEmpty ? "选择机型" : fan.selectedCode)
+                                    .font(.system(size: 12, weight: .medium))
+                                    .lineLimit(1)
+                                Image(systemName: "chevron.down").font(.system(size: 9))
+                            }
+                            .padding(.horizontal, 9).padding(.vertical, 4)
+                            .background(Capsule().fill(Palette.accent.opacity(0.16)))
+                            .foregroundStyle(Palette.accent)
+                            .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    // 检测到的硬件 + 来源
+                    HStack(spacing: 4) {
+                        Text("检测到")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Palette.textTertiary)
+                        Text("\(fan.detected.detectedCode)（\(fan.detected.detectedName)）")
+                            .font(.system(size: 10.5, weight: .medium))
+                            .foregroundStyle(Palette.textSecondary)
+                        Text("· \(fan.detected.source)")
+                            .font(.system(size: 9.5))
+                            .foregroundStyle(Palette.textTertiary)
+                    }
+
+                    // 手动输入机型（按型号名）
+                    HStack(spacing: 8) {
+                        TextField("输入机型代码，如 G513RM", text: $manualModel)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 11))
+                            .padding(.horizontal, 9).padding(.vertical, 5)
+                            .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(Palette.panelTop.opacity(0.5))
+                                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .stroke(Palette.cardStroke, lineWidth: 0.6)))
+                        Button {
+                            fan.selectModel(manualModel)
+                            manualModel = ""
+                        } label: {
+                            Text("应用此机型")
+                                .font(.system(size: 10.5, weight: .medium))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(manualModel.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .foregroundStyle(Palette.accent)
+                    }
+
+                    // 已收录机型的 EC 配置摘要
+                    if let p = fan.ecProfile {
+                        HStack(spacing: 4) {
+                            Text("EC 配置")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Palette.textTertiary)
+                            Text("\(p.ecChip) · \(p.ecFirmware) · \(p.note)")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Palette.textSecondary)
+                            if fan.ecLevel == .compatible {
+                                Text("（家族兼容，未本机验证）")
+                                    .font(.system(size: 9.5))
+                                    .foregroundStyle(Palette.warn)
+                            }
+                        }
+                    }
+                }
+            }
+
             Card {
                 VStack(alignment: .leading, spacing: 13) {
                     HStack(alignment: .center, spacing: 20) {
@@ -1154,6 +1267,44 @@ struct PerformanceView: View {
                 }
             }
 
+            // 机型不匹配 → 硬件损坏风险警告（应用曲线前必须先确认）
+            if fan.status == .mismatched {
+                Card {
+                    VStack(alignment: .leading, spacing: 9) {
+                        HStack(spacing: 7) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(Palette.bad).font(.system(size: 14))
+                            Text("机型不匹配：写入曲线可能损坏硬件")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Palette.bad)
+                        }
+                        Text("你选择的「\(fan.selectedCode)」与检测到的硬件「\(fan.detected.detectedCode)」不一致。风扇曲线和 EC 配置是按特定机型逆向的，套错机型可能让风扇停转或狂转，导致过热甚至永久损坏。每次应用曲线前都必须先确认风险。")
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(Palette.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if !fan.acknowledgedMismatch {
+                            Button {
+                                // 打开免责声明弹窗（不立即应用，仅做确认）
+                                disclaimerItem = DisclaimerItem(preset: nil)
+                            } label: {
+                                Text("查看风险并继续")
+                                    .font(.system(size: 10.5, weight: .medium))
+                                    .padding(.horizontal, 11).padding(.vertical, 5)
+                                    .background(Capsule().fill(Palette.bad.opacity(0.15)))
+                                    .overlay(Capsule().stroke(Palette.bad.opacity(0.4), lineWidth: 0.8))
+                                    .foregroundStyle(Palette.bad)
+                                    .contentShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            Text("已确认风险，可以继续应用曲线。")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Palette.ok)
+                        }
+                    }
+                }
+            }
+
             Card {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("这条通道是怎么打通的")
@@ -1179,11 +1330,65 @@ struct PerformanceView: View {
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
             if fan.applying == nil { fan.refresh() }
         }
+        // 机型不匹配的硬件损坏风险免责弹窗（由本地 @State 驱动，避免属性环）
+        .sheet(item: $disclaimerItem) { item in
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(Palette.bad).font(.system(size: 22))
+                    Text(ModelDisclaimer.title)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Palette.bad)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                ScrollView {
+                    Text(ModelDisclaimer.body(selected: fan.selectedCode,
+                                             detected: fan.detected.detectedCode))
+                        .font(.system(size: 12))
+                        .foregroundStyle(Palette.text)
+                        .lineSpacing(3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 230)
+                HStack(spacing: 10) {
+                    Button {
+                        disclaimerItem = nil
+                    } label: {
+                        Text("取消").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    Button {
+                        fan.acknowledgeMismatch()
+                        if let name = item.preset {
+                            fan.apply(name)
+                        } else {
+                            fan.noteConfirmed()
+                        }
+                        disclaimerItem = nil
+                    } label: {
+                        Text("我已知晓风险并继续").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Palette.bad)
+                }
+            }
+            .padding(20)
+            .frame(width: 430)
+        }
     }
 
     private var currentPresetLabel: String {
         guard let name = fan.lastApplied else { return "未记录" }
         return fan.presets?.preset(name)?.label ?? name
+    }
+
+    /// 点「应用」档位：机型匹配或已确认风险 → 直接下发；否则先弹免责声明
+    private func requestFanApply(_ name: String) {
+        if fan.status == .matched || fan.acknowledgedMismatch {
+            fan.apply(name)
+        } else {
+            disclaimerItem = DisclaimerItem(preset: name)
+        }
     }
 
     private func fanStat(_ label: String, _ value: String) -> some View {
@@ -1232,7 +1437,7 @@ struct PerformanceView: View {
             Spacer(minLength: 8)
 
             Button {
-                fan.apply(name)
+                requestFanApply(name)
             } label: {
                 Group {
                     if fan.applying == name {
