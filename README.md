@@ -1,4 +1,4 @@
-# Vela X（原 AsusControl / ROG X）
+# Vela X
 
 > macOS 上的华硕 / ROG 笔记本控制中心 —— [G-Helper](https://github.com/seerge/g-helper) 的 macOS 对应实现。  
 > 性能模式、风扇曲线、键盘背光与 Aura 灯效、传感器监控、菜单栏多指标、NVIDIA 驱动管理，  
