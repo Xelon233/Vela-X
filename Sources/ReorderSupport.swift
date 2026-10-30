@@ -21,6 +21,9 @@ import Combine
 final class WindowState: ObservableObject {
     static let shared = WindowState()
     @Published var isEditMode = false
+    /// 临时交互锁：自定义曲线画布这类「内部要拖拽」的区域，指针悬停其上时
+    /// 关掉窗口背景拖动，避免拖圆点时整窗跟着鼠标跑；指针移出即恢复。
+    @Published var interactionLocked = false
 }
 
 /// 收集子视图在全局坐标系下的 frame，按可哈希 id 存起来，供松手时判断落在哪张卡上。

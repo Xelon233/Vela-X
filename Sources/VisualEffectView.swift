@@ -96,14 +96,17 @@ enum WindowChrome {
         // 编辑模式联动：开启时窗口固定（只留卡片可拖动），关闭时窗口可拖动。
         // 这一步是「拖卡片整窗被带跑」的终极解法 —— 不再靠探测鼠标落点，
         // 而是由开关直接决定窗口是否可移动（见 WindowState / ReorderSupport.swift）。
-        window.isMovableByWindowBackground = !WindowState.shared.isEditMode
+        window.isMovableByWindowBackground =
+            !(WindowState.shared.isEditMode || WindowState.shared.interactionLocked)
         editModeToken?.cancel()
+        // 编辑模式 或 画布交互锁 任一为真 → 窗口固定；两者都关才恢复背景拖动。
         editModeToken = WindowState.shared.$isEditMode
+            .combineLatest(WindowState.shared.$interactionLocked)
             .receive(on: RunLoop.main)
-            .sink { [weak window] on in
+            .sink { [weak window] edit, locked in
                 guard let win = window else { return }
                 // 自测非透明窗不需要这项控制，但仍保持一致：编辑时锁窗，平时放开
-                win.isMovableByWindowBackground = !on
+                win.isMovableByWindowBackground = !(edit || locked)
             }
 
         // 让 contentView 覆盖整个窗口（含标题栏）：SwiftUI 的背景因此能用 ignoresSafeArea

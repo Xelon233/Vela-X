@@ -504,6 +504,11 @@ struct CurveEditorCanvas: View {
             }
             .coordinateSpace(name: "curveCanvas")
         }
+        .onHover { inside in
+            // 悬停画布时锁住窗口背景拖动：否则拖圆点会把整个窗口一起拖走
+            WindowState.shared.interactionLocked = inside
+        }
+        .onDisappear { WindowState.shared.interactionLocked = false }
     }
 
     private func handle(_ i: Int, width: CGFloat, height: CGFloat) -> some View {
