@@ -1,10 +1,10 @@
-# Vela X（原 AsusControl / ROG X）
+# Vela X
 
 > macOS 上的华硕 / ROG 笔记本控制中心 —— [G-Helper](https://github.com/seerge/g-helper) 的 macOS 对应实现。  
 > 性能模式、风扇曲线、键盘背光与 Aura 灯效、传感器监控、菜单栏多指标、NVIDIA 驱动管理，  
 > 全部跑在原生 SwiftUI + Liquid Glass 界面里。
 
-- 版本：**1.5.0**（build 13）
+- 版本：**1.3.0**（build 9）
 - 界面：macOS 26 Liquid Glass（透明窗 + behindWindow 玻璃 + 26pt 窗口圆角）
 - 最低系统：**macOS 13.0**（Liquid Glass 效果在 macOS 26 上最完整）
 - 架构：Universal（x86_64 + arm64）
@@ -13,6 +13,9 @@
 > 本项目与华硕（ASUS）无任何官方关联，是社区第三方实现。详情见文末[商标声明](#商标声明)。
 
 ---
+## 截图预览
+<img width="2000" height="1460" alt="QQ_1793296894476" src="https://github.com/user-attachments/assets/c4911f27-caf3-470f-ac4d-ea12167151a0" />
+<img width="2000" height="1460" alt="QQ_1793296905554" src="https://github.com/user-attachments/assets/d3f64068-1f57-44a5-af37-156e78f1773d" />
 
 ## 功能
 
@@ -21,11 +24,10 @@
 | 性能与风扇     | 性能模式切换；双风扇实时转速；**三档风扇曲线**（静音 / 平衡 / 性能），依赖 `SMCAsusFan.kext` |
 | 键盘背光      | HID 写入（report ID `0x5A`），0–3 档亮度                             |
 | Aura 灯效   | HID 写入（report ID `0x5D`），12 种灯效模式                            |
-| 传感器监控     | CPU / GPU 温度、CPU / GPU 占用率、频率、内存、网速、整机功耗                     |
-| 菜单栏       | 8 项指标带图标实时显示在菜单栏，可自由勾选、拖拽排序（含 CPU 频率 / 整机功耗 / 显卡温度） |
-| 概览         | 卡片自由选择与调换顺序（整机功耗 / CPU 频率 / 显卡 / 风扇 / 电池…）               |
+| 传感器监控     | CPU / GPU 温度、负载、频率、内存、网速、功耗                                  |
+| 菜单栏       | 可勾选 7 项指标实时拼接进菜单栏标题                                          |
 | NVIDIA 驱动 | 检查 / 下载 / 安装 NullMoth 的 macOS NVIDIA 驱动                      |
-| 命令行       | 同源 CLI：`vela status` / `vela fan ...` / `vela aura ...` / `vela amd` |
+| 命令行       | 同源 CLI：`vela status` / `vela fan ...` / `vela aura ...`      |
 
 ---
 
@@ -34,12 +36,6 @@
 - 一台**黑苹果 / OpenCore** 的华硕 / ROG 笔记本（原生 Mac 没有这些 EC 设备，用不了）
 - macOS 13.0+，建议 macOS 26 以获得完整 Liquid Glass 观感
 - Command Line Tools（`xcode-select --install`，**不需要 Xcode**）
-- 想要 **CPU 实时功耗 / 频率**，需装 [SMCAMDProcessor](https://github.com/trulyspinach/SMCAMDProcessor) 套件里的
-  `AMDRyzenCPUPowerManagement.kext`（它给 Vela X 提供用户态可读的整包功耗与每核有效频率）；
-  没装时这两项指标自动降级为「不可用」，不会显示假数字。温度来自同套件的 `SMCAMDProcessor.kext`。
-- 显卡占用率与温度来自 [NullMoth](https://github.com/nullmoth/nvidia-macos-driver) 新驱动
-  （NVAccel 的 `PerformanceStatistics` 上报 `Device Utilization %` 与 `Temperature(C)`）；
-  显卡**功耗**没有公开接口，暂不可用。
 - 风扇曲线需要 [`SMCAsusFan.kext`](https://github.com/seerge/g-helper)（EC 风扇邮箱 → SMC 键的桥接内核扩展）
 
 ---
@@ -101,61 +97,34 @@ sudo vela fan set silent|balanced|performance   # 下发曲线（写 SMC 需 roo
 不同机型的 EC（嵌入式控制器）布局不同——MMIO 地址、邮箱寄存器、曲线格式、风扇数量都不一样。
 **把 A 机型的曲线写进 B 机型，可能损坏硬件。** 所以程序会先做机型识别，并在不一致时强制确认。
 
-程序用**硬件指纹**判定机型（黑苹果下 SMBIOS 被 OpenCore 换成 Mac，读不到真实 DMI 型号，
-故为「推断」而非「读取」；G-Helper 在 Windows 读 `Win32_ComputerSystem.Model` 能拿到真实型号）。
-判定维度取 G-Helper 选 EC 配置真正依赖的两个信号——**独显型号 + CPU 世代**，
-外加电池容量佐证：
-
-- **独显型号是闸门（+55）**：不匹配整条 0 分，宁可「未识别」也不误判。
-  魔霸6 只收 `RTX 3060`，枪神6（G533）用 `RTX 3070 Ti / 3080` 没有 3060，于是正确落到「未识别」，
-  而不是被误认成魔霸6。
-- **CPU 世代佐证（+30）**：只比世代前缀（`6900/6800` = 6000 系、`7945/7845` = 7000 系），不比 H/HX/HS 后缀。
-- **电池容量佐证（+15）**：主要用来排除幻15 的 76Wh（魔霸/枪神为 90Wh 档）。
-
-为什么不是读 `DeviceName`：OpenCore 会把 SMBIOS 整套换成 Mac（`hw.model` 恒为 `MacBookPro16,4`
-之类），看起来最可靠的「电池 `DeviceName`」其实是**电池部件号** —— 同一块电池装在多款机器上，
-实测魔霸6（G513RM）和魔霸7 Plus（G713PV）都报 `GA50358`。所以它只作为附注显示，不参与判定。
-
-> 注意：枪神（G533）和魔霸（G513）**共用同一颗 CPU**（都是 6900HX），差别只在独显档位，
-> 因此 CPU 不能当主判据——这正是上面把独显设成闸门的原因。
-
-| 产品线 | CPU 世代 | 独显 |
-|---|---|---|
-| 幻15 GA503（2022） | `6900HS` / `5900HS`（**HS**） | RTX 30 |
-| 魔霸6 G513（2022） | `6900HX` / `6800H`（**H / HX**） | RTX 3060 |
-| 枪神6 G533（2022） | `6900HX` / `6800H` | RTX 3070 Ti / 3080 |
-| 魔霸7 Plus G713P（2023） | `7945HX` / `7845HX`（Dragon Range） | RTX 4060 / 4070 |
-
-判定结果分三档，显示在「性能与风扇」页顶部的机型卡上（可展开「查看判定依据」逐条核对）：
+程序从 EC / 电池上报的 `DeviceName` 读取真实 ASUS 型号代码（如 `GA50358`），OpenCore 的 SMBIOS
+伪装不会覆盖它。识别结果分三档，显示在「性能与风扇」页顶部的机型卡上：
 
 | 状态 | 含义 | 能否下发曲线 |
 |---|---|---|
-| ✅ **机型匹配** | 所选机型与判定结果一致 | 可以直接下发 |
-| ⚠️ **机型待确认** | 指纹没匹配到任何已收录机型，无从核对所选机型 | 需核对型号并确认一次 |
-| ⛔ **机型不匹配** | 所选机型与判定结果不一致（中/高置信度） | **必须先确认免责声明** |
-
-> 低置信度或压根没认出来时**不会**拦你 —— 没有证据，就不该拿免责声明吓人。
+| ✅ **机型匹配** | 检测到的机型与所选 EC 配置一致（或属于同一机型族） | 可以直接下发 |
+| ⚠️ **未收录机型** | 检测到的机型不在已知目录里，沿用默认配置 | 可以下发，但需知悉风险 |
+| ⛔ **机型不匹配** | 检测到的机型与所选配置不是同一族 | **必须先确认免责声明** |
 
 **机主可以手动选择机型**（按 model 名，例如 `G513RM`）：机型卡上有已知机型菜单，
-也可以直接输入型号代码。所选机型与判定结果不一致时，页面会显示红色警告卡，
+也可以直接输入型号代码。一旦所选机型与检测到的硬件**不属于同一机型族**，页面会显示红色警告卡，
 点「查看风险并继续」后弹出免责声明，逐条说明可能的后果（风扇失控、EC 锁死、散热失效导致
 CPU/GPU 过热降频甚至永久损坏、电池与供电异常、保修失效），**必须显式确认才允许下发曲线**。
 
 命令行同源：
 
 ```bash
-vela model                     # 显示硬件指纹、判定机型、置信度、候选得分、匹配状态
-vela model probe               # 打印完整指纹与逐条判定依据（反馈新机型时贴这个）
-vela model set G513RM          # 手动选择机型（未获确认时会打印免责声明并拒绝）
-vela model set G513RM --i-understand   # 未获确认但确认风险，强制写入
-vela model clear               # 清除手动选择，回到自动判定
+vela model                     # 显示检测到的机型、所选机型、匹配状态、EC 配置
+vela model set G513RM          # 手动选择机型（不匹配时会打印免责声明并拒绝）
+vela model set G513RM --i-understand   # 不匹配但确认风险，强制写入
+vela model clear               # 清除手动选择，回到自动检测
 ```
 
 ### 已收录机型
 
 | 机型代码 | 机型 | EC | 曲线可信度 |
 |---|---|---|---|
-| `G513RM` `G513RS` `G513RW` `G513` | ROG Strix G15 / **魔霸6** (2022) | ITE IT5571 · `TI5825_G513_1027` | ✅ 实机已验证 |
+| `G513RM` `G513` `GA50358` `GA503Q` `GA503` | ROG Strix G15 / 幻15 (2022) | ITE IT5571 · `TI5825_G513_1027` | ✅ 实机已验证 |
 | `G713PV` `G713PI` `G713PY` `G713P` | ROG Strix G17 / **魔霸7 Plus** (2023) | ITE IT5571 · `ITE EC-V14.6` | ⚠️ 逆向未实机验证 |
 
 **「机型能对上」不等于「曲线在这台机器上跑过」**，所以每个机型还带一个 `verification` 标记：
@@ -165,8 +134,8 @@ vela model clear               # 清除手动选择，回到自动判定
   界面与 CLI 都会显示黄色提示，要求先做只读验证（能读到转速且随负载变化），
   再下发曲线并观察转速是否真的响应
 
-给新机型加支持，往 `Sources/ECProfiles.swift` 的 `catalog` 加一条（含 `fingerprint`），
-曲线放到 `Resources/fan_presets-<MODEL>.json`（`build.sh` 会带进 bundle），其它代码不用动：
+给新机型加支持，往 `Sources/ECProfiles.swift` 的 `catalog` 加一条，曲线放到
+`Resources/fan_presets-<MODEL>.json`（`build.sh` 会带进 bundle），其它代码不用动：
 
 ```swift
 ECProfile(
@@ -179,14 +148,7 @@ ECProfile(
     mmio: ["it55": "0xFE700600", "mb00": "0xFE700B00", "mc00": "0xFE700C00"],
     note: "...",
     source: "内置",
-    verification: .reverseEngineered,     // 没有实机验证过就别写成 .verifiedOnDevice
-    fingerprint: ModelFingerprint(
-        // cpuCodes 是**精确相等**比较，别写成子串包含：那会让 "6800H" 误吃幻15 的 "6800HS"
-        cpuCodes: ["7945HX", "7845HX", "7745HX"],
-        gpuHints: ["RTX 4060", "RTX 4070", "RTX 4080"],
-        batteryWh: 84...96,
-        minScreenPixels: 2560
-    )
+    verification: .reverseEngineered      // 没有实机验证过就别写成 .verifiedOnDevice
 )
 ```
 
@@ -199,7 +161,7 @@ ECProfile(
 
 ### 确认实际用的是哪份曲线
 
-多机型共存时，**三档曲线的数值可能完全一样**（例如魔霸7 Plus 沿用了魔霸6 G513RM 的实测值），
+多机型共存时，**三档曲线的数值可能完全一样**（例如魔霸7 Plus 沿用了幻15 的实测值），
 光看数值分辨不出加载了哪份文件。`vela fan list` 会打印来源：
 
 ```bash
@@ -226,8 +188,7 @@ Sources/                    Swift 源码
   HIDBacklight.swift               键盘背光（report ID 0x5A）
   AuraEffects.swift / AuraPanel.swift   Aura 灯效（report ID 0x5D）
   SystemLoad.swift / SystemInfo.swift  负载与硬件信息
-  MenuMetrics.swift            菜单栏指标采集（网速、温度、内存、GPU 占用/温度…）
-  AMDRyzenProbe.swift          AMD CPU 实时功耗/频率（AMDRyzenCPUPowerManagement.kext 用户客户端）
+  MenuMetrics.swift            菜单栏指标采集（网速、温度、内存…）
   NvidiaUpdate.swift / NvidiaView.swift  NVIDIA 驱动检查、下载安装
   MonitorView.swift / LoadViews.swift / SensorStore.swift  监控与负载页面
   Prefs.swift / CLI.swift / AppInfo.swift  偏好、命令行、版本信息
@@ -319,3 +280,8 @@ ASUS_SELFTEST=1 ASUS_PAGE=overview ASUS_THEME=dark ASUS_SELFTEST_DELAY=10 \
 - 奥创中心（Armoury Crate）— 设备协议参考
 - [NullMoth](https://github.com/nullmoth/nvidia-macos-driver) — macOS NVIDIA 驱动
 - angus666888 — EC 灯效修复思路
+
+## 捐赠
+本项目用全程开源，如果您觉得好用，可以请我喝杯快乐水助力我后续开发，谢谢！
+<img width="3026" height="2160" alt="IMG_20261030_020020" src="https://github.com/user-attachments/assets/0f1c643a-0169-44ae-8f90-bdcc462fde05" />
+
