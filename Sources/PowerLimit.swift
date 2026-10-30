@@ -73,6 +73,7 @@ enum PowerLimitSpec {
     static let keyWatts = "AFsw"
     static let prefsProfile = "power.profile"
     static let prefsCustom = "power.customWatts"
+    static let prefsUnlocked = "power.customUnlocked"
 }
 
 // MARK: - 控制器
@@ -87,14 +88,28 @@ final class PowerLimitController: ObservableObject {
     @Published private(set) var appliedWatts: Int?
     @Published private(set) var applying = false
     @Published private(set) var message: String?
+    /// 功能解锁开关：默认关，需在「高级功能」页确认风险后解锁
+    @Published private(set) var unlocked: Bool
 
     private init() {
+        unlocked = Prefs.bool(PowerLimitSpec.prefsUnlocked)
         if let raw = Prefs.string(PowerLimitSpec.prefsProfile),
            let p = PowerProfile(rawValue: raw) {
             profile = p
         }
         if let w = Prefs.string(PowerLimitSpec.prefsCustom), let v = Int(w) {
             customWatts = clamped(v)
+        }
+    }
+
+    /// 从 SMC 回读当前已下发的功耗墙（afsw=0 视为未限制 / 默认）
+    /// 注意：这只反映「最后一次写入的值」，不代表 EC 当前真实墙值；真正生效与否看 `vela amd` 实测。
+    func refreshApplied() {
+        guard kextSupported else { return }
+        if let v = try? SMCClient.shared.readUInt8(PowerLimitSpec.keyWatts), v > 0 {
+            appliedWatts = Int(v)
+        } else {
+            appliedWatts = nil
         }
     }
 
@@ -117,6 +132,18 @@ final class PowerLimitController: ObservableObject {
         Prefs.set(String(customWatts), for: PowerLimitSpec.prefsCustom)
     }
 
+    /// 高级功能页确认风险后解锁 / 关闭
+    func unlock() {
+        unlocked = true
+        Prefs.set(true, for: PowerLimitSpec.prefsUnlocked)
+    }
+
+    func lock() {
+        unlocked = false
+        Prefs.set(false, for: PowerLimitSpec.prefsUnlocked)
+        message = nil
+    }
+
     /// 当前档位对应的瓦数
     var targetWatts: Int {
         profile.watts ?? customWatts
@@ -125,6 +152,10 @@ final class PowerLimitController: ObservableObject {
     /// 下发当前档位
     func apply() {
         let w = targetWatts
+        guard unlocked else {
+            message = "未解锁：请先在「高级功能」页解锁自定义功耗墙"
+            return
+        }
         guard kextSupported else {
             message = "kext 不支持（需要 v20-stapm 及以上：AFsw 键不存在）"
             return
@@ -150,6 +181,10 @@ final class PowerLimitController: ObservableObject {
 
     /// 恢复默认（AFsw = 0 → 回到 EC 当前 PL1）
     func restore() {
+        guard unlocked else {
+            message = "未解锁：请先在「高级功能」页解锁自定义功耗墙"
+            return
+        }
         guard kextSupported else {
             message = "kext 不支持（需要 v20-stapm 及以上）"
             return
@@ -216,7 +251,10 @@ struct PowerLimitCard: View {
                 }
             }
         }
-        .onAppear { draftCustom = Double(controller.customWatts) }
+        .onAppear {
+            draftCustom = Double(controller.customWatts)
+            controller.refreshApplied()
+        }
     }
 
     // MARK: 子视图
@@ -338,6 +376,19 @@ struct PowerLimitCard: View {
             .disabled(controller.applying || !controller.kextSupported)
 
             Spacer()
+        }
+    }
+}
+
+// MARK: - 解锁门
+
+/// 只有「高级功能」页里确认风险、解锁之后，才在「性能与风扇」页显示功耗墙卡片。
+struct PowerLimitGate: View {
+    @ObservedObject private var controller = PowerLimitController.shared
+
+    var body: some View {
+        if controller.unlocked {
+            PowerLimitCard()
         }
     }
 }

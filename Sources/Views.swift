@@ -1516,8 +1516,8 @@ struct PerformanceView: View {
                 }
             }
 
-            // [VelaX-PowerLimit] 功耗墙档位（删掉这两行即可移除该功能）
-            PowerLimitCard()
+            // [VelaX-PowerLimit] 功耗墙档位（未在「高级功能」解锁时不显示）
+            PowerLimitGate()
 
             // [VelaX-CustomCurve] 自定义曲线编辑器（未在「高级功能」解锁时不显示）
             CustomCurveGate()

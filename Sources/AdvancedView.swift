@@ -12,6 +12,8 @@ struct AdvancedView: View {
     @State private var messageIsError = false
     @ObservedObject private var customCurve = CustomCurveController.shared
     @State private var showUnlockWarning = false
+    @State private var showPowerUnlockWarning = false
+    @ObservedObject private var powerLimit = PowerLimitController.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -54,6 +56,43 @@ struct AdvancedView: View {
                         .tint(Palette.warn)
                     }
                     Text("⚠️ 写入风扇曲线属于硬件级改动：可能造成风扇停转 / 狂转、过热，甚至损坏硬件，并可能使保修失效。仅在完全理解风险后解锁。")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(Palette.warn)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            SectionTitle(text: "自定义功耗墙",
+                         trailing: powerLimit.unlocked ? "已解锁" : "未解锁",
+                         color: Palette.warn)
+            Card(padding: 16) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 12) {
+                        Image(systemName: powerLimit.unlocked ? "bolt.fill" : "lock.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(powerLimit.unlocked ? Palette.warn : Palette.textSecondary)
+                            .frame(width: 24)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("启用功耗墙档位调节")
+                                .font(.system(size: 12.5, weight: .medium))
+                            Text("解锁后「性能与风扇」页会出现功耗墙卡片，可在 15–50W 之间写入 STAPM 功耗墙。默认关闭。")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Palette.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 0)
+                        Toggle("", isOn: Binding(
+                            get: { powerLimit.unlocked },
+                            set: { on in
+                                if on { showPowerUnlockWarning = true } else { powerLimit.lock() }
+                            }
+                        ))
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .controlSize(.mini)
+                        .tint(Palette.warn)
+                    }
+                    Text("⚠️ 写入功耗墙属于硬件级改动：可能导致供电过载、性能骤降或系统不稳，甚至损坏硬件，并可能使保修失效。仅在完全理解风险后解锁。")
                         .font(.system(size: 10.5))
                         .foregroundStyle(Palette.warn)
                         .fixedSize(horizontal: false, vertical: true)
@@ -117,6 +156,12 @@ struct AdvancedView: View {
             Button("我已知晓风险，同意解锁", role: .destructive) { customCurve.unlock() }
         } message: {
             Text("涉及风扇改动，有可能损坏硬件和失去保修。")
+        }
+        .alert("解锁自定义功耗墙？", isPresented: $showPowerUnlockWarning) {
+            Button("取消", role: .cancel) { }
+            Button("我已知晓风险，同意解锁", role: .destructive) { powerLimit.unlock() }
+        } message: {
+            Text("涉及功耗改动，有可能损坏硬件和失去保修。")
         }
     }
 
