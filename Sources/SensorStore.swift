@@ -55,6 +55,7 @@ final class SensorStore: ObservableObject {
     private(set) var tempHistory: [Double] = []
     private(set) var freqHistory: [Double] = []
     private(set) var powerHistory: [Double] = []
+    private(set) var gpuHistory: [Double] = []
     private(set) var fanRPM: Double?
     private(set) var fanRPMGPU: Double?
     private(set) var fanCount = 0
@@ -190,6 +191,7 @@ final class SensorStore: ObservableObject {
         if loadHistory.count > tempCap { loadHistory.removeFirst(loadHistory.count - tempCap) }
         if freqHistory.count > tempCap { freqHistory.removeFirst(freqHistory.count - tempCap) }
         if powerHistory.count > tempCap { powerHistory.removeFirst(powerHistory.count - tempCap) }
+        if gpuHistory.count > tempCap { gpuHistory.removeFirst(gpuHistory.count - tempCap) }
         let histCap = samplingRate.historyCapacity
         if history.count > histCap { history.removeFirst(history.count - histCap) }
     }
@@ -380,7 +382,12 @@ final class SensorStore: ObservableObject {
 
         load = frame.load
         netSpeed = frame.net
-        if let g = frame.gpuUsage { gpuUsage = g }
+        if let g = frame.gpuUsage {
+            gpuUsage = g
+            gpuHistory.append(g)
+            let cap = samplingRate.tempCapacity
+            if gpuHistory.count > cap { gpuHistory.removeFirst(gpuHistory.count - cap) }
+        }
         if let t = frame.gpuTemp { gpuTemp = t }
         if let w = frame.powerWatts {
             powerWatts = w

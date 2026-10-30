@@ -81,11 +81,11 @@ enum Palette {
         }
     }
 
-    /// 磁盘占用率配色：绿 → 蓝 → 黄 → 红，与温度同一套语义
+    /// 磁盘占用率配色：靛 → 紫 → 黄 → 红（不用绿色，避免和「健康/够用」混淆）
     static func forDisk(_ f: Double) -> Color {
         switch f {
-        case ..<0.6: return ok
-        case ..<0.8: return accent2
+        case ..<0.6: return indigo
+        case ..<0.8: return violet
         case ..<0.92: return warn
         default: return bad
         }

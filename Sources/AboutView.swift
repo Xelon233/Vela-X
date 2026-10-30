@@ -33,17 +33,17 @@ struct AboutView: View {
     private var whatsNewCard: some View {
         Card {
             VStack(alignment: .leading, spacing: 9) {
-                whatsNewRow("gearshape", "新增「设置」页", "侧栏底部的「开机自启 / 外观 / 采样间隔」统一收拢进独立的「设置」页，侧栏更清爽。")
+                whatsNewRow("fanblades", "自定义风扇曲线", "可拖拽 8 点曲线，CPU / GPU 分别编辑与下发；默认关闭，需在「高级功能」确认风险后解锁。")
                 Divider().opacity(0.35)
-                whatsNewRow("internaldrive", "概览新增「磁盘」卡", "监测启动宗卷的总容量、已用与剩余，占用率超 80% 起渐变预警。")
+                whatsNewRow("display", "一键开启 HiDPI", "「高级功能」页写入显示器 Override，支持开启与还原，只改用户数据区、不动系统卷。")
                 Divider().opacity(0.35)
-                whatsNewRow("menubar.rectangle", "菜单栏比例复位", "状态项字号 / 图标恢复原始比例（数值 12.5pt、图标 12pt），不再被压缩。")
+                whatsNewRow("chart.line.uptrend.xyaxis", "概览增强", "风扇卡显示 CPU / GPU 双转速；显卡卡加入占用率折线；磁盘卡按占用分级配色。")
                 Divider().opacity(0.35)
-                whatsNewRow("cpu", "CPU 温度 / 频率合并", "温度环与频率合为一张「CPU」卡，并以心电监护仪风格波形表示频率起伏。")
+                whatsNewRow("waveform.path.ecg", "监控页整合", "原「传感器」页的温度曲线、内核计数器并入监控页，侧栏更精简。")
                 Divider().opacity(0.35)
-                whatsNewRow("bolt.fill", "功耗指标更名", "「整机功耗」因 GPU 功耗无公开接口，统一标注为「CPU 功耗」。")
+                whatsNewRow("paintpalette", "配色扩展", "新增紫 / 青 / 粉 / 靛 / 薄荷等分类色；菜单栏图标 13pt、网速最小单位 KB/s。")
                 Divider().opacity(0.35)
-                whatsNewRow("speedometer", "整体性能优化", "降低采样与重绘开销，减少 CPU / GPU / 内存占用。")
+                whatsNewRow("menubar.rectangle", "菜单栏与侧栏", "状态项恢复系统字体、图标按原比例显示；「菜单栏」与「键盘背光」顺序调整。")
             }
         }
     }
@@ -73,7 +73,13 @@ struct AboutView: View {
     private var brandCard: some View {
         Card(padding: 20, accent: Palette.accent, glow: true) {
             HStack(alignment: .center, spacing: 22) {
-                ROGLogo(height: 46)
+                // 用程序自身的图标（AppIcon.icns），而不是 ROG 品牌标
+                Image(nsImage: NSApp.applicationIconImage
+                      ?? NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath))
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 46, height: 46)
 
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {

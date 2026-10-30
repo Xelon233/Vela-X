@@ -88,8 +88,9 @@ final class StatusBarController: NSObject {
                let img = Self.cachedIcon(item.metric.icon) {
                 let att = NSTextAttachment()
                 att.image = img
-                // 图标 13pt、贴齐数值基线；SF Symbol 是模板图，会跟随状态栏文字色
-                att.bounds = CGRect(x: 0, y: -2.5, width: 13, height: 13)
+                // 按图片原始宽高比设置，不再强行 13×13：
+                // 温度计等非正方形符号被塞进正方形框会被压扁变形。
+                att.bounds = CGRect(x: 0, y: -2, width: img.size.width, height: img.size.height)
                 out.append(NSAttributedString(attachment: att))
             }
             out.append(NSAttributedString(string: " " + item.value, attributes: [
@@ -106,7 +107,11 @@ final class StatusBarController: NSObject {
     /// 按 symbol 名缓存 SF Symbol 图标：状态栏刷新频繁，重复创建 NSImage 是无谓的分配。
     private static func cachedIcon(_ name: String) -> NSImage? {
         if let cached = iconCache[name] { return cached }
-        let img = NSImage(systemSymbolName: name, accessibilityDescription: nil)
+        // 用符号配置直接给到 13pt，得到的是带正确宽高比的图；之后 bounds 用 img.size，
+        // 就不会再把图标拉伸/压缩成正方形。
+        let cfg = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+        let img = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(cfg)
         if let img { iconCache[name] = img }
         return img
     }

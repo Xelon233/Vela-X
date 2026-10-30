@@ -913,11 +913,12 @@ struct OverviewView: View {
                         .foregroundStyle(Palette.forTemp(t))
                     }
                 }
-                Spacer(minLength: 0)
-                Text("占用率 + 温度 · 功耗无公开接口")
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(Palette.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                // 占用率折线（Sparkline 无网格 / 表格背景）
+                Sparkline(values: store.gpuHistory,
+                          color: Palette.violet,
+                          lowerBound: 0, upperBound: 100,
+                          filled: false)
+                    .frame(maxWidth: .infinity, minHeight: 26, maxHeight: 26)
             }
             .frame(maxHeight: .infinity, alignment: .top)
         }
@@ -1233,6 +1234,8 @@ struct PerformanceView: View {
     @StateObject private var fan = FanControl.shared
     /// 手动输入机型代码的临时文本
     @State private var manualModel = ""
+    /// 手动输入机型代码区：默认收起，点「机型不匹配？」才展开
+    @State private var showManualModel = false
     /// 是否展开「判定依据」（各候选机型的得分与命中项）
     @State private var showEvidence = false
     /// 免责声明弹窗的当前任务（nil = 不显示）。preset 为要应用的档位，nil 表示仅确认
@@ -1418,7 +1421,22 @@ struct PerformanceView: View {
                         .padding(.leading, 2)
                     }
 
-                    // 手动输入机型（按型号名）
+                    // 手动输入机型：默认收起，用「机型不匹配？」作为开关
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.18)) { showManualModel.toggle() }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Text("机型不匹配？")
+                                .font(.system(size: 9.5, weight: .medium))
+                            Image(systemName: showManualModel ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 8))
+                        }
+                        .foregroundStyle(Palette.accent)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    if showManualModel {
                     HStack(spacing: 8) {
                         TextField("输入机型代码，如 G513RM", text: $manualModel)
                             .textFieldStyle(.plain)
@@ -1438,6 +1456,7 @@ struct PerformanceView: View {
                         .buttonStyle(.plain)
                         .disabled(manualModel.trimmingCharacters(in: .whitespaces).isEmpty)
                         .foregroundStyle(Palette.accent)
+                    }
                     }
 
                     // 已收录机型的 EC 配置摘要
