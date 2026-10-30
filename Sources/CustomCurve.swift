@@ -324,6 +324,23 @@ struct CustomCurveCard: View {
             .labelsHidden()
             .frame(width: 130)
             Spacer(minLength: 6)
+            // 一键把当前编辑的曲线复制到另一只风扇：避免「只改了 CPU、忘了 GPU」
+            Button {
+                if editingFan == .cpu { gpu = cpu } else { cpu = gpu }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.left.arrow.right")
+                    Text("同步到\(editingFan == .cpu ? "GPU" : "CPU")")
+                }
+                .font(.system(size: 10.5, weight: .medium))
+                .padding(.horizontal, 9).padding(.vertical, 4)
+                .background(Capsule().fill(Palette.accent.opacity(0.14)))
+                .overlay(Capsule().stroke(Palette.accent.opacity(0.30), lineWidth: 0.8))
+                .foregroundStyle(Palette.accent)
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .fixedSize()
             Menu {
                 ForEach(FanControl.order, id: \.self) { name in
                     if let p = fan.presets?.preset(name) {

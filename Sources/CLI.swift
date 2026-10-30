@@ -628,10 +628,17 @@ enum CLI {
                 return 4
             }
             do {
+                let before = ctrl.rpms()
                 try ctrl.apply(file.cpu, fan: .cpu)
+                // kext 处理 AFWg 是异步的：两次 apply 紧挨着执行时，第二次改写 AFMf
+                // 可能让第一次触发读到新的风扇号，表现为「只有一只风扇按曲线变化」。
+                // 这里留一点时间让上一次触发先完成，再切到 GPU。
+                Thread.sleep(forTimeInterval: 0.25)
                 try ctrl.apply(file.gpu, fan: .gpu)
                 recordToolState("custom")
-                emit("OK 已下发自定义曲线\nCPU \(curveSummary(file.cpu))\nGPU \(curveSummary(file.gpu))",
+                Thread.sleep(forTimeInterval: 1.2)   // 等转速跟上再读
+                let after = ctrl.rpms()
+                emit("OK 已下发自定义曲线\nCPU \(curveSummary(file.cpu))\nGPU \(curveSummary(file.gpu))\n转速 CPU \(before.cpu)→\(after.cpu) RPM / GPU \(before.gpu)→\(after.gpu) RPM",
                      printOutput: printOutput)
                 return 0
             } catch {
