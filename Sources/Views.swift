@@ -33,7 +33,7 @@ struct ScrollerAutoHide: NSViewRepresentable {
 }
 
 enum Page: String, CaseIterable, Identifiable {
-    case overview, monitor, sensors, keyboard, menubar, performance, nvidia, diagnostics, about
+    case overview, monitor, sensors, keyboard, menubar, performance, nvidia, diagnostics, settings, about
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -45,6 +45,7 @@ enum Page: String, CaseIterable, Identifiable {
         case .performance: return "性能与风扇"
         case .nvidia: return "NVIDIA 驱动"
         case .diagnostics: return "诊断"
+        case .settings: return "设置"
         case .about: return "关于"
         }
     }
@@ -58,6 +59,7 @@ enum Page: String, CaseIterable, Identifiable {
         case .performance: return "fanblades"
         case .nvidia: return "display"
         case .diagnostics: return "stethoscope"
+        case .settings: return "gearshape"
         case .about: return "info.circle"
         }
     }
@@ -90,6 +92,7 @@ struct ContentView: View {
                     case .performance: PerformanceView()
                     case .nvidia: NvidiaView()
                     case .diagnostics: DiagnosticsView()
+                    case .settings: SettingsView()
                     case .about: AboutView()
                     }
                 }
@@ -137,9 +140,6 @@ struct WorkspaceBackground: View {
 struct SidebarView: View {
     @Binding var page: Page
     @EnvironmentObject var store: SensorStore
-    @EnvironmentObject var theme: ThemeManager
-    @State private var launchAtLogin = LaunchAtLogin.isEnabled
-    @State private var launchError: String?
     /// 选中玻璃滑块的共享坐标空间
     @Namespace private var selectionNS
     /// 液态玻璃的滑动节奏：偏软、带一点回弹，像液体被推过去而不是硬切
@@ -175,7 +175,9 @@ struct SidebarView: View {
             .padding(.bottom, 18)
 
             VStack(spacing: 2) {
-                ForEach(Page.allCases) { p in
+                // 设置不进侧栏导航列表（避免和左下角的「设置」入口重复）；
+                // 仍保留在 Page 枚举里，由左下角按钮导航过去。
+                ForEach(Page.allCases.filter { $0 != .settings }) { p in
                     Button {
                         guard page != p else { return }
                         // 只在切换选中项时带弹簧动画：整块玻璃滑块会从上一行滑到新行
@@ -234,97 +236,34 @@ struct SidebarView: View {
                     .overlay(Palette.hairline)
                     .padding(.vertical, 6)
 
-                // 开机自启：登录时只在菜单栏起来，不弹主窗口
-                HStack(spacing: 6) {
-                    Image(systemName: "power")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(launchAtLogin ? Palette.accent : Palette.textTertiary)
-                    Text("开机自启")
-                        .font(.system(size: 9.5))
-                        .foregroundStyle(Palette.textSecondary)
-                    Spacer(minLength: 0)
-                    Toggle("", isOn: $launchAtLogin)
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                        .controlSize(.mini)
-                        .tint(Palette.accent)
-                        .onChange(of: launchAtLogin) { on in
-                            if let error = LaunchAtLogin.set(on) {
-                                launchError = error
-                                launchAtLogin = LaunchAtLogin.isEnabled
-                            } else {
-                                launchError = nil
-                            }
-                        }
-                }
-                .help("登录时自动在菜单栏启动，不弹主窗口")
-
-                if let launchError {
-                    Text(launchError)
-                        .font(.system(size: 9))
-                        .foregroundStyle(Palette.bad)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Text("外观")
-                    .font(.system(size: 9.5))
-                    .foregroundStyle(Palette.textTertiary)
-                HStack(spacing: 6) {
-                    ForEach(ThemeMode.allCases) { m in
-                        Button {
-                            theme.mode = m
-                        } label: {
-                            VStack(spacing: 2) {
-                                Image(systemName: m.icon)
-                                    .font(.system(size: 10, weight: .medium))
-                                Text(m.label)
-                                    .font(.system(size: 8.5, weight: theme.mode == m ? .semibold : .regular))
-                                    .tracking(0.3)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 4)
-                            .background(
-                                RoundedRectangle(cornerRadius: Palette.cornerRadius, style: .continuous)
-                                    .fill(theme.mode == m
-                                          ? AnyShapeStyle(Palette.accent.opacity(0.22))
-                                          : AnyShapeStyle(Palette.faintFill))
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: Palette.cornerRadius, style: .continuous)
-                                    .strokeBorder(theme.mode == m ? Palette.accent.opacity(0.55) : .clear, lineWidth: 0.8)
-                            )
-                            .foregroundStyle(theme.mode == m ? Palette.accent : Palette.textSecondary)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .help("外观：\(m.label)")
+                // 设置入口：原本散落在侧栏底部的「开机自启 / 外观 / 采样间隔」已收拢到「设置」页
+                Button {
+                    PageRouter.shared.page = .settings
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Palette.textSecondary)
+                        Text("设置")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Palette.text)
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(Palette.textTertiary)
                     }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: Palette.cornerRadius, style: .continuous)
+                        .fill(Palette.faintFill))
                 }
-
-                Text("采样间隔")
-                    .font(.system(size: 9.5))
-                    .foregroundStyle(Palette.textTertiary)
-                    .padding(.top, 4)
-                SegmentedButtons(items: SamplingRate.allCases.map { ($0.label, $0) },
-                                 selection: Binding(get: { store.samplingRate },
-                                                    set: { store.setSamplingRate($0) }))
-                    .help(store.samplingRate.summary)
-                Text(store.samplingRate.summary)
-                    .font(.system(size: 9))
-                    .foregroundStyle(Palette.textTertiary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 2)
+                .buttonStyle(.plain)
+                .help("开机自启、外观、采样间隔")
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 16)
         }
         .frame(width: 178)
-        // 开机自启的真实状态要在 view 出现后再读一次：
-        // AppDelegate 里的 LaunchAgent 迁移/修复晚于视图构建，首帧读到的会是旧值。
-        .onAppear { launchAtLogin = LaunchAtLogin.isEnabled }
-        // 注意：这里【不能】加 .drawingGroup()。侧栏里的 Toggle（开机自启）是
-        // AppKit 托管的控件，被拍进 Metal 纹理后画不出来，会变成一个黄底禁止符号。
     }
 }
 
@@ -380,63 +319,68 @@ private struct SelectionGlass: View {
 struct OverviewView: View {
     @EnvironmentObject var store: SensorStore
     @State private var showModelPicker = false
-    @State private var showLayoutSheet = false
-    @State private var cards: [OverviewCard] = OverviewLayoutPrefs.visibleCards
-    /// 正在长按拖拽的卡片（拖拽排序用）
+    /// 全量顺序（含被隐藏的卡）；显示时再过滤。这样拖拽排序后存回去不会把隐藏项弄丢。
+    @State private var cards: [OverviewCard] = OverviewLayoutPrefs.order
+    @State private var hidden: Set<OverviewCard> = OverviewLayoutPrefs.hidden
+    /// 正在拖拽的卡片（拖拽排序用）
     @State private var draggingCard: OverviewCard?
+    /// 各卡片在全局坐标系下的 frame，松手时用来判断落在哪张卡上
+    @State private var dragFrames: [OverviewCard: CGRect] = [:]
+    /// 编辑模式（iOS 小组件式）：开 = 窗口固定、卡片可拖/可增删；关 = 窗口可拖、卡片固定。
+    @ObservedObject private var windowState = WindowState.shared
 
     /// 窄卡（功耗/频率/显卡/风扇/电池）统一高度，保证两两并排时对齐
     private let smallCardHeight: CGFloat = 108
+
+    private var visibleCards: [OverviewCard] { cards.filter { !hidden.contains($0) } }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
 
-            if cards.isEmpty {
-                Text("没有显示任何卡片 —— 点标题栏的「自定义布局」添加。")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Palette.textSecondary)
-                    .frame(maxWidth: .infinity, minHeight: 200)
+            if visibleCards.isEmpty {
+                emptyHint
             } else {
                 VStack(spacing: 12) {
                     ForEach(Array(cardRows.enumerated()), id: \.offset) { _, row in
                         HStack(spacing: 12) {
                             ForEach(row) { card in
-                                cardView(card)
-                                    .frame(maxWidth: row.count == 1 ? .infinity : nil)
-                                    .onDrag {
-                                        draggingCard = card
-                                        return NSItemProvider(object: card.rawValue as NSString)
-                                    }
-                                    .onDrop(of: [.text],
-                                            delegate: OverviewCardDropDelegate(target: card,
-                                                                               cards: $cards,
-                                                                               dragging: $draggingCard))
+                                cardSlot(card)
+                            }
+                            // 落单的窄卡：补一个等宽透明占位，让它保持半宽。
+                            // 否则同一张窄卡「旁边有伴=半宽、落单=整行」会随拖拽位置变宽变窄，
+                            // 造成保存后卡片大小不一致。
+                            if row.count == 1, let only = row.first, !only.isWide {
+                                Color.clear.frame(maxWidth: .infinity)
                             }
                         }
                     }
                 }
+                .onPreferenceChange(FramePreferenceKey<OverviewCard>.self) { dragFrames = $0 }
+            }
+
+            if windowState.isEditMode {
+                editToolbar
             }
         }
-        .sheet(isPresented: $showLayoutSheet) {
-            OverviewLayoutSheet()
-        }
-        .onChange(of: showLayoutSheet) { showing in
-            if !showing { cards = OverviewLayoutPrefs.visibleCards }
+        .onDisappear {
+            // 离开概览页时退出编辑模式，窗口恢复可拖动
+            windowState.isEditMode = false
         }
     }
 
-    /// 把卡片分成行：宽卡独占一行，窄卡两两并排；落单窄卡占满整行（避免左右不对称）
+    /// 把可见卡片分成行：宽卡独占一行，窄卡两两并排；落单窄卡占满整行（避免左右不对称）
     private var cardRows: [[OverviewCard]] {
+        let list = visibleCards
         var rows: [[OverviewCard]] = []
         var i = 0
-        while i < cards.count {
-            let card = cards[i]
+        while i < list.count {
+            let card = list[i]
             if card.isWide {
                 rows.append([card])
                 i += 1
-            } else if i + 1 < cards.count, !cards[i + 1].isWide {
-                rows.append([card, cards[i + 1]])
+            } else if i + 1 < list.count, !list[i + 1].isWide {
+                rows.append([card, list[i + 1]])
                 i += 2
             } else {
                 rows.append([card])
@@ -446,15 +390,185 @@ struct OverviewView: View {
         return rows
     }
 
+    // MARK: - 编辑模式（iOS 小组件式）下的增删与工具栏
+
+    private var hiddenCards: [OverviewCard] { cards.filter { hidden.contains($0) } }
+
+    private var emptyHint: some View {
+        Text("还没有显示任何卡片 —— 进编辑模式，用底部「+ 添加小部件」把它们加回来。")
+            .font(.system(size: 12))
+            .foregroundStyle(Palette.textSecondary)
+            .frame(maxWidth: .infinity, minHeight: 200)
+    }
+
+    /// 一张卡片在编辑模式下的「槽位」：accent 描边 + 右上角移除角标 + 可拖拽。
+    /// 非编辑模式就是普通卡片（无描边、无角标、不可拖）。
+    @ViewBuilder
+    private func cardSlot(_ card: OverviewCard) -> some View {
+        cardView(card)
+            // 宽度只由行内布局决定：宽卡独占整行、窄卡固定占半行（落单也补占位），
+            // 因此一张卡的大小与它被拖到哪个位置无关，拖拽前后尺寸一致。
+            .frame(maxWidth: .infinity)
+            .scaleEffect(draggingCard == card ? 1.05 : 1)
+            .shadow(color: draggingCard == card ? Color.black.opacity(0.28) : Color.clear,
+                    radius: draggingCard == card ? 12 : 0, y: draggingCard == card ? 4 : 0)
+            .zIndex(draggingCard == card ? 100 : 0)
+            .opacity(draggingCard == card ? 0.95 : 1)
+            .overlay(
+                RoundedRectangle(cornerRadius: Palette.cornerRadius, style: .continuous)
+                    .stroke(windowState.isEditMode ? Palette.accent.opacity(0.6) : Color.clear,
+                            lineWidth: 1.5)
+            )
+            .overlay(alignment: .topTrailing) {
+                if windowState.isEditMode {
+                    removeBadge(card)
+                }
+            }
+            .animation(.spring(response: 0.30, dampingFraction: 0.8), value: draggingCard)
+            .collectFrame(id: card)
+            .gesture(windowState.isEditMode ? dragCardGesture(card) : nil)
+    }
+
+    /// 编辑模式下每张卡右上角的「移除」角标（minus 圆标）。
+    private func removeBadge(_ card: OverviewCard) -> some View {
+        Button {
+            removeCard(card)
+        } label: {
+            Image(systemName: "minus.circle.fill")
+                .font(.system(size: 18))
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(.white, Palette.accent)
+        }
+        .buttonStyle(.plain)
+        .offset(x: 8, y: -8)
+        .help("移除该卡片")
+    }
+
+    /// 编辑模式底部的工具栏：左侧「+ 添加小部件」（弹菜单列出被隐藏的卡），右侧「恢复默认」。
+    private var editToolbar: some View {
+        HStack(spacing: 10) {
+            if hiddenCards.isEmpty {
+                HStack(spacing: 4) {
+                    Image(systemName: "plus.circle")
+                    Text("已全部添加")
+                }
+                .font(.system(size: 11))
+                .foregroundStyle(Palette.textTertiary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Palette.faintFill))
+                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(Palette.hairline, lineWidth: 0.8))
+            } else {
+                Menu {
+                    ForEach(hiddenCards) { card in
+                        Button {
+                            addCard(card)
+                        } label: {
+                            Label(card.title, systemImage: card.icon)
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus.circle.fill")
+                        Text("添加小部件")
+                    }
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Palette.accent)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Palette.faintFill))
+                    .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(Palette.hairline, lineWidth: 0.8))
+                }
+                .menuStyle(.borderlessButton)
+            }
+
+            Spacer()
+
+            Button("恢复默认") {
+                restoreDefaults()
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 11))
+            .foregroundStyle(Palette.textSecondary)
+        }
+    }
+
+    private func removeCard(_ card: OverviewCard) {
+        hidden.insert(card)
+        OverviewLayoutPrefs.setHidden(hidden)
+    }
+
+    private func addCard(_ card: OverviewCard) {
+        hidden.remove(card)
+        OverviewLayoutPrefs.setHidden(hidden)
+    }
+
+    private func restoreDefaults() {
+        cards = OverviewCard.allCases
+        hidden = []
+        OverviewLayoutPrefs.setOrder(cards)
+        OverviewLayoutPrefs.setHidden(hidden)
+    }
+
+    // MARK: - 长按拖拽排序
+
+    /// 跟手拖拽排序（仅在编辑模式下挂载，见 body 的 .gesture 条件）：
+    /// 拖的过程中实时重排——手指移到另一张卡片的槽位上时，立即把被拖卡片插到它旁边，
+    /// 其它卡片用弹簧动画让位，整个过程连续顺滑，不再等松手才「啪」地跳一下。
+    /// 窗口背景拖动由 WindowState.isEditMode 联动关掉，所以拖卡片时窗口绝不会被带跑。
+    private func dragCardGesture(_ card: OverviewCard) -> some Gesture {
+        DragGesture(minimumDistance: 8, coordinateSpace: .global)
+            .onChanged { value in
+                if draggingCard == nil {
+                    // 抓起卡片：弹簧抬起（放大 + 投影），手感更跟手
+                    withAnimation(.spring(response: 0.30, dampingFraction: 0.8)) {
+                        draggingCard = card
+                    }
+                }
+                // 手指下方（且不是被拖卡片自己）的槽位 → 实时把被拖卡片挪到它旁边
+                guard let target = dragFrames.first(where: {
+                    $0.key != card && $0.value.contains(value.location)
+                })?.key, target != card else { return }
+                reorderLive(card, to: target)
+            }
+            .onEnded { _ in
+                // 松手：先把卡片「放下」（缩回 + 投影消失），再持久化顺序。
+                // 被拖卡片的槽位在拖拽过程中已经实时挪到位，所以松手没有位置跳变，只是收尾动画。
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.8)) {
+                    draggingCard = nil
+                }
+                OverviewLayoutPrefs.setOrder(cards)
+            }
+    }
+
+    /// 实时重排（不落盘，松手才持久化）：把 card 移动到 target 旁边。
+    /// 往下拖插到目标后面，往上拖插到目标前面。外部已用弹簧 withAnimation 包住，卡片让位更顺。
+    private func reorderLive(_ card: OverviewCard, to target: OverviewCard) {
+        guard let from = cards.firstIndex(of: card),
+              let to = cards.firstIndex(of: target), from != to else { return }
+        withAnimation(.spring(response: 0.30, dampingFraction: 0.78)) {
+            cards.remove(at: from)
+            if from < to {
+                if let idx = cards.firstIndex(of: target) { cards.insert(card, at: idx + 1) }
+                else { cards.append(card) }
+            } else {
+                if let idx = cards.firstIndex(of: target) { cards.insert(card, at: idx) }
+                else { cards.insert(card, at: 0) }
+            }
+        }
+        // 每次实时重排都立刻落盘，而不是只等松手（onEnded）——
+        // 拖拽若被中断（切页、手势取消等）导致 onEnded 没触发，顺序也不会丢，重启即还原。
+        OverviewLayoutPrefs.setOrder(cards)
+    }
+
     @ViewBuilder
     private func cardView(_ card: OverviewCard) -> some View {
         switch card {
-        case .cpuTemp:    temperatureCard
-        case .power:      powerCard
-        case .cpuFreq:    cpuFreqCard
+        case .cpuTemp:    cpuCard
         case .gpu:        gpuCard
         case .fan:        fanCard
         case .battery:    batteryCard
+        case .disk:       diskCard
         case .keyboard:   keyboardCard
         case .load:       LoadCard()
         case .capability: capabilitySummary
@@ -489,19 +603,21 @@ struct OverviewView: View {
                     .buttonStyle(.plain)
                     .help("改机型名称")
                     Button {
-                        showLayoutSheet = true
+                        windowState.isEditMode.toggle()
                     } label: {
-                        Text("自定义布局")
+                        Text(windowState.isEditMode ? "完成" : "编辑")
                             .font(.system(size: 9.5, weight: .medium))
                             .tracking(0.5)
-                            .foregroundStyle(Palette.textSecondary)
+                            .foregroundStyle(windowState.isEditMode ? Palette.accent : Palette.textSecondary)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Palette.faintFill))
-                        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(Palette.hairline, lineWidth: 0.8))
+                        .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(windowState.isEditMode ? Palette.accent.opacity(0.15) : Palette.faintFill))
+                        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .stroke(windowState.isEditMode ? Palette.accent : Palette.hairline, lineWidth: 0.8))
                     }
                     .buttonStyle(.plain)
-                    .help("自定义概览页卡片顺序与显隐")
+                    .help("编辑模式：拖动排序、角标移除卡片、底部「+」添加小部件；窗口临时锁定")
                 }
                 Spacer()
                 HStack(spacing: 0) {
@@ -563,16 +679,17 @@ struct OverviewView: View {
             .padding(.horizontal, 10)
     }
 
-    private var temperatureCard: some View {
-        // 原来这里带 accent: 会在卡片左缘竖一条贯穿整卡的橙色霓虹条（随温度变色），
-        // 视觉上太抢，已去掉；状态色彩仍由标题小竖条、温度环和数值本身表达。
+    private var cpuCard: some View {
+        // CPU 合并卡：温度环（缩小）+ 状态/最低/最高/热压力/采样，
+        // 下方频率（大数 + 心电波形）与功耗（大数 + 折线图）。功耗原独立卡片已并入此处。
         Card(padding: 16, glow: true) {
             VStack(alignment: .leading, spacing: 0) {
-                SectionTitle(text: "CPU 温度", trailing: "SMC · TC0P")
-                Spacer(minLength: 10)
-                HStack(alignment: .center, spacing: 22) {
-                    TempRing(value: store.cpuTemp, size: 162)
-                    VStack(alignment: .leading, spacing: 8) {
+                SectionTitle(text: "CPU", trailing: "温度 · 频率 · 功耗")
+                Spacer(minLength: 8)
+                HStack(alignment: .center, spacing: 18) {
+                    // 仪表盘过大，缩小到 116 更协调
+                    TempRing(value: store.cpuTemp, size: 116)
+                    VStack(alignment: .leading, spacing: 6) {
                         statLine("状态", store.tempStatusText,
                                  color: Palette.forTemp(store.cpuTemp))
                         statLine("最低", String(format: "%.1f °C", tempMin))
@@ -584,6 +701,52 @@ struct OverviewView: View {
                     Spacer(minLength: 0)
                 }
                 Spacer(minLength: 10)
+                // 频率：大数 + 心电监护仪风格波形（表征 CPU 频率随时间起伏）
+                HStack(alignment: .center, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("频率")
+                            .font(.system(size: 10))
+                            .tracking(0.5)
+                            .foregroundStyle(Palette.textTertiary)
+                        HStack(alignment: .firstTextBaseline, spacing: 2) {
+                            Text(store.cpuFreq.liveGHz.map { String(format: "%.2f", $0) } ?? "—")
+                                .font(.system(size: 19, weight: .semibold).monospacedDigit())
+                                .foregroundStyle(store.cpuFreq.liveGHz != nil ? Color.primary : Palette.textSecondary)
+                            Text("GHz")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Palette.textSecondary)
+                        }
+                    }
+                    .frame(width: 78)
+                    FreqECG(values: store.freqHistory,
+                            color: Palette.ok,
+                            lower: 0, upper: 5.5, height: 58)
+                        .frame(maxWidth: .infinity)
+                }
+                Spacer(minLength: 8)
+                // 功耗：大数 + 折线图（表征 CPU 整包功耗随时间起伏）
+                HStack(alignment: .center, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("功耗")
+                            .font(.system(size: 10))
+                            .tracking(0.5)
+                            .foregroundStyle(Palette.textTertiary)
+                        HStack(alignment: .firstTextBaseline, spacing: 2) {
+                            Text(store.powerWatts.map { String(format: "%.1f", $0) } ?? "—")
+                                .font(.system(size: 19, weight: .semibold).monospacedDigit())
+                                .foregroundStyle(store.powerWatts != nil ? Color.primary : Palette.textSecondary)
+                            Text("W")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Palette.textSecondary)
+                        }
+                    }
+                    .frame(width: 78)
+                    Sparkline(values: store.powerHistory,
+                              color: Palette.accent2,
+                              lowerBound: 0, upperBound: 100,
+                              filled: true)
+                        .frame(maxWidth: .infinity, minHeight: 58, maxHeight: 58)
+                }
             }
         }
     }
@@ -661,51 +824,38 @@ struct OverviewView: View {
         .frame(height: smallCardHeight)
     }
 
-    private var powerCard: some View {
+    private var diskCard: some View {
         Card(padding: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                SectionTitle(text: "整机功耗", trailing: "AMD kext")
+            VStack(alignment: .leading, spacing: 6) {
+                SectionTitle(text: "磁盘", trailing: store.disk.volumeName.isEmpty ? "启动宗卷" : store.disk.volumeName)
+                // 占用率大字 + 剩余
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(store.powerWatts.map { String(format: "%.1f", $0) } ?? "—")
+                    Text(String(format: "%.0f", store.disk.usedFraction * 100))
                         .font(.system(size: 25, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(store.powerWatts != nil ? Color.primary : Palette.textSecondary)
-                    Text("W")
+                        .foregroundStyle(Palette.forDisk(store.disk.usedFraction))
+                    Text("%")
                         .font(.system(size: 11))
                         .foregroundStyle(Palette.textSecondary)
                     Spacer()
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Palette.accent2)
-                }
-                Spacer(minLength: 0)
-                Text("整包功耗（AMDRyzenCPUPowerManagement）")
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(Palette.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxHeight: .infinity, alignment: .top)
-        }
-        .frame(height: smallCardHeight)
-    }
-
-    private var cpuFreqCard: some View {
-        Card(padding: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                SectionTitle(text: "CPU 频率", trailing: "AMD kext")
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(store.cpuFreq.liveGHz.map { String(format: "%.2f", $0) } ?? "—")
-                        .font(.system(size: 25, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(store.cpuFreq.liveGHz != nil ? Color.primary : Palette.textSecondary)
-                    Text("GHz")
-                        .font(.system(size: 11))
+                    Text("可用 \(ByteCountFormatter.vela.string(fromByteCount: store.disk.availableBytes))")
+                        .font(.system(size: 10.5))
                         .foregroundStyle(Palette.textSecondary)
-                    Spacer()
-                    Image(systemName: "speedometer")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Palette.accent2)
                 }
                 Spacer(minLength: 0)
-                Text("每核有效频率均值（APERF/MPERF）")
+                // 占用率条
+                GeometryReader { geo in
+                    let w = max(geo.size.width, 1)
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Palette.trackFill).frame(height: 6)
+                        Capsule()
+                            .fill(LinearGradient(colors: [Palette.forDisk(store.disk.usedFraction),
+                                                         Palette.forDisk(store.disk.usedFraction).opacity(0.7)],
+                                                 startPoint: .leading, endPoint: .trailing))
+                            .frame(width: max(w * CGFloat(store.disk.usedFraction), 2), height: 6)
+                    }
+                }
+                .frame(height: 6)
+                Text("已用 \(ByteCountFormatter.vela.string(fromByteCount: store.disk.usedBytes)) / 共 \(ByteCountFormatter.vela.string(fromByteCount: store.disk.totalBytes))")
                     .font(.system(size: 10.5))
                     .foregroundStyle(Palette.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)

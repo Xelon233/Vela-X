@@ -32,6 +32,7 @@ struct SampleFrame {
     var powerWatts: Double?
     /// CPU 实时频率（GHz），来自 AMDRyzenCPUPowerManagement 用户客户端；nil = 没采到
     var cpuFreqGHz: Double?
+    var disk: DiskInfo?
 }
 
 final class SensorStore: ObservableObject {
@@ -40,6 +41,7 @@ final class SensorStore: ObservableObject {
     // 硬件 / 静态信息
     @Published var hardware = HardwareInfo()
     @Published var battery = BatteryInfo()
+    @Published var disk = DiskInfo()
     @Published var kexts = KextState()
     @Published var capabilities: [Capability] = []
 
@@ -50,6 +52,8 @@ final class SensorStore: ObservableObject {
     // （实测每帧 ~190 ms CPU）。改成普通属性 + 帧首手动发一次通知。
     private(set) var cpuTemp: Double?
     private(set) var tempHistory: [Double] = []
+    private(set) var freqHistory: [Double] = []
+    private(set) var powerHistory: [Double] = []
     private(set) var fanRPM: Double?
     private(set) var fanCount = 0
     private(set) var fanAvailable = false
@@ -106,6 +110,7 @@ final class SensorStore: ObservableObject {
     private struct SamplerConfig {
         var interval: TimeInterval = 2
         var batteryPeriod: TimeInterval = 15
+        var diskPeriod: TimeInterval = 15
         var processPeriod: TimeInterval = 2
         var wantTiles = false
         var pageProcesses = false
@@ -119,6 +124,7 @@ final class SensorStore: ObservableObject {
     private var config = SamplerConfig()
     private var seq = 0
     private var lastBattery = Date.distantPast
+    private var lastDisk = Date.distantPast
     private var lastProcess = Date.distantPast
     private var collecting = false
 
@@ -162,6 +168,7 @@ final class SensorStore: ObservableObject {
             guard let self else { return }
             self.config.interval = TimeInterval(seconds)
             self.config.batteryPeriod = rate.batteryPeriod
+            self.config.diskPeriod = rate.batteryPeriod
             self.config.processPeriod = rate.processPeriod
             self.sensorTimer?.cancel()
 
@@ -179,6 +186,8 @@ final class SensorStore: ObservableObject {
         let tempCap = samplingRate.tempCapacity
         if tempHistory.count > tempCap { tempHistory.removeFirst(tempHistory.count - tempCap) }
         if loadHistory.count > tempCap { loadHistory.removeFirst(loadHistory.count - tempCap) }
+        if freqHistory.count > tempCap { freqHistory.removeFirst(freqHistory.count - tempCap) }
+        if powerHistory.count > tempCap { powerHistory.removeFirst(powerHistory.count - tempCap) }
         let histCap = samplingRate.historyCapacity
         if history.count > histCap { history.removeFirst(history.count - histCap) }
     }
@@ -280,6 +289,11 @@ final class SensorStore: ObservableObject {
             frame.battery = SystemProbe.battery()
         }
 
+        if frame.at.timeIntervalSince(lastDisk) >= config.diskPeriod {
+            lastDisk = frame.at
+            frame.disk = DiskInfo.current()
+        }
+
         if config.wantProcesses,
            frame.at.timeIntervalSince(lastProcess) >= config.processPeriod {
             lastProcess = frame.at
@@ -321,6 +335,10 @@ final class SensorStore: ObservableObject {
             mix(b.charging ? 1 : 2)
             mix(b.externalPower ? 3 : 4)
         }
+        if let d = frame.disk {
+            mix(UInt64(bitPattern: d.usedBytes))
+            mix(UInt64(d.totalBytes))
+        }
         if frame.tiles != nil { mix(0xA11CE) }
         if frame.processes != nil { mix(0xBEEF) }
         return h
@@ -358,8 +376,18 @@ final class SensorStore: ObservableObject {
         netSpeed = frame.net
         if let g = frame.gpuUsage { gpuUsage = g }
         if let t = frame.gpuTemp { gpuTemp = t }
-        if let w = frame.powerWatts { powerWatts = w }
-        if let ghz = frame.cpuFreqGHz { cpuFreq.liveGHz = ghz }
+        if let w = frame.powerWatts {
+            powerWatts = w
+            powerHistory.append(w)
+            let cap = samplingRate.tempCapacity
+            if powerHistory.count > cap { powerHistory.removeFirst(powerHistory.count - cap) }
+        }
+        if let ghz = frame.cpuFreqGHz {
+            cpuFreq.liveGHz = ghz
+            freqHistory.append(ghz)
+            let cap = samplingRate.tempCapacity
+            if freqHistory.count > cap { freqHistory.removeFirst(freqHistory.count - cap) }
+        }
         if frame.load.sampled {
             loadHistory.append(frame.load.total)
             let cap = samplingRate.tempCapacity
@@ -367,6 +395,7 @@ final class SensorStore: ObservableObject {
         }
 
         if let b = frame.battery { battery = b }
+        if let d = frame.disk { disk = d }
         if let d = frame.tiles { tiles = d }
         if let list = frame.processes { processes = list }
 

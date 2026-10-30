@@ -14,6 +14,9 @@ struct AboutView: View {
         VStack(alignment: .leading, spacing: 14) {
             brandCard
 
+            SectionTitle(text: "本次更新")
+            whatsNewCard
+
             SectionTitle(text: "信息")
             infoCard
 
@@ -22,6 +25,46 @@ struct AboutView: View {
 
             SectionTitle(text: "说明")
             disclaimerCard
+        }
+    }
+
+    // MARK: - 本次更新
+
+    private var whatsNewCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 9) {
+                whatsNewRow("gearshape", "新增「设置」页", "侧栏底部的「开机自启 / 外观 / 采样间隔」统一收拢进独立的「设置」页，侧栏更清爽。")
+                Divider().opacity(0.35)
+                whatsNewRow("internaldrive", "概览新增「磁盘」卡", "监测启动宗卷的总容量、已用与剩余，占用率超 80% 起渐变预警。")
+                Divider().opacity(0.35)
+                whatsNewRow("menubar.rectangle", "菜单栏比例复位", "状态项字号 / 图标恢复原始比例（数值 12.5pt、图标 12pt），不再被压缩。")
+                Divider().opacity(0.35)
+                whatsNewRow("cpu", "CPU 温度 / 频率合并", "温度环与频率合为一张「CPU」卡，并以心电监护仪风格波形表示频率起伏。")
+                Divider().opacity(0.35)
+                whatsNewRow("bolt.fill", "功耗指标更名", "「整机功耗」因 GPU 功耗无公开接口，统一标注为「CPU 功耗」。")
+                Divider().opacity(0.35)
+                whatsNewRow("speedometer", "整体性能优化", "降低采样与重绘开销，减少 CPU / GPU / 内存占用。")
+            }
+        }
+    }
+
+    private func whatsNewRow(_ icon: String, _ title: String, _ detail: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 13))
+                .foregroundStyle(Palette.accent)
+                .frame(width: 18)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Palette.text)
+                Text(detail)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(Palette.textSecondary)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 

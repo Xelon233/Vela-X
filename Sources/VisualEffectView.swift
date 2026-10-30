@@ -12,6 +12,7 @@
 
 import SwiftUI
 import AppKit
+import Combine
 
 /// 运行环境开关
 enum AppEnv {
@@ -61,6 +62,8 @@ final class WindowToolbarStyler: NSObject, NSToolbarDelegate {
 enum WindowChrome {
     /// 保留 resize 通知的 token，避免观察者被释放后自动失效
     private static var resizeObservers: [NSObjectProtocol] = []
+    /// 编辑模式 -> 窗口可移动性 的订阅（只装一次）
+    private static var editModeToken: AnyCancellable?
 
     static func install(on window: NSWindow) {
         // 不要标题文字、不要标题栏分隔线
@@ -89,6 +92,19 @@ enum WindowChrome {
             window.backgroundColor = .clear
             window.isMovableByWindowBackground = true
         }
+
+        // 编辑模式联动：开启时窗口固定（只留卡片可拖动），关闭时窗口可拖动。
+        // 这一步是「拖卡片整窗被带跑」的终极解法 —— 不再靠探测鼠标落点，
+        // 而是由开关直接决定窗口是否可移动（见 WindowState / ReorderSupport.swift）。
+        window.isMovableByWindowBackground = !WindowState.shared.isEditMode
+        editModeToken?.cancel()
+        editModeToken = WindowState.shared.$isEditMode
+            .receive(on: RunLoop.main)
+            .sink { [weak window] on in
+                guard let win = window else { return }
+                // 自测非透明窗不需要这项控制，但仍保持一致：编辑时锁窗，平时放开
+                win.isMovableByWindowBackground = !on
+            }
 
         // 让 contentView 覆盖整个窗口（含标题栏）：SwiftUI 的背景因此能用 ignoresSafeArea
         // 铺到红绿灯那一行，而内容布局仍被安全区挡在工具栏下方，不会被裁切。

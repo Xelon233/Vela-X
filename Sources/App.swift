@@ -28,73 +28,28 @@ struct AsusControlApp: App {
                 Button("刷新全部 SMC 读数") { store.reloadAllReadings() }
             }
         }
-
-        MenuBarExtra {
-            MenuBarView()
-                .environmentObject(store)
-        } label: {
-            menuBarLabel
-        }
-        .menuBarExtraStyle(.window)
-    }
-
-    /// 菜单栏状态项：图标 + 数值 + 缩小字标签，合并成单个富文本。
-    /// 为什么不能拼多个 View：macOS 的 MenuBarExtra label 对多元素 HStack
-    /// 只渲染第一个子视图，必须合并成单个 Text（AttributedString）。
-    private var menuBarLabel: some View {
-        Text(Self.menuBarAttributedText(store.menuBarItems))
-    }
-
-    private static func menuBarAttributedText(_ items: [MenuBarItem]) -> AttributedString {
-        guard !items.isEmpty else { return AttributedString("Vela X") }
-        let out = NSMutableAttributedString()
-        for (idx, item) in items.enumerated() {
-            if let img = NSImage(systemSymbolName: item.metric.icon, accessibilityDescription: nil) {
-                let att = NSTextAttachment()
-                att.image = img
-                // 图标缩小到 10pt、贴齐文字基线；SF Symbol 是模板图，会跟随菜单栏文字色
-                att.bounds = CGRect(x: 0, y: -1.5, width: 10, height: 10)
-                out.append(NSAttributedString(attachment: att))
-            }
-            out.append(NSAttributedString(string: item.value, attributes: [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
-            ]))
-            out.append(NSAttributedString(string: " \(item.metric.shortLabel)", attributes: [
-                .font: NSFont.systemFont(ofSize: 8),
-                .foregroundColor: NSColor.secondaryLabelColor
-            ]))
-            if idx < items.count - 1 {
-                out.append(NSAttributedString(string: "  "))
-            }
-        }
-        return AttributedString(out)
     }
 }
 
-/// 菜单栏状态项里的单个指标：小图标 + 数值 + 缩小字的标签。
-/// 预览（菜单栏设置页）传更大的字号即可复用。
+/// 菜单栏状态项里的单个指标：小图标 + 数值（不再显示文字标签）。
+/// 预览（菜单栏设置页）传更大的字号即可复用，顺序/样式与真实状态栏一致。
 struct MenuBarMetricLabel: View {
     let item: MenuBarItem
     var iconSize: CGFloat = 9
     var valueSize: CGFloat = 11
-    var labelSize: CGFloat = 8
 
     var body: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 3) {
             Image(systemName: item.metric.icon)
                 .font(.system(size: iconSize))
             Text(item.value)
                 .font(.system(size: valueSize, weight: .medium).monospacedDigit())
-            Text(item.metric.shortLabel)
-                .font(.system(size: labelSize))
-                .foregroundStyle(.secondary)
         }
     }
 }
 
 struct MenuBarView: View {
     @EnvironmentObject var store: SensorStore
-    @Environment(\.openWindow) private var openWindow
 
     /// 档位上限由当前通道决定：Aura HID 是 0–3，SMC(LKSB) 是 0–16，不可控时是 0。
     /// 早先这里写死成 16 档，在 HID 机型上会给出设备根本不认的档位。
@@ -163,16 +118,15 @@ struct MenuBarView: View {
 
             HStack {
                 Button("主窗口") {
-                    openWindow(id: "main")
-                    NSApp.activate(ignoringOtherApps: true)
+                    revealMainWindow()
                 }
                 .buttonStyle(.plain)
                 .font(.system(size: 11))
                 Spacer()
                 Button("退出") { NSApp.terminate(nil) }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                .buttonStyle(.plain)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
             }
         }
         .padding(12)
@@ -206,10 +160,18 @@ struct MenuBarView: View {
         }
     }
 
-    /// 打开主窗口并切到指定页
+    /// 打开主窗口并（可选）切到指定页。
+    /// 不再依赖 SwiftUI 的 openWindow 环境（弹窗由 NSPopover 承载，拿不到该环境值），
+    /// 直接按 identifier 找到主窗口并前置。
     private func openMainWindow(page: Page) {
-        PageRouter.shared.page = page
-        openWindow(id: "main")
+        revealMainWindow(setPage: page)
+    }
+
+    private func revealMainWindow(setPage page: Page? = nil) {
+        if let page { PageRouter.shared.page = page }
+        if let w = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" }) {
+            w.makeKeyAndOrderFront(nil)
+        }
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -264,8 +226,7 @@ struct MenuBarView: View {
                 .foregroundStyle(Palette.warn)
                 .fixedSize(horizontal: false, vertical: true)
             Button {
-                openWindow(id: "main")
-                NSApp.activate(ignoringOtherApps: true)
+                revealMainWindow()
             } label: {
                 Text("去主窗口处理")
                     .font(.system(size: 10.5, weight: .medium))
@@ -290,7 +251,12 @@ struct MenuBarView: View {
 /// 自检：设置 ASUS_SELFTEST=1 启动时，把自身窗口内容渲染成 PNG 后退出。
 /// 用途：在没有「屏幕录制」权限的环境里验证界面是否真的画出来了。
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// 自己管理的菜单栏状态项（替代 MenuBarExtra，便于精确控制字号）
+    private let statusBar = StatusBarController()
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // 菜单栏状态项：图标 + 数值（字号完全可控）
+        statusBar.start()
         // 改过 App 名字 / 换过安装位置时，把开机自启的 LaunchAgent 指到新路径
         // （先迁 label：AsusControl 时期用的是 dev.asuscontrol.mac.autostart）
         LaunchAtLogin.migrateLegacyLabel()

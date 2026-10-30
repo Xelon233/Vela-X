@@ -72,6 +72,16 @@ enum Palette {
         case .unavailable: return textTertiary
         }
     }
+
+    /// 磁盘占用率配色：绿 → 蓝 → 黄 → 红，与温度同一套语义
+    static func forDisk(_ f: Double) -> Color {
+        switch f {
+        case ..<0.6: return ok
+        case ..<0.8: return accent2
+        case ..<0.92: return warn
+        default: return bad
+        }
+    }
 }
 
 extension Color {
@@ -433,6 +443,81 @@ struct Sparkline: View {
     }
 }
 
+/// 心电监护仪风格的 CPU 频率波形：绿色描边 + 细网格 + 末端扫描光点，
+/// 把频率随时间的变化画成类似心电图的滚动轨迹（频率本身不是周期信号，
+/// 这里只借用监护仪「绿线 + 网格 + 扫描」的视觉语言）。
+struct FreqECG: View {
+    let values: [Double]
+    var color: Color = Palette.ok
+    var lower: Double = 0
+    var upper: Double = 5.5
+    var height: CGFloat = 60
+
+    var body: some View {
+        GeometryReader { geo in
+            let pts = Self.points(values: values, size: geo.size, lower: lower, upper: upper)
+            ZStack {
+                // 监护仪细网格
+                VStack(spacing: 0) {
+                    ForEach(0..<5, id: \.self) { i in
+                        if i > 0 { Rectangle().fill(Palette.subtle).frame(height: 1) }
+                        if i < 4 { Spacer(minLength: 0) }
+                    }
+                }
+                HStack(spacing: 0) {
+                    ForEach(0..<9, id: \.self) { i in
+                        if i > 0 { Rectangle().fill(Palette.subtle).frame(width: 1) }
+                        if i < 8 { Spacer(minLength: 0) }
+                    }
+                }
+
+                if pts.count > 1 {
+                    // 宽而淡的辉光（比 .shadow 便宜，避免每帧离屏模糊）
+                    Self.path(pts)
+                        .stroke(color.opacity(0.18),
+                                style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+                    Self.path(pts)
+                        .stroke(color,
+                                style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+                    // 末端扫描光点
+                    if let last = pts.last {
+                        Circle()
+                            .fill(color)
+                            .frame(width: 4.5, height: 4.5)
+                            .position(last)
+                            .shadow(color: color, radius: 5)
+                    }
+                } else {
+                    Text("等待采样…")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Palette.textTertiary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+        }
+        .frame(height: height)
+    }
+
+    private static func points(values: [Double], size: CGSize, lower: Double, upper: Double) -> [CGPoint] {
+        guard values.count > 1, size.width > 1, size.height > 1 else { return [] }
+        let limit = max(2, Int(size.width / 2))
+        let data = Sparkline.downsample(values, to: limit)
+        let span = max(upper - lower, 1)
+        let stepX = size.width / CGFloat(max(data.count - 1, 1))
+        return data.enumerated().map { idx, v in
+            let clamped = min(max(v, lower), upper)
+            let y = size.height - CGFloat((clamped - lower) / span) * size.height
+            return CGPoint(x: CGFloat(idx) * stepX, y: y)
+        }
+    }
+
+    private static func path(_ pts: [CGPoint]) -> Path {
+        var p = Path()
+        p.addLines(pts)
+        return p
+    }
+}
+
 // MARK: - 键盘背光档位
 
 struct LevelDots: View {
@@ -783,4 +868,19 @@ struct ROGLogo: View {
                 .accessibilityHidden(true)
         }
     }
+}
+
+// MARK: - 字节格式化（磁盘容量）
+
+extension ByteCountFormatter {
+    /// 统一用「十进制 + 省略 decimals」风格展示磁盘容量（如 512 GB、1.2 TB），
+    /// 避免系统默认在 B/KB 档跳来跳去，也更贴近厂商标称。
+    static let vela: ByteCountFormatter = {
+        let f = ByteCountFormatter()
+        f.allowedUnits = [.useGB, .useTB, .useMB]
+        f.countStyle = .decimal
+        f.includesUnit = true
+        f.zeroPadsFractionDigits = false
+        return f
+    }()
 }

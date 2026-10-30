@@ -116,6 +116,33 @@ struct BatteryInfo {
     var designWh: Double { Double(designCapacity) * 15.4 / 1000.0 }
 }
 
+// MARK: - 磁盘
+
+/// 启动宗卷（系统盘）的容量使用情况。变化很慢，采样器按 ~15 秒的节奏刷新一次即可。
+struct DiskInfo {
+    var totalBytes: Int64 = 0
+    /// 重要用途可用容量（系统会为系统更新等预留空间，比「真正剩余」更小，更贴近用户感知）
+    var availableBytes: Int64 = 0
+    var volumeName: String = ""
+
+    var usedBytes: Int64 { max(0, totalBytes - availableBytes) }
+    var usedFraction: Double { totalBytes > 0 ? min(1, Double(usedBytes) / Double(totalBytes)) : 0 }
+    var availableFraction: Double { totalBytes > 0 ? max(0, 1 - usedFraction) : 0 }
+
+    static func current() -> DiskInfo {
+        let url = URL(fileURLWithPath: "/")
+        let keys: Set<URLResourceKey> = [.volumeTotalCapacityKey,
+                                         .volumeAvailableCapacityForImportantUsageKey,
+                                         .volumeNameKey]
+        guard let vals = try? url.resourceValues(forKeys: keys) else { return DiskInfo() }
+        var info = DiskInfo()
+        info.totalBytes = Int64(vals.volumeTotalCapacity ?? 0)
+        info.availableBytes = Int64(vals.volumeAvailableCapacityForImportantUsage ?? 0)
+        info.volumeName = vals.volumeName ?? ""
+        return info
+    }
+}
+
 // MARK: - 硬件指纹（机型识别用）
 
 /// 一台机器「实际长什么样」。

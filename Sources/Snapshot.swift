@@ -61,6 +61,7 @@ enum Snapshot {
                 case .performance: PerformanceView()
                 case .nvidia: NvidiaView()
                 case .diagnostics: DiagnosticsView()
+                case .settings: SettingsView()
                 case .about: AboutView()
                 }
             }

@@ -14,6 +14,10 @@ struct MenuBarSettingsView: View {
     @State private var netMode: NetSpeedDisplay = MenuBarPrefs.netMode
     /// 正在长按拖拽的指标（预览界面排序用）
     @State private var draggingMetric: MenuMetric?
+    /// 各标签在全局坐标系下的 frame，松手时用来判断落在哪个标签上
+    @State private var dragFrames: [MenuMetric: CGRect] = [:]
+    /// 编辑模式（iOS 小组件式）：开 = 窗口固定、预览标签可拖；关 = 窗口可拖、标签固定。
+    @ObservedObject private var windowState = WindowState.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -39,7 +43,7 @@ struct MenuBarSettingsView: View {
                         Image(systemName: "hand.draw")
                             .font(.system(size: 9))
                             .foregroundStyle(Palette.textTertiary)
-                        Text("在下方「标题栏预览」里长按拖拽即可调整顺序")
+                        Text("勾选想要的指标；顺序在下方「标题栏预览」里点「排序」后拖动调整")
                             .font(.system(size: 10.5))
                             .foregroundStyle(Palette.textSecondary)
                         Spacer()
@@ -91,7 +95,25 @@ struct MenuBarSettingsView: View {
 
             Card {
                 VStack(alignment: .leading, spacing: 8) {
-                    SectionTitle(text: "标题栏预览")
+                    HStack(spacing: 8) {
+                        SectionTitle(text: "标题栏预览")
+                        Spacer()
+                        Button {
+                            windowState.isEditMode.toggle()
+                        } label: {
+                            Text(windowState.isEditMode ? "完成" : "排序")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(windowState.isEditMode ? Palette.accent : Palette.textSecondary)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(windowState.isEditMode ? Palette.accent.opacity(0.15) : Palette.faintFill))
+                            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .stroke(windowState.isEditMode ? Palette.accent : Palette.hairline, lineWidth: 0.8))
+                        }
+                        .buttonStyle(.plain)
+                    }
+
                     HStack(spacing: 6) {
                         if selected.isEmpty {
                             Text("Vela X")
@@ -99,15 +121,17 @@ struct MenuBarSettingsView: View {
                             ForEach(selected) { metric in
                                 if let value = store.shortText(metric) {
                                     MenuBarMetricLabel(item: MenuBarItem(metric: metric, value: value),
-                                                       iconSize: 13, valueSize: 14, labelSize: 10)
-                                        .onDrag {
-                                            draggingMetric = metric
-                                            return NSItemProvider(object: metric.rawValue as NSString)
-                                        }
-                                        .onDrop(of: [.text],
-                                                delegate: MenuBarOrderDropDelegate(target: metric,
-                                                                                   selected: $selected,
-                                                                                   dragging: $draggingMetric))
+                                                       iconSize: 13, valueSize: 14)
+                                        .opacity(draggingMetric == metric ? 0.6 : 1)
+                                        .scaleEffect(draggingMetric == metric ? 1.08 : (windowState.isEditMode ? 1.06 : 1.0))
+                                        .animation(.easeInOut(duration: 0.12), value: draggingMetric)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                                .stroke(windowState.isEditMode ? Palette.accent.opacity(0.55) : Color.clear,
+                                                        lineWidth: 1.2)
+                                        )
+                                        .collectFrame(id: metric)
+                                        .gesture(windowState.isEditMode ? dragMetricGesture(metric) : nil)
                                 }
                             }
                         }
@@ -116,14 +140,16 @@ struct MenuBarSettingsView: View {
                     .padding(.vertical, 8)
                     .padding(.horizontal, 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .onPreferenceChange(FramePreferenceKey<MenuMetric>.self) { dragFrames = $0 }
                     .background(
                         RoundedRectangle(cornerRadius: Palette.cornerRadius, style: .continuous)
                             .fill(Color.primary.opacity(0.05))
                     )
-                    Text("这是状态栏上那个按钮现在的样子。图标区分类型，小字是项目标签；"
-                         + "长按拖拽可调整顺序，项目太多会被系统截断，建议控制在 4 项以内。")
+                    Text(windowState.isEditMode
+                         ? "编辑中 · 拖动标签调整顺序，窗口已锁定；点「完成」恢复。"
+                         : "这是状态栏上那个按钮现在的样子（仅图标 + 数据）。点「排序」进入编辑模式后拖拽调整顺序，窗口会临时锁定；项目太多会被系统截断，建议控制在 4 项以内。")
                         .font(.system(size: 10.5))
-                        .foregroundStyle(Palette.textTertiary)
+                        .foregroundStyle(windowState.isEditMode ? Palette.accent : Palette.textTertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -132,6 +158,10 @@ struct MenuBarSettingsView: View {
             // 可能在别处改过（比如 CLI），进来时重新读一次
             selected = MenuBarPrefs.enabled
             netMode = MenuBarPrefs.netMode
+        }
+        .onDisappear {
+            // 离开菜单栏页时退出编辑模式，窗口恢复可拖动
+            windowState.isEditMode = false
         }
     }
 
@@ -200,29 +230,35 @@ struct MenuBarSettingsView: View {
     }
 }
 
-/// 菜单栏预览界面里的长按拖拽排序：把拖拽中的指标移到目标指标的位置
-struct MenuBarOrderDropDelegate: DropDelegate {
-    let target: MenuMetric
-    @Binding var selected: [MenuMetric]
-    @Binding var dragging: MenuMetric?
+/// 菜单栏预览界面里的长按拖拽排序：把拖拽中的指标移到目标指标的位置。
+/// 同样用手势实现（见 `dragMetricGesture`），避免拖拽时窗口被带跑、整行回流。
+private extension MenuBarSettingsView {
+    func dragMetricGesture(_ metric: MenuMetric) -> some Gesture {
+        DragGesture(minimumDistance: 8, coordinateSpace: .global)
+            .onChanged { _ in
+                if draggingMetric == nil { draggingMetric = metric }
+            }
+            .onEnded { value in
+                defer { draggingMetric = nil }
+                guard let target = dragFrames.first(where: { $0.key != metric && $0.value.contains(value.location) })?.key else { return }
+                reorderMetric(metric, to: target)
+            }
+    }
 
-    func dropEntered(info: DropInfo) {
-        guard let dragging, dragging != target,
-              let from = selected.firstIndex(of: dragging),
+    /// 把 metric 移动到 target 的位置（往下拖插到后面，往上拖插到前面）
+    func reorderMetric(_ metric: MenuMetric, to target: MenuMetric) {
+        guard let from = selected.firstIndex(of: metric),
               let to = selected.firstIndex(of: target), from != to else { return }
-        withAnimation(.easeInOut(duration: 0.15)) {
-            let m = selected.remove(at: from)
-            selected.insert(m, at: to)
+        withAnimation(.easeInOut(duration: 0.18)) {
+            selected.remove(at: from)
+            if from < to {
+                if let idx = selected.firstIndex(of: target) { selected.insert(metric, at: idx + 1) }
+                else { selected.append(metric) }
+            } else {
+                if let idx = selected.firstIndex(of: target) { selected.insert(metric, at: idx) }
+                else { selected.insert(metric, at: 0) }
+            }
         }
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
         MenuBarPrefs.setEnabled(selected)
-        dragging = nil
-        return true
     }
 }

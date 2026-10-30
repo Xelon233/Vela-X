@@ -11,12 +11,11 @@ import SwiftUI
 
 /// 概览页可选的一张卡片
 enum OverviewCard: String, CaseIterable, Identifiable {
-    case cpuTemp     // CPU 温度（大卡）
-    case power       // 整机功耗
-    case cpuFreq     // CPU 频率
+    case cpuTemp     // CPU（温度环 + 状态/极值/热压力/功耗/采样 + 频率与心电图，已合并功耗）
     case gpu         // 显卡（占用率 + 温度）
     case fan         // 风扇
     case battery     // 电池
+    case disk        // 磁盘（启动宗卷容量 / 已用）
     case keyboard    // 键盘背光
     case load        // 系统负载
     case capability  // 能力边界
@@ -25,12 +24,11 @@ enum OverviewCard: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .cpuTemp:    return "CPU 温度"
-        case .power:      return "整机功耗"
-        case .cpuFreq:    return "CPU 频率"
+        case .cpuTemp:    return "CPU"
         case .gpu:        return "显卡"
         case .fan:        return "风扇"
         case .battery:    return "电池"
+        case .disk:       return "磁盘"
         case .keyboard:   return "键盘背光"
         case .load:       return "系统负载"
         case .capability: return "能力边界"
@@ -39,12 +37,11 @@ enum OverviewCard: String, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
-        case .cpuTemp:    return "thermometer.medium"
-        case .power:      return "bolt.fill"
-        case .cpuFreq:    return "speedometer"
+        case .cpuTemp:    return "cpu"
         case .gpu:        return "display"
         case .fan:        return "fanblades"
         case .battery:    return "battery.75"
+        case .disk:       return "internaldrive"
         case .keyboard:   return "keyboard"
         case .load:       return "chart.bar.fill"
         case .capability: return "checklist"
@@ -67,11 +64,16 @@ enum OverviewLayoutPrefs {
 
     /// 显示顺序（默认 = 枚举声明顺序）
     static var order: [OverviewCard] {
-        if let raw = Prefs.string(orderKey), !raw.isEmpty {
-            let list = raw.split(separator: ",").compactMap { OverviewCard(rawValue: String($0)) }
-            if !list.isEmpty { return list }
+        guard let raw = Prefs.string(orderKey), !raw.isEmpty else {
+            return OverviewCard.allCases
         }
-        return OverviewCard.allCases
+        var list = raw.split(separator: ",").compactMap { OverviewCard(rawValue: String($0)) }
+        // 迁移：补齐存储顺序之后才加入的新卡片（如 disk），
+        // 这样老用户（已存过旧顺序）升级后也能自动看到新卡，且不破坏他们自定义的顺序。
+        let missing = OverviewCard.allCases.filter { !list.contains($0) }
+        if !missing.isEmpty { list.append(contentsOf: missing) }
+        if list.isEmpty { return OverviewCard.allCases }
+        return list
     }
 
     static func setOrder(_ list: [OverviewCard]) {
@@ -174,29 +176,7 @@ struct OverviewLayoutSheet: View {
     }
 }
 
-/// 概览页卡片的长按拖拽排序：把拖拽中的卡片移到目标卡片的位置
-struct OverviewCardDropDelegate: DropDelegate {
-    let target: OverviewCard
-    @Binding var cards: [OverviewCard]
-    @Binding var dragging: OverviewCard?
+/// 概览页卡片的长按拖拽排序已改用手势实现，见 Views.swift 的 `dragCardGesture`。
+/// （原先的 OverviewCardDropDelegate 基于 .onDrop，会在拖拽过程中持续重排导致整片
+///  网格回流、并且压不住窗口随卡片一起被拖走，已移除。）
 
-    func dropEntered(info: DropInfo) {
-        guard let dragging, dragging != target,
-              let from = cards.firstIndex(of: dragging),
-              let to = cards.firstIndex(of: target), from != to else { return }
-        withAnimation(.easeInOut(duration: 0.15)) {
-            let card = cards.remove(at: from)
-            cards.insert(card, at: to)
-        }
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        OverviewLayoutPrefs.setOrder(cards)
-        dragging = nil
-        return true
-    }
-}

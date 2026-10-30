@@ -289,15 +289,15 @@ enum MenuMetric: String, CaseIterable, Identifiable, Hashable {
         case .netSpeed: return "实时网速"
         case .gpuLoad:  return "显卡占用率"
         case .gpuTemp:  return "显卡温度"
-        case .power:    return "整机功耗"
+        case .power:    return "CPU 功耗"
         }
     }
 
     var icon: String {
         switch self {
         case .cpuTemp:  return "thermometer.medium"
-        case .cpuLoad:  return "chart.bar.fill"
-        case .cpuFreq:  return "speedometer"
+        case .cpuLoad:  return "cpu.fill"
+        case .cpuFreq:  return "cpu"
         case .memUsage: return "memorychip"
         case .netSpeed: return "arrow.up.arrow.down"
         case .gpuLoad:  return "display"
