@@ -33,17 +33,17 @@ struct AboutView: View {
     private var whatsNewCard: some View {
         Card {
             VStack(alignment: .leading, spacing: 9) {
-                whatsNewRow("fanblades", "自定义风扇曲线", "可拖拽 8 点曲线，CPU / GPU 分别编辑与下发；默认关闭，需在「高级功能」确认风险后解锁。")
+                whatsNewRow("network", "新增「网络」页", "累计统计本次启动的上传 / 下载总量，显示实时速率与网卡接口，可一键重置。")
                 Divider().opacity(0.35)
-                whatsNewRow("display", "一键开启 HiDPI", "「高级功能」页写入显示器 Override，支持开启与还原，只改用户数据区、不动系统卷。")
+                whatsNewRow("slider.horizontal.3", "诊断能力判断修正", "风扇曲线 / Aura RGB 改按实际通道判断（不再写死不可用）；移除「显卡模式」「充电上限」两项。")
                 Divider().opacity(0.35)
-                whatsNewRow("chart.line.uptrend.xyaxis", "概览增强", "风扇卡显示 CPU / GPU 双转速；显卡卡加入占用率折线；磁盘卡按占用分级配色。")
+                whatsNewRow("chart.line.uptrend.xyaxis", "显卡卡改版", "占用率与温度同级大小，占用折线移到下方并改用粉色，氛围条不再与磁盘撞色。")
                 Divider().opacity(0.35)
-                whatsNewRow("waveform.path.ecg", "监控页整合", "原「传感器」页的温度曲线、内核计数器并入监控页，侧栏更精简。")
+                whatsNewRow("internaldrive", "概览精简", "去掉右上角温度 / 负载 / 内存与「改名」按钮；磁盘卡与其他小卡对齐、配色改为靛 / 紫。")
                 Divider().opacity(0.35)
-                whatsNewRow("paintpalette", "配色扩展", "新增紫 / 青 / 粉 / 靛 / 薄荷等分类色；菜单栏图标 13pt、网速最小单位 KB/s。")
+                whatsNewRow("fanblades", "风扇与 CPU 卡", "风扇卡显示 CPU / GPU 双转速；CPU 卡右侧改为负载曲线并去掉「采样」一栏。")
                 Divider().opacity(0.35)
-                whatsNewRow("menubar.rectangle", "菜单栏与侧栏", "状态项恢复系统字体、图标按原比例显示；「菜单栏」与「键盘背光」顺序调整。")
+                whatsNewRow("menubar.rectangle", "菜单栏图标", "按原比例显示、字号 12pt，温度计等非正方形图标不再被压扁；网速最小单位 KB/s。")
             }
         }
     }

@@ -72,6 +72,10 @@ final class SensorStore: ObservableObject {
     // 网速每帧都采（getifaddrs 很便宜）；显卡占用要遍历 IORegistry，降到每 5 帧一次；
     // 功耗读 SMC 键很便宜，但只在探测到有这个键时才读。
     private(set) var netSpeed = NetSpeedSnapshot()
+    /// 本次启动累计的上传 / 下载字节数（对速率按采样间隔积分）
+    private(set) var netTotalDown: Double = 0
+    private(set) var netTotalUp: Double = 0
+    private(set) var netTotalsSince = Date()
     private(set) var gpuUsage: Double?
     private(set) var powerWatts: Double?
     private(set) var cpuFreq = CPUFrequencyInfo()
@@ -194,6 +198,13 @@ final class SensorStore: ObservableObject {
         if gpuHistory.count > tempCap { gpuHistory.removeFirst(gpuHistory.count - tempCap) }
         let histCap = samplingRate.historyCapacity
         if history.count > histCap { history.removeFirst(history.count - histCap) }
+    }
+
+    /// 清零网络累计（「网络」页的「重置统计」）
+    func resetNetTotals() {
+        netTotalDown = 0
+        netTotalUp = 0
+        netTotalsSince = Date()
     }
 
     private func loadStaticInfo() {
@@ -381,6 +392,11 @@ final class SensorStore: ObservableObject {
         }
 
         load = frame.load
+        if frame.net.sampled {
+            let dt = TimeInterval(samplingRate.rawValue)
+            netTotalDown += frame.net.down * dt
+            netTotalUp += frame.net.up * dt
+        }
         netSpeed = frame.net
         if let g = frame.gpuUsage {
             gpuUsage = g

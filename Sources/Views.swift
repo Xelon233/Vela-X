@@ -33,12 +33,13 @@ struct ScrollerAutoHide: NSViewRepresentable {
 }
 
 enum Page: String, CaseIterable, Identifiable {
-    case overview, monitor, menubar, keyboard, performance, nvidia, advanced, diagnostics, settings, about
+    case overview, monitor, network, menubar, keyboard, performance, nvidia, advanced, diagnostics, settings, about
     var id: String { rawValue }
     var title: String {
         switch self {
         case .overview: return "概览"
         case .monitor: return "监控"
+        case .network: return "网络"
         case .keyboard: return "键盘背光"
         case .menubar: return "菜单栏"
         case .performance: return "性能与风扇"
@@ -53,6 +54,7 @@ enum Page: String, CaseIterable, Identifiable {
         switch self {
         case .overview: return "square.grid.2x2"
         case .monitor: return "waveform.path.ecg"
+        case .network: return "network"
         case .keyboard: return "keyboard"
         case .menubar: return "menubar.dock.rectangle"
         case .performance: return "fanblades"
@@ -86,6 +88,7 @@ struct ContentView: View {
                     switch router.page {
                     case .overview: OverviewView()
                     case .monitor: MonitorView()
+                    case .network: NetworkView()
                     case .keyboard: KeyboardView()
                     case .menubar: MenuBarSettingsView()
                     case .performance: PerformanceView()
@@ -861,12 +864,12 @@ struct OverviewView: View {
     private var gpuCard: some View {
         Card(padding: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                SectionTitle(text: "显卡", trailing: GPUProbe.displayName, color: Palette.violet)
+                SectionTitle(text: "显卡", trailing: GPUProbe.displayName, color: Palette.pink)
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(store.gpuUsage.map { String(format: "%.0f", $0) } ?? "—")
-                        .font(.system(size: 25, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(store.gpuUsage != nil ? Palette.accent2 : Palette.textSecondary)
-                    Text("%")
+                            .font(.system(size: 25, weight: .semibold).monospacedDigit())
+                            .foregroundStyle(store.gpuUsage != nil ? Palette.pink : Palette.textSecondary)
+                        Text("%")
                         .font(.system(size: 11))
                         .foregroundStyle(Palette.textSecondary)
                     Spacer()
