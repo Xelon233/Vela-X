@@ -28,35 +28,35 @@ public enum ModelMatch: String {
 
 // MARK: - 硬件指纹
 
-/// 一台机型「应该长什么样」。
+/// 一台机型「应该长什么样」——判定用的硬件指纹。
 ///
-/// 为什么需要它（这是踩过坑才改的）：
-///   · OpenCore 会把 SMBIOS 整套换成 Mac，`hw.model` 恒为 MacBookPro16,4 之类，读不到真实 DMI；
-///   · 电池上报的 `DeviceName` 是**电池部件号**，同一块电池会装在多款机器上 ——
-///     实测魔霸6（G513RM）和魔霸7 Plus（G713PV）都报 `GA50358`，所以它只能当线索，不能当结论；
-///   · 真正能区分机型的是 **CPU 代号 + 独显世代**，因为华硕的 CPU 后缀就是产品线分界线：
-///       幻15   = Ryzen 9 6900HS / 5900HS（**HS**）
-///       魔霸6  = Ryzen 7 6800H / Ryzen 9 6900HX（**H / HX**，2022 Rembrandt）
-///       魔霸7 Plus = Ryzen 9 7945HX（Dragon Range，2023）+ RTX 40
+/// 为什么是这几个维度（踩过坑才定下来的）：
+///   · OpenCore 把 SMBIOS 整组换成 Mac（`hw.model` 恒为 MacBookPro16,4），读不到真实 DMI 型号；
+///   · 电池上报的 `DeviceName` 是**电池部件号**（魔霸6 / 魔霸7 Plus 都报 `GA50358`），也不能当结论；
+///   · G-Helper 在 Windows 读 `Win32_ComputerSystem.Model` 拿到真实型号（如 "G513RM"）再选配置，
+///     黑苹果下这串读不到，只能**推断**——而推断维度就用 G-Helper 选配置真正依赖的：
+///     **独显档位 + CPU 世代**；
+///   · 关键：枪神（G533）和魔霸（G513）**共用同一颗 CPU**（都是 6900HX），差别只在独显档位
+///     （魔霸6 = RTX 3060，枪神6 = RTX 3070 Ti / 3080）。所以**独显型号是主判据（闸门）**，
+///     CPU 只降到「世代」级别做佐证，绝不能再拿 CPU 后缀当唯一/主判定（否则把枪神认成魔霸）。
 public struct ModelFingerprint: Hashable {
-    /// CPU 型号代号，**精确相等**比较（如 "6900HX" / "6800H" / "7945HX"）。
-    /// 不能改成子串包含：那会让 "6800H" 误吃幻15 的 "6800HS"。
-    public let cpuCodes: [String]
-    /// 独显名称里应包含的片段（子串包含即可，如 "RTX 3060"）
+    /// 独显名称里应包含的片段（子串包含即可，如 "RTX 3060"）。
+    /// **这是判定闸门**：独显不匹配整条 0 分，宁可识别不出也不误判。
+    /// 只收本家族「独有」的档位——魔霸6 仅收 RTX 3060（枪神6 没有 3060，
+    /// 于是枪神6 不会被误认成魔霸6，而是落到「未识别」这个安全状态）。
     public let gpuHints: [String]
-    /// 出厂电池容量（Wh）区间；nil = 这项不作数
+    /// CPU 世代代号前缀（**前缀匹配**而非精确相等）：如 ["6900","6800"] = 6000 系 Rembrandt，
+    /// ["7945","7845","7745"] = 7000 系 Dragon Range。只用来佐证世代，不区分 H/HX/HS 后缀。
+    public let cpuFamilyCodes: [String]
+    /// 出厂电池容量（Wh）区间；只作佐证（主要用来排除幻15 的 76Wh）。nil = 不作数。
     public let batteryWh: ClosedRange<Double>?
-    /// 屏幕长边像素下限（区分 1080p / 1440p 档）；nil = 这项不作数
-    public let minScreenPixels: Int?
 
-    public init(cpuCodes: [String],
-                gpuHints: [String],
-                batteryWh: ClosedRange<Double>? = nil,
-                minScreenPixels: Int? = nil) {
-        self.cpuCodes = cpuCodes
+    public init(gpuHints: [String],
+                cpuFamilyCodes: [String],
+                batteryWh: ClosedRange<Double>? = nil) {
         self.gpuHints = gpuHints
+        self.cpuFamilyCodes = cpuFamilyCodes
         self.batteryWh = batteryWh
-        self.minScreenPixels = minScreenPixels
     }
 }
 
@@ -109,7 +109,7 @@ public struct ModelDetection {
     var name: String {
         ModelCatalog.lookup(code)?.china ?? best?.profile.familyName ?? "未识别机型"
     }
-    var source: String { "硬件指纹（CPU 代号 + 独显 + 电池 + 屏幕）" }
+    var source: String { "硬件指纹推断（独显型号 + CPU 世代 + 电池容量）" }
 
     // 兼容旧的调用点命名
     var detectedCode: String { code }
@@ -138,12 +138,11 @@ public struct ModelDetection {
 /// 机型判定器：采集硬件指纹 → 给每条已知机型配置打分 → 排序取最优
 enum ModelDetector {
 
-    /// 权重。CPU 代号是最强信号（后缀直接区分产品线），独显世代次之，
-    /// 电池容量和屏幕只用来排除明显不符的机型，所以给得低。
-    static let cpuPoints = 50
-    static let gpuPoints = 30
-    static let batteryPoints = 12
-    static let screenPoints = 8
+    /// 权重。独显型号是主判据（闸门，+55）；CPU 世代佐证（+30）；电池容量佐证（+15）。
+    /// 顺序很重要：枪神/魔霸同 CPU，差别只在独显，所以独显不过关就整条 0 分。
+    static let gpuPoints = 55
+    static let cpuPoints = 30
+    static let batteryPoints = 15
 
     static func detect() -> ModelDetection {
         let fp = SystemProbe.fingerprint()
@@ -155,31 +154,29 @@ enum ModelDetector {
     }
 
     static func score(profile p: ECProfile, fingerprint fp: HardwareFingerprint) -> ModelScore {
-        var points = 0
-        var reasons: [String] = []
-
-        let cpu = fp.cpuCode.uppercased()
-        if !cpu.isEmpty, p.fingerprint.cpuCodes.contains(where: { $0.uppercased() == cpu }) {
-            points += cpuPoints
-            reasons.append("CPU \(cpu) 命中（+\(cpuPoints)）")
-        }
-
-        let gpu = fp.gpus.first { name in
+        // 独显型号是「闸门」：枪神/魔霸同 CPU，只有独显档位不同，
+        // 所以独显不匹配直接 0 分（宁可不识别，也不把枪神认成魔霸）。
+        guard let gpu = fp.gpus.first(where: { name in
             p.fingerprint.gpuHints.contains { name.localizedCaseInsensitiveContains($0) }
-        }
-        if let gpu {
-            points += gpuPoints
-            reasons.append("显卡 \(ModelDetection.shortGPU(gpu)) 命中（+\(gpuPoints)）")
+        }) else {
+            return ModelScore(profile: p, points: 0, reasons: [])
         }
 
+        var points = gpuPoints
+        var reasons = ["显卡 \(ModelDetection.shortGPU(gpu)) 命中（+\(gpuPoints)）"]
+
+        // 独显过关后，CPU 世代只做佐证（前缀匹配，不区分 H/HX/HS 后缀）
+        let cpu = fp.cpuCode.uppercased()
+        if !cpu.isEmpty, p.fingerprint.cpuFamilyCodes.contains(where: { cpu.hasPrefix($0.uppercased()) }) {
+            points += cpuPoints
+            reasons.append("CPU \(cpu) 属 \(p.fingerprint.cpuFamilyCodes.joined(separator: "/")) 世代（+\(cpuPoints)）")
+        }
+
+        // 电池容量只作佐证（主要用来排除幻15 的 76Wh）：独显已匹配，
+        // 容量对不上只少加分，不会因此翻成别的机型。
         if let range = p.fingerprint.batteryWh, fp.batteryWh > 0, range.contains(fp.batteryWh) {
             points += batteryPoints
-            reasons.append("电池 \(Int(fp.batteryWh.rounded()))Wh 在 \(Int(range.lowerBound))–\(Int(range.upperBound))Wh 之间（+\(batteryPoints)）")
-        }
-
-        if let min = p.fingerprint.minScreenPixels, fp.screenPixels >= min {
-            points += screenPoints
-            reasons.append("屏幕 \(fp.screenPixels)px 不低于 \(min)（+\(screenPoints)）")
+            reasons.append("电池 \(Int(fp.batteryWh.rounded()))Wh 在 \(Int(range.lowerBound))–\(Int(range.upperBound))Wh（+\(batteryPoints)）")
         }
 
         return ModelScore(profile: p, points: points, reasons: reasons)
@@ -273,8 +270,9 @@ public struct MachineModel {
     /// 判定依据说明
     public let source: String
 
-    /// 判定机型：走硬件指纹（CPU 代号 + 独显世代 + 电池容量 + 屏幕），
-    /// 不再拿电池 DeviceName 当结论 —— 它是电池部件号，多机型共用，
+    /// 判定机型（黑苹果下为「推断」，非读取 DMI）：以硬件指纹为准 ——
+    /// 独显型号为主判据（闸门），CPU 世代与电池容量佐证。
+    /// 不再拿电池 DeviceName 当结论：它是电池部件号，多机型共用，
     /// 实测魔霸6（G513RM）和魔霸7 Plus（G713PV）都报 GA50358。
     public static func detect() -> MachineModel {
         let d = ModelDetector.detect()
@@ -314,12 +312,14 @@ public enum ECProfiles {
             source: "内置（SMCAsusFan 交付包 v14）",
             verification: .verifiedOnDevice,
             fingerprint: ModelFingerprint(
-                // 2022 Rembrandt：魔霸6 是 6800H / 6900HX（H / HX）。
-                // 幻15 的 6900HS 故意不收 —— HS 是另一条产品线，EC 布局没验证过。
-                cpuCodes: ["6900HX", "6900H", "6800HX", "6800H"],
-                gpuHints: ["RTX 3060", "RTX 3070", "RTX 3080", "RTX 3050"],
-                batteryWh: 84...96,
-                minScreenPixels: nil
+                // 独显闸门：魔霸6 基础款是 RTX 3060，只收它 ——
+                // 枪神6 用 RTX 3070 Ti / 3080，没有 3060，于是枪神6 不会误认成魔霸6。
+                //（同族的 G513RW/RX 用 3070 Ti / 3080，本目录没收它们的 EC 配置，
+                //  会落到「未识别」而非被当成 3060 款放行。）
+                gpuHints: ["RTX 3060"],
+                // CPU 世代佐证（前缀匹配）：2022 Rembrandt 6000 系
+                cpuFamilyCodes: ["6900", "6800"],
+                batteryWh: 80...96
             )
         ),
         ECProfile(
@@ -347,12 +347,11 @@ public enum ECProfiles {
             source: "内置（G713PV 逆向包 v10-ecprobe）",
             verification: .reverseEngineered,
             fingerprint: ModelFingerprint(
-                // 2023 Dragon Range：7045 系列，与 2022 的 6000 系列一眼可分
-                cpuCodes: ["7945HX", "7845HX", "7745HX"],
-                gpuHints: ["RTX 4060", "RTX 4070", "RTX 4080"],
-                batteryWh: 84...96,
-                // 17.3" 2560×1440，拿屏幕档位再补一刀
-                minScreenPixels: 2560
+                // 独显闸门：魔霸7 Plus 是 RTX 4060 / 4070（40 系），与魔霸6 的 30 系一眼可分
+                gpuHints: ["RTX 4060", "RTX 4070"],
+                // CPU 世代佐证（前缀匹配）：2023 Dragon Range 7000 系
+                cpuFamilyCodes: ["7945", "7845", "7745"],
+                batteryWh: 80...96
             )
         )
     ]
@@ -377,8 +376,9 @@ public enum ModelDisclaimer {
         """
         你选择的机型「\(selected)」与本机判定出的机型「\(detected)」不一致。
 
-        判定依据是硬件指纹（CPU 代号 + 独显世代 + 电池容量 + 屏幕规格），\
-        不是 SMBIOS —— 黑苹果下 SMBIOS 已被 OpenCore 换成 Mac，读不到真实机型。
+        判定依据是硬件指纹（独显型号 + CPU 世代 + 电池容量），不是 SMBIOS —— \
+        黑苹果下 SMBIOS 已被 OpenCore 换成 Mac，读不到真实机型（Windows 上 G-Helper 读 \
+        Win32_ComputerSystem.Model 能拿到真实型号，这里读不到，只能按硬件推断）。
 
         风扇曲线和 EC 配置是针对特定机型逆向得到的。如果机型不对，写入的曲线可能让风扇停转或全速狂转，\
         导致过热、降频，甚至永久性硬件损坏（EC 不会回显写入结果，出错时无法自动恢复）。

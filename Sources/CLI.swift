@@ -437,7 +437,7 @@ enum CLI {
                 && selected.uppercased() == detection.code.uppercased()
             var lines = [
                 "硬件指纹     \(detection.evidenceLine)",
-                "判定机型     \(detection.code)（\(detection.name)）· \(detection.confidence.label)",
+                "推断机型     \(detection.code)（\(detection.name)）· \(detection.confidence.label)",
                 "当前选择     \(selected)",
                 "匹配状态     \(matched ? "匹配" : (detection.confidence.isTrustworthy ? "不匹配 ⚠️" : "未能自动识别，需手动核对"))",
                 "EC 配置      " + (profile.map { "\($0.ecChip) · \($0.ecFirmware)" }

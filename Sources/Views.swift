@@ -1174,7 +1174,7 @@ struct PerformanceView: View {
 
                     // 判定出的机型 + 置信度
                     HStack(spacing: 4) {
-                        Text(fan.detection.confidence == .none ? "未能识别" : "判定")
+                        Text(fan.detection.confidence == .none ? "未能识别" : "推断")
                             .font(.system(size: 10))
                             .foregroundStyle(Palette.textTertiary)
                         Text(fan.detection.confidence == .none
@@ -1240,7 +1240,7 @@ struct PerformanceView: View {
                                     }
                                 }
                             }
-                            Text("判定不看 SMBIOS（黑苹果下已被换成 Mac），也不看电池部件号。")
+                            Text("推断以独显型号为主（同 CPU 的枪神/魔霸靠独显档位区分），CPU 只看世代；不看 SMBIOS（黑苹果下已换成 Mac），也不看电池部件号。")
                                 .font(.system(size: 9.5))
                                 .foregroundStyle(Palette.textTertiary)
                                 .fixedSize(horizontal: false, vertical: true)
