@@ -571,6 +571,7 @@ struct OverviewView: View {
         case .fan:        fanCard
         case .battery:    batteryCard
         case .disk:       diskCard
+        case .mode:       ModeStatusCard()
         case .load:       LoadCard()
         case .capability: capabilitySummary
         }
@@ -879,7 +880,7 @@ struct OverviewView: View {
                     Spacer()
                     if let t = store.gpuTemp {
                         HStack(alignment: .firstTextBaseline, spacing: 2) {
-                            Image(systemName: "thermometer.sun")
+                            Image(systemName: "thermometer")
                                 .font(.system(size: 12))
                             Text(String(format: "%.0f°", t))
                                 .font(.system(size: 25, weight: .semibold).monospacedDigit())
@@ -1222,49 +1223,10 @@ struct PerformanceView: View {
         let preset: String?
     }
 
-    struct ModeInfo: Identifiable {
-        let id = UUID()
-        let name: String
-        let icon: String
-        let desc: String
-    }
-
-
-    private let modes: [ModeInfo] = [
-        .init(name: "静音", icon: "leaf", desc: "风扇低速、CPU 限功耗"),
-        .init(name: "平衡", icon: "equal", desc: "按负载动态调度"),
-        .init(name: "增强", icon: "flame", desc: "风扇全速、功耗放开")
-    ]
-
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SectionTitle(text: "性能模式", trailing: "ASUS WMI · 不可用")
-
-            HStack(spacing: 12) {
-                ForEach(modes) { mode in
-                    Card(padding: 14) {
-                        VStack(alignment: .leading, spacing: 7) {
-                            HStack {
-                                Image(systemName: mode.icon)
-                                    .font(.system(size: 14))
-                                    .foregroundStyle(Palette.textSecondary)
-                                Spacer()
-                                Image(systemName: "lock.fill")
-                                    .font(.system(size: 9))
-                                    .foregroundStyle(Palette.textTertiary)
-                            }
-                            Text(mode.name)
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Palette.textSecondary)
-                            Text(mode.desc)
-                                .font(.system(size: 10.5))
-                                .foregroundStyle(Palette.textTertiary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                    .opacity(0.62)
-                }
-            }
+            // [VelaX-PowerLimit] 功耗墙档位（真实可用的「性能模式」：静音/平衡/性能 + 自定义）
+            PowerLimitCard()
 
             SectionTitle(text: "风扇曲线",
                          trailing: fan.kextLoaded ? (fan.kextBuild ?? "kext 已加载") : "kext 未加载")
@@ -1515,9 +1477,6 @@ struct PerformanceView: View {
                     }
                 }
             }
-
-            // [VelaX-PowerLimit] 功耗墙档位（未在「高级功能」解锁时不显示）
-            PowerLimitGate()
 
             // [VelaX-CustomCurve] 自定义曲线编辑器（未在「高级功能」解锁时不显示）
             CustomCurveGate()

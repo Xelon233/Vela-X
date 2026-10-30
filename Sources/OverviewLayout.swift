@@ -16,6 +16,7 @@ enum OverviewCard: String, CaseIterable, Identifiable {
     case fan         // 风扇
     case battery     // 电池
     case disk        // 磁盘（启动宗卷容量 / 已用）
+    case mode        // 当前模式（功耗墙档位 + 风扇档位）
     case load        // 系统负载
     case capability  // 能力边界
 
@@ -28,6 +29,7 @@ enum OverviewCard: String, CaseIterable, Identifiable {
         case .fan:        return "风扇"
         case .battery:    return "电池"
         case .disk:       return "磁盘"
+        case .mode:       return "当前模式"
         case .load:       return "系统负载"
         case .capability: return "能力边界"
         }
@@ -40,6 +42,7 @@ enum OverviewCard: String, CaseIterable, Identifiable {
         case .fan:        return "fanblades"
         case .battery:    return "battery.75"
         case .disk:       return "internaldrive"
+        case .mode:       return "slider.horizontal.3"
         case .load:       return "chart.bar.fill"
         case .capability: return "checklist"
         }

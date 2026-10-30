@@ -123,8 +123,22 @@ final class PowerLimitController: ObservableObject {
     }
 
     func select(_ p: PowerProfile) {
+        // 三档预设随时可用；只有「自定义」受高级功能的解锁门约束
+        if p == .custom && !unlocked {
+            requestCustom()
+            return
+        }
         profile = p
         Prefs.set(p.rawValue, for: PowerLimitSpec.prefsProfile)
+    }
+
+    /// 点「自定义」档位：未解锁时不切换，只提示去「高级功能」解锁
+    func requestCustom() {
+        if unlocked {
+            select(.custom)
+            return
+        }
+        message = "自定义功耗档未解锁：请在「高级功能」页打开「自定义功耗墙」开关并确认风险"
     }
 
     func setCustom(_ w: Int) {
@@ -141,6 +155,11 @@ final class PowerLimitController: ObservableObject {
     func lock() {
         unlocked = false
         Prefs.set(false, for: PowerLimitSpec.prefsUnlocked)
+        // 上锁时若正停在「自定义」，退回平衡档，避免留一个用不了的档位
+        if profile == .custom {
+            profile = .balanced
+            Prefs.set(profile.rawValue, for: PowerLimitSpec.prefsProfile)
+        }
         message = nil
     }
 
@@ -152,8 +171,8 @@ final class PowerLimitController: ObservableObject {
     /// 下发当前档位
     func apply() {
         let w = targetWatts
-        guard unlocked else {
-            message = "未解锁：请先在「高级功能」页解锁自定义功耗墙"
+        guard profile != .custom || unlocked else {
+            message = "自定义功耗档未解锁：请在「高级功能」页打开「自定义功耗墙」开关并确认风险"
             return
         }
         guard kextSupported else {
@@ -179,12 +198,8 @@ final class PowerLimitController: ObservableObject {
         }
     }
 
-    /// 恢复默认（AFsw = 0 → 回到 EC 当前 PL1）
+    /// 恢复默认（AFsw = 0 → 回到 EC 当前 PL1）；「恢复默认」随时可用
     func restore() {
-        guard unlocked else {
-            message = "未解锁：请先在「高级功能」页解锁自定义功耗墙"
-            return
-        }
         guard kextSupported else {
             message = "kext 不支持（需要 v20-stapm 及以上）"
             return
@@ -228,9 +243,13 @@ struct PowerLimitCard: View {
                         customSlider
                     }
 
-                    Text(controller.profile.hint)
+                    Text(controller.profile == .custom && !controller.unlocked
+                         ? "自定义档默认上锁：在「高级功能」页打开「自定义功耗墙」开关、确认风险后可用"
+                         : controller.profile.hint)
                         .font(.system(size: 9.5))
-                        .foregroundStyle(Palette.textTertiary)
+                        .foregroundStyle(controller.profile == .custom && !controller.unlocked
+                                         ? Palette.warn
+                                         : Palette.textTertiary)
                         .fixedSize(horizontal: false, vertical: true)
 
                     statusLine
@@ -268,7 +287,12 @@ struct PowerLimitCard: View {
                     VStack(spacing: 2) {
                         Text(p.label)
                             .font(.system(size: 10.5, weight: .medium))
-                        if let w = p.watts {
+                        if p == .custom && !controller.unlocked {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 8.5))
+                                .frame(height: 11)
+                                .opacity(0.8)
+                        } else if let w = p.watts {
                             Text("\(w)W")
                                 .font(.system(size: 9, design: .monospaced))
                                 .opacity(0.75)
@@ -380,15 +404,74 @@ struct PowerLimitCard: View {
     }
 }
 
-// MARK: - 解锁门
+// MARK: - 概览页：「当前模式」卡（功耗墙模式 + 风扇模式，合成一张）
 
-/// 只有「高级功能」页里确认风险、解锁之后，才在「性能与风扇」页显示功耗墙卡片。
-struct PowerLimitGate: View {
-    @ObservedObject private var controller = PowerLimitController.shared
+/// 概览页的一张窄卡：左边显示当前功耗墙档位、右边显示当前风扇档位。
+/// 设计为只读状态展示，调节仍去「性能与风扇」页。
+struct ModeStatusCard: View {
+    @ObservedObject private var power = PowerLimitController.shared
+    @ObservedObject private var fan = FanControl.shared
 
     var body: some View {
-        if controller.unlocked {
-            PowerLimitCard()
+        Card(padding: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                SectionTitle(text: "当前模式", trailing: "功耗 / 风扇", color: Palette.warn)
+                HStack(spacing: 0) {
+                    modeColumn("功耗墙",
+                               powerLabel,
+                               powerSub,
+                               color: power.profile == .quiet ? Palette.teal : Palette.warn)
+                        .frame(maxWidth: .infinity)
+                    Rectangle()
+                        .fill(Palette.hairline)
+                        .frame(width: 1, height: 36)
+                    modeColumn("风扇", fanLabel, fanSub, color: Palette.teal)
+                        .frame(maxWidth: .infinity)
+                }
+                .padding(.top, 2)
+            }
+            .frame(maxHeight: .infinity, alignment: .top)
         }
+        .frame(height: 108)
+        .onAppear { power.refreshApplied() }
+    }
+
+    private func modeColumn(_ title: String, _ value: String, _ sub: String,
+                            color: Color) -> some View {
+        VStack(spacing: 2) {
+            Text(title)
+                .font(.system(size: 9.5))
+                .foregroundStyle(Palette.textTertiary)
+            Text(value)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(sub)
+                .font(.system(size: 9))
+                .foregroundStyle(Palette.textTertiary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// 当前选中的功耗墙档位名（自定义档未解锁时也不会显示）
+    private var powerLabel: String {
+        power.profile == .custom && !power.unlocked ? "平衡" : power.profile.label
+    }
+
+    private var powerSub: String {
+        guard power.kextSupported else { return "kext 不支持" }
+        return power.appliedWatts.map { "已限 \($0)W" } ?? "未限制"
+    }
+
+    private var fanLabel: String {
+        guard let name = fan.lastApplied else { return "未记录" }
+        if name == "custom" { return "自定义曲线" }
+        return fan.presets?.preset(name)?.label ?? name
+    }
+
+    private var fanSub: String {
+        fan.kextLoaded ? "kext 已加载" : "kext 未加载"
     }
 }
