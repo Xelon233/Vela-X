@@ -318,7 +318,6 @@ private struct SelectionGlass: View {
 
 struct OverviewView: View {
     @EnvironmentObject var store: SensorStore
-    @State private var showModelPicker = false
     /// 全量顺序（含被隐藏的卡）；显示时再过滤。这样拖拽排序后存回去不会把隐藏项弄丢。
     @State private var cards: [OverviewCard] = OverviewLayoutPrefs.order
     @State private var hidden: Set<OverviewCard> = OverviewLayoutPrefs.hidden
@@ -588,20 +587,6 @@ struct OverviewView: View {
                                                         startPoint: .top, endPoint: .bottom))
                         .shadow(color: Palette.accent.opacity(0.35), radius: 12, y: 2)
                     Button {
-                        showModelPicker = true
-                    } label: {
-                        Text("改名")
-                            .font(.system(size: 9.5, weight: .medium))
-                            .tracking(0.5)
-                            .foregroundStyle(Palette.textSecondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Palette.faintFill))
-                        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(Palette.hairline, lineWidth: 0.8))
-                    }
-                    .buttonStyle(.plain)
-                    .help("改机型名称")
-                    Button {
                         windowState.isEditMode.toggle()
                     } label: {
                         Text(windowState.isEditMode ? "完成" : "编辑")
@@ -618,15 +603,6 @@ struct OverviewView: View {
                     .buttonStyle(.plain)
                     .help("编辑模式：拖动排序、角标移除卡片、底部「+」添加小部件；窗口临时锁定")
                 }
-                Spacer()
-                HStack(spacing: 0) {
-                    headerKPI("温度", store.cpuTemp.map { String(format: "%.0f", $0) } ?? "—", "°C",
-                              Palette.forTemp(store.cpuTemp))
-                    headerDivider
-                    headerKPI("负载", String(format: "%.0f", store.load.total * 100), "%", Palette.accent2)
-                    headerDivider
-                    headerKPI("内存", String(format: "%.0f", store.load.memoryUsedRatio * 100), "%", Palette.ok)
-                }
             }
             HStack(spacing: 6) {
                 if !store.hardware.globalName.isEmpty {
@@ -638,7 +614,7 @@ struct OverviewView: View {
                 Pill(text: String(format: "%.0f GB", store.hardware.ramGB), color: Palette.textSecondary)
                 Pill(text: store.hardware.osVersion, color: Palette.textSecondary)
                 ForEach(store.hardware.gpus) { gpu in
-                    Pill(text: gpu.shortDriver, color: gpu.accelerated ? Palette.ok : Palette.warn)
+                    Pill(text: gpu.name, color: gpu.accelerated ? Palette.ok : Palette.warn)
                 }
                 if case .available(_, let latest) = store.nvidiaUpdate {
                     Pill(text: "驱动可更新 \(latest)", color: Palette.warn)
@@ -646,9 +622,6 @@ struct OverviewView: View {
                     Pill(text: "驱动检查失败", color: Palette.textTertiary)
                 }
             }
-        }
-        .sheet(isPresented: $showModelPicker) {
-            ModelPickerSheet().environmentObject(store)
         }
     }
 
@@ -695,17 +668,16 @@ struct OverviewView: View {
                         statLine("最高", String(format: "%.1f °C", tempMax))
                         statLine("热压力", store.load.thermalText,
                                  color: store.load.thermal == .nominal ? Palette.ok : Palette.warn)
-                        statLine("采样", "\(store.sampleCount) 点 · \(store.samplingRate.longLabel)")
                     }
-                    // 右侧空白用 CPU 温度曲线填充（Sparkline 无网格 / 表格背景）
+                    // 右侧空白用 CPU 负载曲线填充（Sparkline 无网格 / 表格背景）
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("温度曲线")
+                        Text("负载曲线")
                             .font(.system(size: 10))
                             .tracking(0.5)
                             .foregroundStyle(Palette.textTertiary)
-                        Sparkline(values: store.tempHistory,
-                                  color: Palette.forTemp(store.cpuTemp),
-                                  lowerBound: 30, upperBound: 100,
+                        Sparkline(values: store.loadHistory.map { $0 * 100 },
+                                  color: Palette.accent2,
+                                  lowerBound: 0, upperBound: 100,
                                   filled: false)
                             .frame(maxWidth: .infinity, minHeight: 84, maxHeight: 84)
                     }
@@ -793,13 +765,6 @@ struct OverviewView: View {
                         .font(.system(size: 11))
                         .foregroundStyle(Palette.textTertiary)
                 }
-                Spacer(minLength: 0)
-                Text(store.fanAvailable
-                     ? "F0Ac / F1Ac 实时转速"
-                     : "FNum 报 \(store.fanCount)、F0Ac 恒为 10000，属占位值")
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(Palette.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxHeight: .infinity, alignment: .top)
         }
@@ -851,7 +816,7 @@ struct OverviewView: View {
 
     private var diskCard: some View {
         Card(padding: 16) {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 4) {
                 SectionTitle(text: "磁盘", trailing: store.disk.volumeName.isEmpty ? "启动宗卷" : store.disk.volumeName,
                              color: Palette.indigo)
                 // 占用率大字 + 剩余
@@ -866,6 +831,7 @@ struct OverviewView: View {
                     Text("可用 \(ByteCountFormatter.vela.string(fromByteCount: store.disk.availableBytes))")
                         .font(.system(size: 10.5))
                         .foregroundStyle(Palette.textSecondary)
+                        .lineLimit(1)
                 }
                 Spacer(minLength: 0)
                 // 占用率条
@@ -884,7 +850,8 @@ struct OverviewView: View {
                 Text("已用 \(ByteCountFormatter.vela.string(fromByteCount: store.disk.usedBytes)) / 共 \(ByteCountFormatter.vela.string(fromByteCount: store.disk.totalBytes))")
                     .font(.system(size: 10.5))
                     .foregroundStyle(Palette.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
             .frame(maxHeight: .infinity, alignment: .top)
         }
@@ -895,14 +862,21 @@ struct OverviewView: View {
         Card(padding: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 SectionTitle(text: "显卡", trailing: GPUProbe.displayName, color: Palette.violet)
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(store.gpuUsage.map { String(format: "%.0f", $0) } ?? "—")
-                        .font(.system(size: 25, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(store.gpuUsage != nil ? Palette.accent2 : Palette.textSecondary)
-                    Text("%")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Palette.textSecondary)
-                    Spacer()
+                HStack(alignment: .center, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline, spacing: 3) {
+                        Text(store.gpuUsage.map { String(format: "%.0f", $0) } ?? "—")
+                            .font(.system(size: 25, weight: .semibold).monospacedDigit())
+                            .foregroundStyle(store.gpuUsage != nil ? Palette.accent2 : Palette.textSecondary)
+                        Text("%")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Palette.textSecondary)
+                    }
+                    // 占用率折线放在「占用率」与「温度」之间的空位（Sparkline 无网格）
+                    Sparkline(values: store.gpuHistory,
+                              color: Palette.violet,
+                              lowerBound: 0, upperBound: 100,
+                              filled: false)
+                        .frame(maxWidth: .infinity, minHeight: 34, maxHeight: 34)
                     if let t = store.gpuTemp {
                         HStack(spacing: 2) {
                             Image(systemName: "thermometer.sun")
@@ -913,12 +887,6 @@ struct OverviewView: View {
                         .foregroundStyle(Palette.forTemp(t))
                     }
                 }
-                // 占用率折线（Sparkline 无网格 / 表格背景）
-                Sparkline(values: store.gpuHistory,
-                          color: Palette.violet,
-                          lowerBound: 0, upperBound: 100,
-                          filled: false)
-                    .frame(maxWidth: .infinity, minHeight: 26, maxHeight: 26)
             }
             .frame(maxHeight: .infinity, alignment: .top)
         }

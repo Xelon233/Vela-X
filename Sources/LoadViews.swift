@@ -74,18 +74,10 @@ struct LoadCard: View {
                             .foregroundStyle(Palette.textTertiary)
                             .padding(.leading, 4)
                     }
-                    if store.loadHistory.count > 3 {
-                        Sparkline(values: store.loadHistory.map { $0 * 100 },
-                                  color: Palette.accent,
-                                  lowerBound: 0, upperBound: 100)
-                            .frame(height: 30)
-                            .frame(maxWidth: 180)
-                    } else {
-                        Text("Mach 内核计数器 · 无需 kext")
-                            .font(.system(size: 10))
-                            .foregroundStyle(Palette.textTertiary)
-                            .padding(.top, 2)
-                    }
+                    Text("Mach 内核计数器 · 无需 kext")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Palette.textTertiary)
+                        .padding(.top, 2)
                 }
                 .frame(width: 200, alignment: .leading)
 

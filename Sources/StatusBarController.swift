@@ -109,7 +109,7 @@ final class StatusBarController: NSObject {
         if let cached = iconCache[name] { return cached }
         // 用符号配置直接给到 13pt，得到的是带正确宽高比的图；之后 bounds 用 img.size，
         // 就不会再把图标拉伸/压缩成正方形。
-        let cfg = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+        let cfg = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
         let img = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
             .withSymbolConfiguration(cfg)
         if let img { iconCache[name] = img }
