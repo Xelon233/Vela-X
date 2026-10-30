@@ -20,6 +20,8 @@ struct MonitorView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             liveRow
+            tempCurveSection
+            kernelCounterSection
             trendSection
             processSection
             recordSection
@@ -27,6 +29,63 @@ struct MonitorView: View {
         // 只有停在这一页时才枚举进程（500+ 进程一次约 2 ms，没必要每秒都跑）
         .onAppear { store.setProcessSamplingActive(true) }
         .onDisappear { store.setProcessSamplingActive(false) }
+    }
+
+    // MARK: - 温度曲线 / 内核计数器（原「传感器」页并入这里）
+
+    private var tempCurveSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionTitle(text: "温度曲线", trailing: "最近 240 秒")
+            Card {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(store.cpuTemp.map { String(format: "%.1f", $0) } ?? "—")
+                            .font(.system(size: 30, weight: .semibold).monospacedDigit())
+                            .foregroundStyle(Palette.forTemp(store.cpuTemp))
+                        Text("°C")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Palette.textSecondary)
+                        Spacer()
+                        Text(store.tempStatusText)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Palette.forTemp(store.cpuTemp))
+                    }
+                    TempChart(values: store.tempHistory,
+                              color: Palette.forTemp(store.cpuTemp),
+                              lower: 35, upper: 100, height: 150)
+                }
+            }
+        }
+    }
+
+    private var kernelCounterSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionTitle(text: "内核计数器", trailing: "不依赖 kext")
+            Card {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .top, spacing: 22) {
+                        CoreBars(values: store.load.perCore, height: 54, showLabels: true)
+                            .frame(width: 300, alignment: .leading)
+                        VStack(alignment: .leading, spacing: 5) {
+                            LabelValue(label: "总占用",
+                                       value: String(format: "%.1f%%  (%d 线程)",
+                                                     store.load.total * 100, store.load.perCore.count))
+                            LabelValue(label: "负载均值",
+                                       value: String(format: "%.2f / %.2f / %.2f",
+                                                     store.load.load1, store.load.load5, store.load.load15))
+                            LabelValue(label: "内核热压力", value: store.load.thermalText)
+                            LabelValue(label: "内存占用",
+                                       value: String(format: "%.1f%%", store.load.memoryUsedRatio * 100))
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    Text("这些读数来自 Mach 内核计数器（host_processor_info / host_statistics64 / ProcessInfo.thermalState），和 VirtualSMC 无关，也不经过任何 kext。CPU 温度是个例外：macOS 没有 /dev/mem，MSR/SMN 只能在内核态读，所以温度只能取 SMC 的值。")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(Palette.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
     }
 
     // MARK: - 实时

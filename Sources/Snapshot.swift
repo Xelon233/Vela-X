@@ -55,7 +55,6 @@ enum Snapshot {
                 switch page {
                 case .overview: OverviewView()
                 case .monitor: MonitorView()
-                case .sensors: SensorsView()
                 case .keyboard: KeyboardView()
                 case .menubar: MenuBarSettingsView()
                 case .performance: PerformanceView()
