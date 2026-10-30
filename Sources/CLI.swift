@@ -599,6 +599,36 @@ enum CLI {
                 return 4
             }
 
+        case "power-limit":
+            // 功耗墙：GUI 侧已校验范围，这里以 root 写 SMC 键
+            guard args.count >= 2, let w = Int(args[1]) else {
+                emit("ERR 用法：fan power-limit <瓦数|0>（0=恢复默认）", printOutput: printOutput)
+                return 2
+            }
+            guard FanController.isPrivileged else {
+                emit("ERR 需要 root 权限才能写 SMC 键", printOutput: printOutput)
+                return 3
+            }
+            guard w == 0 || (w >= PowerLimitSpec.minW && w <= PowerLimitSpec.maxW) else {
+                emit("ERR 超出允许范围：\(PowerLimitSpec.minW)..\(PowerLimitSpec.maxW)W（0=恢复默认）",
+                     printOutput: printOutput)
+                return 4
+            }
+            do {
+                try SMCClient.shared.writeUInt8(PowerLimitSpec.keyCmd, PowerLimitSpec.smuCmd)
+                try SMCClient.shared.writeUInt8(PowerLimitSpec.keyWatts, UInt8(w))
+                if w == 0 {
+                    emit("OK 已恢复默认功耗墙", printOutput: printOutput)
+                } else {
+                    emit("OK 功耗墙已设为 \(w)W（SMU 消息 0x\(String(PowerLimitSpec.smuCmd, radix: 16))）",
+                         printOutput: printOutput)
+                }
+                return 0
+            } catch {
+                emit("ERR 写 SMC 失败：\(error.localizedDescription)", printOutput: printOutput)
+                return 5
+            }
+
         case "apply-custom":
             // 自定义曲线：由 GUI 写到临时文件，这里以 root 读取并下发
             guard args.count >= 2 else {
@@ -647,7 +677,7 @@ enum CLI {
             }
 
         default:
-            emit("ERR 未知子命令：\(sub)\n用法：fan status | fan list | fan set <档位> | fan apply-custom <json>",
+            emit("ERR 未知子命令：\(sub)\n用法：fan status | fan list | fan set <档位> | fan apply-custom <json> | fan power-limit <瓦数>",
                  printOutput: printOutput)
             return 2
         }
@@ -862,6 +892,7 @@ enum CLI {
           fan list            列出风扇曲线档位（静音/平衡/性能）
           fan set <档位>       下发风扇曲线（需 root）
           fan apply-custom <json>  下发自定义曲线（GUI 生成，需 root）
+          fan power-limit <瓦数|0>  设置功耗墙 15–50W，0=恢复默认（需 root）
           model               显示检测到的机型 / 当前选择 / 匹配状态
           model set <代码>    手动选择机型（不匹配时须加 --i-understand）
           smc list            列出全部 SMC 键

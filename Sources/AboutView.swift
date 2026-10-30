@@ -33,6 +33,8 @@ struct AboutView: View {
     private var whatsNewCard: some View {
         Card {
             VStack(alignment: .leading, spacing: 9) {
+                whatsNewRow("bolt.fill", "新增「功耗墙」档位", "性能页可切换静音 25W / 平衡 30W / 性能 35W / 自定义 15–50W，支持一键恢复默认；命令行 fan power-limit 等价可用。")
+                Divider().opacity(0.35)
                 whatsNewRow("network", "新增「网络」页", "累计统计本次启动的上传 / 下载总量，显示实时速率与网卡接口，可一键重置。")
                 Divider().opacity(0.35)
                 whatsNewRow("display", "新增「高级功能」页", "一键开启 / 还原 HiDPI：写入显示器 Override，只改用户数据区、不动系统卷。")
