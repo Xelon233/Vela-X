@@ -1063,6 +1063,8 @@ struct PerformanceView: View {
     @StateObject private var fan = FanControl.shared
     /// 手动输入机型代码的临时文本
     @State private var manualModel = ""
+    /// 是否展开「判定依据」（各候选机型的得分与命中项）
+    @State private var showEvidence = false
     /// 免责声明弹窗的当前任务（nil = 不显示）。preset 为要应用的档位，nil 表示仅确认
     @State private var disclaimerItem: DisclaimerItem?
 
@@ -1129,23 +1131,25 @@ struct PerformanceView: View {
                         Text("机型")
                             .font(.system(size: 12, weight: .semibold))
                         Spacer(minLength: 6)
-                        // 匹配状态指示
-                        let matched = fan.status == .matched
+                        // 匹配状态指示（三态：匹配 / 没能自动识别 / 不匹配）
                         HStack(spacing: 4) {
-                            Circle().fill(matched ? Palette.ok : Palette.bad)
+                            Circle().fill(modelStatusColor(fan.status))
                                 .frame(width: 6, height: 6)
-                            Text(matched ? "机型匹配" : "机型不匹配")
+                            Text(modelStatusLabel(fan.status))
                                 .font(.system(size: 9.5, weight: .medium))
-                                .foregroundStyle(matched ? Palette.ok : Palette.bad)
+                                .foregroundStyle(modelStatusColor(fan.status))
                         }
-                        // 快速选择菜单（检测到的机型 + 已收录机型族）
+                        // 快速选择菜单（判定出的机型 + 已收录机型族）
                         Menu {
-                            Button {
-                                fan.selectModel(fan.detected.detectedCode)
-                            } label: {
-                                Label("使用检测到的机型（推荐）", systemImage: "checkmark.circle")
+                            if fan.detection.confidence != .none {
+                                Button {
+                                    fan.selectModel(fan.detection.code)
+                                } label: {
+                                    Label("使用判定的机型 \(fan.detection.code)（推荐）",
+                                          systemImage: "checkmark.circle")
+                                }
+                                Divider()
                             }
-                            Divider()
                             ForEach(ECProfiles.catalog, id: \.id) { p in
                                 Button {
                                     fan.selectModel(p.modelCodes.first ?? p.familyName)
@@ -1168,17 +1172,80 @@ struct PerformanceView: View {
                         .buttonStyle(.plain)
                     }
 
-                    // 检测到的硬件 + 来源
+                    // 判定出的机型 + 置信度
                     HStack(spacing: 4) {
-                        Text("检测到")
+                        Text(fan.detection.confidence == .none ? "未能识别" : "判定")
                             .font(.system(size: 10))
                             .foregroundStyle(Palette.textTertiary)
-                        Text("\(fan.detected.detectedCode)（\(fan.detected.detectedName)）")
+                        Text(fan.detection.confidence == .none
+                             ? "本机硬件指纹不匹配任何已收录机型"
+                             : "\(fan.detection.code)（\(fan.detection.name)）")
                             .font(.system(size: 10.5, weight: .medium))
                             .foregroundStyle(Palette.textSecondary)
-                        Text("· \(fan.detected.source)")
+                        if fan.detection.confidence != .none {
+                            Text("· \(fan.detection.confidence.label)")
+                                .font(.system(size: 9.5))
+                                .foregroundStyle(Palette.textTertiary)
+                        }
+                    }
+
+                    // 硬件指纹（判定依据的原始数据）
+                    if !fan.detection.evidenceLine.isEmpty {
+                        Text(fan.detection.evidenceLine)
                             .font(.system(size: 9.5))
                             .foregroundStyle(Palette.textTertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    // 电池部件号：明确说明它不作数，免得机主以为「程序认错机型了」
+                    if let part = fan.detection.fingerprint.batteryName {
+                        Text("电池部件号 \(part)：多机型共用，不作判定依据")
+                            .font(.system(size: 9.5))
+                            .foregroundStyle(Palette.textTertiary)
+                    }
+
+                    // 展开每个候选机型的命中项
+                    Button {
+                        showEvidence.toggle()
+                    } label: {
+                        HStack(spacing: 3) {
+                            Text(showEvidence ? "收起判定依据" : "查看判定依据")
+                                .font(.system(size: 9.5, weight: .medium))
+                            Image(systemName: showEvidence ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 8))
+                        }
+                        .foregroundStyle(Palette.accent)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    if showEvidence {
+                        VStack(alignment: .leading, spacing: 5) {
+                            if fan.detection.scores.isEmpty {
+                                Text("没有任何已收录机型命中本机硬件。请对照机身底部或包装箱上的型号手动选择。")
+                                    .font(.system(size: 9.5))
+                                    .foregroundStyle(Palette.warn)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            } else {
+                                ForEach(fan.detection.scores, id: \.profile.id) { s in
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("\(s.profile.modelCodes.first ?? s.profile.familyName) · \(s.points) 分")
+                                            .font(.system(size: 10, weight: .medium))
+                                            .foregroundStyle(Palette.textSecondary)
+                                        ForEach(s.reasons, id: \.self) { r in
+                                            Text("· \(r)")
+                                                .font(.system(size: 9.5))
+                                                .foregroundStyle(Palette.textTertiary)
+                                        }
+                                    }
+                                }
+                            }
+                            Text("判定不看 SMBIOS（黑苹果下已被换成 Mac），也不看电池部件号。")
+                                .font(.system(size: 9.5))
+                                .foregroundStyle(Palette.textTertiary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.leading, 2)
                     }
 
                     // 手动输入机型（按型号名）
@@ -1297,7 +1364,7 @@ struct PerformanceView: View {
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(Palette.bad)
                         }
-                        Text("你选择的「\(fan.selectedCode)」与检测到的硬件「\(fan.detected.detectedCode)」不一致。风扇曲线和 EC 配置是按特定机型逆向的，套错机型可能让风扇停转或狂转，导致过热甚至永久损坏。每次应用曲线前都必须先确认风险。")
+                        Text("你选择的「\(fan.selectedCode)」与本机判定出的「\(fan.detection.code)」不一致（判定依据：\(fan.detection.evidenceLine)）。风扇曲线和 EC 配置是按特定机型逆向的，套错机型可能让风扇停转或狂转，导致过热甚至永久损坏。每次应用曲线前都必须先确认风险。")
                             .font(.system(size: 10.5))
                             .foregroundStyle(Palette.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -1320,6 +1387,37 @@ struct PerformanceView: View {
                                 .font(.system(size: 10))
                                 .foregroundStyle(Palette.ok)
                         }
+                    }
+                }
+            }
+
+            // 没能自动识别机型 → 提示先核对型号（同样要求确认一次，因为无从核对）
+            if fan.status == .undetected, !fan.acknowledgedMismatch {
+                Card {
+                    VStack(alignment: .leading, spacing: 9) {
+                        HStack(spacing: 7) {
+                            Image(systemName: "questionmark.circle.fill")
+                                .foregroundStyle(Palette.warn).font(.system(size: 14))
+                            Text("机型未能自动识别")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Palette.warn)
+                        }
+                        Text("本机硬件指纹（\(fan.detection.evidenceLine)）没有匹配到任何已收录机型，无法核对你选的「\(fan.selectedCode)」。曲线和 EC 配置是按特定机型逆向的，机型不对可能损坏硬件：请对照机身底部或包装箱上的型号核对后，再点下面的按钮确认。")
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(Palette.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button {
+                            disclaimerItem = DisclaimerItem(preset: nil)
+                        } label: {
+                            Text("核对并确认机型")
+                                .font(.system(size: 10.5, weight: .medium))
+                                .padding(.horizontal, 11).padding(.vertical, 5)
+                                .background(Capsule().fill(Palette.warn.opacity(0.15)))
+                                .overlay(Capsule().stroke(Palette.warn.opacity(0.4), lineWidth: 0.8))
+                                .foregroundStyle(Palette.warn)
+                                .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -1355,14 +1453,18 @@ struct PerformanceView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(Palette.bad).font(.system(size: 22))
-                    Text(ModelDisclaimer.title)
+                    Text(fan.status == .mismatched
+                         ? ModelDisclaimer.title
+                         : ModelDisclaimer.titleUndetected)
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(Palette.bad)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 ScrollView {
-                    Text(ModelDisclaimer.body(selected: fan.selectedCode,
-                                             detected: fan.detected.detectedCode))
+                    Text(fan.status == .mismatched
+                         ? ModelDisclaimer.body(selected: fan.selectedCode,
+                                                detected: fan.detection.code)
+                         : ModelDisclaimer.bodyUndetected(selected: fan.selectedCode))
                         .font(.system(size: 12))
                         .foregroundStyle(Palette.text)
                         .lineSpacing(3)
@@ -1393,6 +1495,22 @@ struct PerformanceView: View {
             }
             .padding(20)
             .frame(width: 430)
+        }
+    }
+
+    private func modelStatusColor(_ s: ModelMatch) -> Color {
+        switch s {
+        case .matched: return Palette.ok
+        case .undetected: return Palette.warn
+        case .mismatched: return Palette.bad
+        }
+    }
+
+    private func modelStatusLabel(_ s: ModelMatch) -> String {
+        switch s {
+        case .matched: return "机型匹配"
+        case .undetected: return "机型待确认"
+        case .mismatched: return "机型不匹配"
         }
     }
 

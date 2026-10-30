@@ -5,6 +5,7 @@
 
 import Foundation
 import IOKit
+import CoreGraphics
 
 // MARK: - 数据结构
 
@@ -111,6 +112,38 @@ struct BatteryInfo {
     }
 
     var maxWh: Double { Double(maxCapacity) * 15.4 / 1000.0 }
+    /// 出厂设计容量（Wh）。指纹识别只认这个值：maxWh 会随电池老化下降，不能拿来对比机型规格
+    var designWh: Double { Double(designCapacity) * 15.4 / 1000.0 }
+}
+
+// MARK: - 硬件指纹（机型识别用）
+
+/// 一台机器「实际长什么样」。
+///
+/// 背景：黑苹果下 OpenCore 把 SMBIOS 整套换成 Mac，`hw.model` 永远是 MacBookPro16,4 之类；
+/// 而电池上报的 `DeviceName` 是**电池部件号**（同一块电池会装在多款机器上），
+/// 实测魔霸6 与魔霸7 Plus 都报 GA50358 —— 它只能当线索，不能当结论。
+/// 真正能区分机型的是 CPU 代号 + 独显世代 + 电池容量 + 屏幕规格。
+struct HardwareFingerprint {
+    var vendor = ""
+    /// 完整 CPU 品牌串，如 "AMD Ryzen 9 6900HX with Radeon Graphics"
+    var cpu = ""
+    /// 从品牌串里抠出的型号代号，如 "6900HX"。
+    /// 用代号而不是整串比较，是因为 **HS / H / HX 后缀本身就是机型分界线**：
+    /// 幻15 用 6900HS，魔霸6 用 6900HX/6800H，魔霸7 Plus 用 7945HX。
+    var cpuCode = ""
+    var gpus: [String] = []
+    /// 出厂电池容量（Wh），0 = 读不到
+    var batteryWh: Double = 0
+    /// 电池上报的部件号（弱证据，只展示不判定）
+    var batteryName: String?
+    /// 主屏描述，如 "3360×1890 @165Hz"
+    var screen: String?
+    /// 主屏长边像素（区分 1080p / 1440p / 4K 档）
+    var screenPixels = 0
+    var ramGB: Double = 0
+    /// 被 OpenCore 覆盖后的 SMBIOS 型号，只用来提示「这个值不可信」
+    var smbiosModel = ""
 }
 
 struct KextState {
@@ -145,10 +178,11 @@ enum SystemProbe {
         let v = ProcessInfo.processInfo.operatingSystemVersion
         info.osVersion = "macOS \(v.majorVersion).\(v.minorVersion).\(v.patchVersion)"
 
-        // 型号线索统一走 MachineModel.detect()（EC/电池 DeviceName，避开 OpenCore 的 SMBIOS 覆盖）
-        let machine = MachineModel.detect()
-        info.modelCode = machine.detectedCode
-        info.modelName = friendlyModel(info.modelCode)
+        // 机型判定走硬件指纹（CPU 代号 + 独显 + 电池 + 屏幕）：
+        // 既避开 OpenCore 覆盖的 SMBIOS，也不再信电池 DeviceName（那是电池部件号，多机型共用）
+        let detection = ModelDetector.detect()
+        info.modelCode = detection.code
+        info.modelName = detection.code == "UNKNOWN" ? "未识别机型" : friendlyModel(detection.code)
         applyProductName(to: &info)
 
         // 厂商信息（OpenCore 通常保留 ASUSTeK）
@@ -165,6 +199,14 @@ enum SystemProbe {
         let override = (Prefs.string(ModelCatalog.overrideKey) ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let entry = ModelCatalog.lookup(info.modelCode)
+
+        // 指纹没匹配上任何已收录机型：不猜，直接说没认出来（手动设置仍优先）
+        if info.modelCode == "UNKNOWN", override.isEmpty {
+            info.productName = "未识别机型"
+            info.globalName = ""
+            info.nameSource = "型号未收录"
+            return
+        }
 
         if !override.isEmpty {
             info.productName = override
@@ -197,6 +239,7 @@ enum SystemProbe {
             "G513": "ROG Strix G15",
             "G533": "ROG Strix G17",
             "G713": "ROG Strix G17 (2022)",
+            "G713P": "ROG Strix G17 (2023)",
             "G733": "ROG Strix G17",
             "GU603": "ROG Zephyrus M16",
             "GV301": "ROG Flow X13",
@@ -234,6 +277,63 @@ enum SystemProbe {
             b.charge = Int(Double(cur) / Double(b.maxCapacity) * 100)
         }
         return b
+    }
+
+    // MARK: - 硬件指纹采集
+
+    /// 采集用于机型判定的硬件指纹（只读，走 sysctl / IORegistry / CoreGraphics，几毫秒级）
+    static func fingerprint() -> HardwareFingerprint {
+        var f = HardwareFingerprint()
+        // IORegistry / sysctl 出来的字符串常带尾随的空格或 \0，先清干净再拿去比较
+        f.cpu = clean(sysctlString("machdep.cpu.brand_string") ?? "")
+        f.cpuCode = cpuCode(from: f.cpu)
+        f.ramGB = Double(ProcessInfo.processInfo.physicalMemory) / 1024 / 1024 / 1024
+        f.vendor = clean(ioregString("IOPlatformExpertDevice", "manufacturer") ?? "")
+        f.smbiosModel = clean(sysctlString("hw.model") ?? "")
+        f.gpus = listGPUs().map { clean($0.name) }
+
+        let b = battery()
+        f.batteryWh = b.designWh
+        if let props = ioregProperties("AppleSmartBattery") {
+            let n = props["DeviceName"] as? String
+            f.batteryName = (n?.isEmpty ?? true) ? nil : n
+        }
+        if let s = mainScreen() {
+            f.screen = s.text
+            f.screenPixels = s.longSide
+        }
+        return f
+    }
+
+    /// IORegistry 和 sysctl 的字符串常带尾随空格或 \0，比较前清掉
+    private static func clean(_ s: String) -> String {
+        s.replacingOccurrences(of: "\0", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// 从 CPU 品牌串里抠型号代号："AMD Ryzen 9 6900HX with Radeon Graphics" → "6900HX"
+    ///
+    /// 取代号而不是整串，是因为后缀本身就是机型分界线：
+    /// 幻15 = 6900HS，魔霸6 = 6900HX / 6800H，魔霸7 Plus = 7945HX。
+    /// 用 "6800H" 做子串包含会误吃 "6800HS"，所以判定时做精确相等比较。
+    static func cpuCode(from brand: String) -> String {
+        let pattern = "\\b(\\d{4}[A-Za-z]{1,3})\\b"
+        guard let re = try? NSRegularExpression(pattern: pattern),
+              let m = re.firstMatch(in: brand, range: NSRange(brand.startIndex..., in: brand)),
+              let r = Range(m.range(at: 1), in: brand) else { return "" }
+        return String(brand[r]).uppercased()
+    }
+
+    /// 主屏物理像素与刷新率（CLI 在无图形会话时可能拿不到，返回 nil）
+    static func mainScreen() -> (text: String, longSide: Int)? {
+        let id = CGMainDisplayID()
+        guard id != 0, let mode = CGDisplayCopyDisplayMode(id) else { return nil }
+        let w = mode.pixelWidth
+        let h = mode.pixelHeight
+        guard w > 0, h > 0 else { return nil }
+        let rate = mode.refreshRate
+        let text = rate > 0 ? "\(w)×\(h) @\(Int(rate.rounded()))Hz" : "\(w)×\(h)"
+        return (text, max(w, h))
     }
 
     /// kmutil showloaded 输出（缓存，一次启动只跑一次）

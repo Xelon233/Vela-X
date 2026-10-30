@@ -4,7 +4,7 @@
 > 性能模式、风扇曲线、键盘背光与 Aura 灯效、传感器监控、菜单栏多指标、NVIDIA 驱动管理，  
 > 全部跑在原生 SwiftUI + Liquid Glass 界面里。
 
-- 版本：**1.1.0**（build 7）
+- 版本：**1.4.0**（build 10）
 - 界面：macOS 26 Liquid Glass（透明窗 + behindWindow 玻璃 + 26pt 窗口圆角）
 - 最低系统：**macOS 13.0**（Liquid Glass 效果在 macOS 26 上最完整）
 - 架构：Universal（x86_64 + arm64）
@@ -94,34 +94,51 @@ sudo vela fan set silent|balanced|performance   # 下发曲线（写 SMC 需 roo
 不同机型的 EC（嵌入式控制器）布局不同——MMIO 地址、邮箱寄存器、曲线格式、风扇数量都不一样。
 **把 A 机型的曲线写进 B 机型，可能损坏硬件。** 所以程序会先做机型识别，并在不一致时强制确认。
 
-程序从 EC / 电池上报的 `DeviceName` 读取真实 ASUS 型号代码（如 `GA50358`），OpenCore 的 SMBIOS
-伪装不会覆盖它。识别结果分三档，显示在「性能与风扇」页顶部的机型卡上：
+程序用**硬件指纹**判定机型：CPU 型号代号 + 独显世代 + 出厂电池容量 + 主屏规格，
+四条证据逐项打分（CPU 代号 50 分、独显 30 分、电池 12 分、屏幕 8 分），取最高分机型并给出置信度。
+
+为什么不是读 `DeviceName`：OpenCore 会把 SMBIOS 整套换成 Mac（`hw.model` 恒为 `MacBookPro16,4`
+之类），看起来最可靠的「电池 `DeviceName`」其实是**电池部件号** —— 同一块电池装在多款机器上，
+实测魔霸6（G513RM）和魔霸7 Plus（G713PV）都报 `GA50358`。所以它只作为附注显示，不参与判定。
+
+CPU 代号之所以是最强证据，是因为华硕的 CPU 后缀就是产品线分界线：
+
+| 产品线 | CPU 代号 | 独显 |
+|---|---|---|
+| 幻15 GA503（2022） | `6900HS` / `5900HS`（**HS**） | RTX 30 |
+| 魔霸6 G513（2022） | `6900HX` / `6800H`（**H / HX**） | RTX 30 |
+| 魔霸7 Plus G713P（2023） | `7945HX` / `7845HX`（Dragon Range） | RTX 40 |
+
+判定结果分三档，显示在「性能与风扇」页顶部的机型卡上（可展开「查看判定依据」逐条核对）：
 
 | 状态 | 含义 | 能否下发曲线 |
 |---|---|---|
-| ✅ **机型匹配** | 检测到的机型与所选 EC 配置一致（或属于同一机型族） | 可以直接下发 |
-| ⚠️ **未收录机型** | 检测到的机型不在已知目录里，沿用默认配置 | 可以下发，但需知悉风险 |
-| ⛔ **机型不匹配** | 检测到的机型与所选配置不是同一族 | **必须先确认免责声明** |
+| ✅ **机型匹配** | 所选机型与判定结果一致 | 可以直接下发 |
+| ⚠️ **机型待确认** | 指纹没匹配到任何已收录机型，无从核对所选机型 | 需核对型号并确认一次 |
+| ⛔ **机型不匹配** | 所选机型与判定结果不一致（中/高置信度） | **必须先确认免责声明** |
+
+> 低置信度或压根没认出来时**不会**拦你 —— 没有证据，就不该拿免责声明吓人。
 
 **机主可以手动选择机型**（按 model 名，例如 `G513RM`）：机型卡上有已知机型菜单，
-也可以直接输入型号代码。一旦所选机型与检测到的硬件**不属于同一机型族**，页面会显示红色警告卡，
+也可以直接输入型号代码。所选机型与判定结果不一致时，页面会显示红色警告卡，
 点「查看风险并继续」后弹出免责声明，逐条说明可能的后果（风扇失控、EC 锁死、散热失效导致
 CPU/GPU 过热降频甚至永久损坏、电池与供电异常、保修失效），**必须显式确认才允许下发曲线**。
 
 命令行同源：
 
 ```bash
-vela model                     # 显示检测到的机型、所选机型、匹配状态、EC 配置
-vela model set G513RM          # 手动选择机型（不匹配时会打印免责声明并拒绝）
-vela model set G513RM --i-understand   # 不匹配但确认风险，强制写入
-vela model clear               # 清除手动选择，回到自动检测
+vela model                     # 显示硬件指纹、判定机型、置信度、候选得分、匹配状态
+vela model probe               # 打印完整指纹与逐条判定依据（反馈新机型时贴这个）
+vela model set G513RM          # 手动选择机型（未获确认时会打印免责声明并拒绝）
+vela model set G513RM --i-understand   # 未获确认但确认风险，强制写入
+vela model clear               # 清除手动选择，回到自动判定
 ```
 
 ### 已收录机型
 
 | 机型代码 | 机型 | EC | 曲线可信度 |
 |---|---|---|---|
-| `G513RM` `G513` `GA50358` `GA503Q` `GA503` | ROG Strix G15 / 幻15 (2022) | ITE IT5571 · `TI5825_G513_1027` | ✅ 实机已验证 |
+| `G513RM` `G513RS` `G513RW` `G513` | ROG Strix G15 / **魔霸6** (2022) | ITE IT5571 · `TI5825_G513_1027` | ✅ 实机已验证 |
 | `G713PV` `G713PI` `G713PY` `G713P` | ROG Strix G17 / **魔霸7 Plus** (2023) | ITE IT5571 · `ITE EC-V14.6` | ⚠️ 逆向未实机验证 |
 
 **「机型能对上」不等于「曲线在这台机器上跑过」**，所以每个机型还带一个 `verification` 标记：
@@ -131,8 +148,8 @@ vela model clear               # 清除手动选择，回到自动检测
   界面与 CLI 都会显示黄色提示，要求先做只读验证（能读到转速且随负载变化），
   再下发曲线并观察转速是否真的响应
 
-给新机型加支持，往 `Sources/ECProfiles.swift` 的 `catalog` 加一条，曲线放到
-`Resources/fan_presets-<MODEL>.json`（`build.sh` 会带进 bundle），其它代码不用动：
+给新机型加支持，往 `Sources/ECProfiles.swift` 的 `catalog` 加一条（含 `fingerprint`），
+曲线放到 `Resources/fan_presets-<MODEL>.json`（`build.sh` 会带进 bundle），其它代码不用动：
 
 ```swift
 ECProfile(
@@ -145,7 +162,14 @@ ECProfile(
     mmio: ["it55": "0xFE700600", "mb00": "0xFE700B00", "mc00": "0xFE700C00"],
     note: "...",
     source: "内置",
-    verification: .reverseEngineered      // 没有实机验证过就别写成 .verifiedOnDevice
+    verification: .reverseEngineered,     // 没有实机验证过就别写成 .verifiedOnDevice
+    fingerprint: ModelFingerprint(
+        // cpuCodes 是**精确相等**比较，别写成子串包含：那会让 "6800H" 误吃幻15 的 "6800HS"
+        cpuCodes: ["7945HX", "7845HX", "7745HX"],
+        gpuHints: ["RTX 4060", "RTX 4070", "RTX 4080"],
+        batteryWh: 84...96,
+        minScreenPixels: 2560
+    )
 )
 ```
 
@@ -158,7 +182,7 @@ ECProfile(
 
 ### 确认实际用的是哪份曲线
 
-多机型共存时，**三档曲线的数值可能完全一样**（例如魔霸7 Plus 沿用了幻15 的实测值），
+多机型共存时，**三档曲线的数值可能完全一样**（例如魔霸7 Plus 沿用了魔霸6 G513RM 的实测值），
 光看数值分辨不出加载了哪份文件。`vela fan list` 会打印来源：
 
 ```bash

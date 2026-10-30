@@ -6,9 +6,10 @@
 //  以及 F0Ac / F1Ac 两个转速键。
 //
 //  机型识别：
-//    不同机型的 EC 配置不同，所以这里先认出真实机型（MachineModel.detect），
-//    再按机主选择的机型加载对应曲线。机主可以手动选机型（按型号名），
-//    但一旦所选机型与检测到的硬件不一致，写曲线前必须先确认「硬件损坏风险」免责声明。
+//    不同机型的 EC 配置不同，所以先用硬件指纹（CPU 代号 + 独显 + 电池 + 屏幕）判定机型
+//    （ModelDetector.detect，见 ECProfiles.swift），再按机主选择的机型加载对应曲线。
+//    机主可以手动选机型（按型号名），但所选机型与判定结果不一致、或压根没认出机型时，
+//    写曲线前必须先确认「硬件损坏风险」免责声明。
 //
 //  权限边界：
 //    · 读转速、判断 kext 是否在跑 —— 普通用户即可（本页每 2 秒刷一次）
@@ -32,15 +33,20 @@ final class FanControl: ObservableObject {
 
     // MARK: 机型
 
-    /// 检测到的真实机型（EC/电池 DeviceName）
-    let detected = MachineModel.detect()
+    /// 判定出的机型（硬件指纹：CPU 代号 + 独显 + 电池 + 屏幕），含证据与置信度。
+    ///
+    /// 早先这里读的是电池 DeviceName，结果魔霸6 和魔霸7 Plus 都被认成 GA50358
+    /// —— 那是电池部件号，多机型共用，不能当机型用。
+    let detection = ModelDetector.detect()
 
-    /// 机主选择的机型代码（默认 = 检测到的；可手动覆盖）
+    /// 机主选择的机型代码（默认 = 判定的；可手动覆盖）
     @Published private(set) var selectedCode: String
-    /// 匹配状态：选中 == 检测到 → matched；否则 mismatched
+    /// 匹配状态
     var status: ModelMatch {
-        selectedCode.trimmingCharacters(in: .whitespaces).uppercased()
-            == detected.detectedCode.trimmingCharacters(in: .whitespaces).uppercased()
+        // 证据不足（没认出机型）时，没有依据去质疑机主手动选的机型
+        guard detection.confidence.isTrustworthy else { return .undetected }
+        return selectedCode.trimmingCharacters(in: .whitespaces).uppercased()
+            == detection.code.trimmingCharacters(in: .whitespaces).uppercased()
             ? .matched : .mismatched
     }
     /// 所选机型对应的已知 EC 配置（可能为空 = 未收录）
@@ -81,7 +87,13 @@ final class FanControl: ObservableObject {
     }
 
     private init() {
-        selectedCode = (Prefs.string(modelOverrideKey) ?? detected.detectedCode)
+        // 迁移：旧版本把电池部件号（GA50358 之类）当机型存进过偏好。
+        // 现在判定改用硬件指纹，那个值会平白造成「机型不匹配」，清掉它。
+        if let saved = Prefs.string(modelOverrideKey), MachineModel.isLegacyBatteryCode(saved) {
+            Prefs.set(nil as String?, for: modelOverrideKey)
+            Prefs.set(false, for: mismatchAckKey)
+        }
+        selectedCode = (Prefs.string(modelOverrideKey) ?? detection.code)
             .trimmingCharacters(in: .whitespaces)
         acknowledgedMismatch = Prefs.bool(mismatchAckKey)
         lastApplied = Prefs.string(presetKey) ?? FanControl.toolStatePreset
@@ -111,9 +123,9 @@ final class FanControl: ObservableObject {
         Prefs.set(false, for: mismatchAckKey)
         reloadPresets()
         if status == .mismatched {
-            message = ModelDisclaimer.short(selected: selectedCode, detected: detected.detectedCode)
+            message = ModelDisclaimer.short(selected: selectedCode, detected: detection.code)
         } else {
-            message = "已切换到检测到的机型 \(selectedCode)，曲线随之更新"
+            message = "已切换到 \(selectedCode)，曲线随之更新"
         }
         refresh()
     }
@@ -143,9 +155,12 @@ final class FanControl: ObservableObject {
     func apply(_ name: String) {
         guard applying == nil else { return }
 
-        // 机型不匹配且尚未确认风险 → 拒绝，提示先确认（UI 负责弹免责声明）
-        if status == .mismatched, !acknowledgedMismatch {
-            message = ModelDisclaimer.short(selected: selectedCode, detected: detected.detectedCode)
+        // 机型不匹配、或压根没认出机型（选的机型无从核对）且尚未确认风险 → 拒绝，
+        // 提示先确认（UI 负责弹免责声明）
+        if status != .matched, !acknowledgedMismatch {
+            message = status == .mismatched
+                ? ModelDisclaimer.short(selected: selectedCode, detected: detection.code)
+                : ModelDisclaimer.shortUndetected(selected: selectedCode)
             return
         }
 

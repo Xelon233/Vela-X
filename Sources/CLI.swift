@@ -354,19 +354,54 @@ enum CLI {
     // MARK: - 机型识别（安全相关：机型不匹配可能损坏硬件）
 
     /// 机型识别与 EC 配置选择。
-    ///   vela model              显示检测到的机型、当前选择、匹配状态、EC 配置
-    ///   vela model set <代码>   选择机型；与检测到的硬件不匹配时必须加 --i-understand
-    ///   vela model clear        清除覆盖，恢复使用检测到的机型
+    ///   vela model              显示硬件指纹、判定出的机型、当前选择、匹配状态、EC 配置
+    ///   vela model probe        只打印原始指纹（排查识别问题 / 反馈新机型用）
+    ///   vela model set <代码>   选择机型；与判定出的机型不一致时必须加 --i-understand
+    ///   vela model clear        清除覆盖，恢复使用判定的机型
     private static func modelCommand(_ args: [String], printOutput: Bool) -> Int32 {
-        let detected = MachineModel.detect()
+        let detection = ModelDetector.detect()
         let override = Prefs.string("fan.modelOverride")
-        let selected = (override ?? detected.detectedCode).trimmingCharacters(in: .whitespaces)
-        let matched = selected.uppercased() == detected.detectedCode.uppercased()
+        // 迁移：旧版本存过电池部件号（GA50358）当机型，这里同样不认它
+        var effectiveOverride = override
+        if let o = override, MachineModel.isLegacyBatteryCode(o) {
+            effectiveOverride = nil
+            Prefs.set(nil as String?, for: "fan.modelOverride")
+            Prefs.set(false, for: "fan.mismatchAck")
+        }
+        let selected = (effectiveOverride ?? detection.code).trimmingCharacters(in: .whitespaces)
         let (profile, level) = ECProfiles.match(selected)
 
         let sub = args.first ?? ""
 
         switch sub {
+        case "probe":
+            var lines = ["硬件指纹（机型判定的原始输入）："]
+            lines.append("  CPU         \(detection.fingerprint.cpu)")
+            lines.append("  CPU 代号    \(detection.fingerprint.cpuCode.isEmpty ? "—（没抠出来）" : detection.fingerprint.cpuCode)")
+            lines.append("  显卡        \(detection.fingerprint.gpus.isEmpty ? "—" : detection.fingerprint.gpus.joined(separator: " / "))")
+            lines.append("  电池        \(Int(detection.fingerprint.batteryWh.rounded()))Wh（出厂设计容量）")
+            if let n = detection.fingerprint.batteryName {
+                lines.append("  电池部件号  \(n)（多机型共用，不作判定依据）")
+            }
+            if let s = detection.fingerprint.screen {
+                lines.append("  主屏        \(s)")
+            }
+            lines.append("  内存        \(Int(detection.fingerprint.ramGB.rounded()))GB")
+            lines.append("  厂商        \(detection.fingerprint.vendor.isEmpty ? "—" : detection.fingerprint.vendor)")
+            lines.append("  SMBIOS      \(detection.fingerprint.smbiosModel)（OpenCore 覆盖过，不可信）")
+            lines.append("")
+            lines.append("判定结果：\(detection.code)（\(detection.name)）· \(detection.confidence.label)")
+            if detection.scores.isEmpty {
+                lines.append("没有任何已收录机型命中本机指纹。")
+            } else {
+                for s in detection.scores {
+                    lines.append("  \(s.profile.modelCodes.first ?? s.profile.familyName) · \(s.points) 分")
+                    for r in s.reasons { lines.append("      · \(r)") }
+                }
+            }
+            emit(lines.joined(separator: "\n"), printOutput: printOutput)
+            return 0
+
         case "set":
             guard args.count >= 2 else {
                 emit("用法：vela model set <机型代码> [--i-understand]", printOutput: printOutput)
@@ -375,10 +410,14 @@ enum CLI {
             let code = args[1]
             let understand = args.contains("--i-understand")
             let nowMatched = code.trimmingCharacters(in: .whitespaces).uppercased()
-                == detected.detectedCode.uppercased()
+                == detection.code.uppercased()
             if !nowMatched, !understand {
-                emit(ModelDisclaimer.body(selected: code, detected: detected.detectedCode), printOutput: printOutput)
-                emit("\n⚠️ 机型不匹配。确认风险后加 --i-understand 再执行：", printOutput: printOutput)
+                if detection.confidence.isTrustworthy {
+                    emit(ModelDisclaimer.body(selected: code, detected: detection.code), printOutput: printOutput)
+                } else {
+                    emit(ModelDisclaimer.bodyUndetected(selected: code), printOutput: printOutput)
+                }
+                emit("\n⚠️ 机型未获确认。确认风险后加 --i-understand 再执行：", printOutput: printOutput)
                 emit("    vela model set \(code) --i-understand", printOutput: printOutput)
                 return 2
             }
@@ -390,31 +429,40 @@ enum CLI {
         case "clear", "reset":
             Prefs.set(nil as String?, for: "fan.modelOverride")
             Prefs.set(false, for: "fan.mismatchAck")
-            emit("已清除机型覆盖，恢复使用检测到的 \(detected.detectedCode)。", printOutput: printOutput)
+            emit("已清除机型覆盖，恢复使用判定的 \(detection.code)。", printOutput: printOutput)
             return 0
 
         default:
+            let matched = detection.confidence.isTrustworthy
+                && selected.uppercased() == detection.code.uppercased()
             var lines = [
-                "检测到机型   \(detected.detectedCode)（\(detected.detectedName)）",
-                "检测来源     \(detected.source)",
+                "硬件指纹     \(detection.evidenceLine)",
+                "判定机型     \(detection.code)（\(detection.name)）· \(detection.confidence.label)",
                 "当前选择     \(selected)",
-                "匹配状态     \(matched ? "匹配" : "不匹配 ⚠️")",
+                "匹配状态     \(matched ? "匹配" : (detection.confidence.isTrustworthy ? "不匹配 ⚠️" : "未能自动识别，需手动核对"))",
                 "EC 配置      " + (profile.map { "\($0.ecChip) · \($0.ecFirmware)" }
                                  ?? "未收录（无对应曲线，应用需谨慎）")
             ]
+            for s in detection.scores {
+                lines.append("候选         \(s.profile.modelCodes.first ?? s.profile.familyName) \(s.points) 分：\(s.reasons.joined(separator: "、"))")
+            }
             if let p = profile {
                 lines.append("收录级别     \(level == .verified ? "精确匹配" : "家族兼容（未本机验证）")")
                 lines.append("曲线可信度   \(p.verification.label)")
             }
             if !matched {
                 lines.append("")
-                lines.append(ModelDisclaimer.short(selected: selected, detected: detected.detectedCode))
+                lines.append(detection.confidence.isTrustworthy
+                             ? ModelDisclaimer.short(selected: selected, detected: detection.code)
+                             : ModelDisclaimer.shortUndetected(selected: selected))
             }
             // 逆向未实机验证的机型：把验证步骤打出来，别让人直接下发
             if let caveat = profile?.verification.caveat {
                 lines.append("")
                 lines.append(caveat)
             }
+            lines.append("")
+            lines.append("（vela model probe 可查看完整指纹与逐条判定依据）")
             emit(lines.joined(separator: "\n"), printOutput: printOutput)
             return 0
         }
@@ -431,9 +479,12 @@ enum CLI {
         /// 必须与 FanControl 的解析逻辑一致，否则 CLI 会静默用错机型的曲线
         /// （多机型共存时数值可能完全一样，看输出分辨不出来）。
         func currentModel() -> String {
-            let override = Prefs.string("fan.modelOverride")
-            return (override ?? MachineModel.detect().detectedCode)
-                .trimmingCharacters(in: .whitespaces)
+            let detection = ModelDetector.detect().code
+            // 旧版本存过电池部件号（GA50358）当机型，那种值不认，回落到指纹判定
+            if let o = Prefs.string("fan.modelOverride"), !MachineModel.isLegacyBatteryCode(o) {
+                return o.trimmingCharacters(in: .whitespaces)
+            }
+            return detection
         }
 
         func loadPresets() -> FanPresets? {
