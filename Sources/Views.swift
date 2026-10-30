@@ -785,21 +785,17 @@ struct OverviewView: View {
             VStack(alignment: .leading, spacing: 4) {
                 SectionTitle(text: "风扇", trailing: store.fanAvailable ? "实时" : "不可用",
                              color: Palette.teal)
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(store.fanAvailable ? (store.fanRPM.map { String(format: "%.0f", $0) } ?? "—") : "—")
-                        .font(.system(size: 25, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(store.fanAvailable ? Color.primary : Palette.textSecondary)
-                    Text("RPM")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Palette.textSecondary)
-                    Spacer()
+                HStack(alignment: .firstTextBaseline, spacing: 16) {
+                    fanMetric("CPU", store.fanRPM)
+                    fanMetric("GPU", store.fanRPMGPU)
+                    Spacer(minLength: 0)
                     Image(systemName: store.fanAvailable ? "fanblades.fill" : "fanblades")
                         .font(.system(size: 11))
                         .foregroundStyle(Palette.textTertiary)
                 }
                 Spacer(minLength: 0)
                 Text(store.fanAvailable
-                     ? "F0Ac 实时转速"
+                     ? "F0Ac / F1Ac 实时转速"
                      : "FNum 报 \(store.fanCount)、F0Ac 恒为 10000，属占位值")
                     .font(.system(size: 10.5))
                     .foregroundStyle(Palette.textSecondary)
@@ -808,6 +804,23 @@ struct OverviewView: View {
             .frame(maxHeight: .infinity, alignment: .top)
         }
         .frame(height: smallCardHeight)
+    }
+
+    /// 风扇卡里的一列：小标题 CPU/GPU + 转速大字
+    private func fanMetric(_ label: String, _ rpm: Double?) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label)
+                .font(.system(size: 9.5))
+                .foregroundStyle(Palette.textTertiary)
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                Text(store.fanAvailable ? (rpm.map { String(format: "%.0f", $0) } ?? "—") : "—")
+                    .font(.system(size: 20, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(store.fanAvailable ? Color.primary : Palette.textSecondary)
+                Text("RPM")
+                    .font(.system(size: 9))
+                    .foregroundStyle(Palette.textTertiary)
+            }
+        }
     }
 
     private var batteryCard: some View {

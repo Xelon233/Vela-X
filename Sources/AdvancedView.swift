@@ -99,18 +99,17 @@ struct AdvancedView: View {
                             .font(.system(size: 10.5))
                             .foregroundStyle(Palette.textTertiary)
                     }
+
+                    Divider().overlay(Palette.hairline).padding(.vertical, 2)
+                    VStack(alignment: .leading, spacing: 5) {
+                        bullet("配置写入 /Library/Displays/Contents/Resources/Overrides，需要管理员授权；取消授权则不做任何改动。")
+                        bullet("开启后到「系统设置 → 显示器」选择新出现的 HiDPI 缩放档位；部分机型需重启后才出现。")
+                        bullet("「关闭 / 还原」会删除本程序为该显示器写入的 Override 文件，恢复默认缩放。")
+                        bullet("若开启后画面异常，可在「恢复模式」或另一台显示器下删除该文件，或在安全模式中还原。")
+                    }
                 }
             }
 
-            SectionTitle(text: "说明")
-            Card(padding: 16) {
-                VStack(alignment: .leading, spacing: 6) {
-                    bullet("配置写入 /Library/Displays/Contents/Resources/Overrides，需要管理员授权；取消授权则不做任何改动。")
-                    bullet("开启后到「系统设置 → 显示器」选择新出现的 HiDPI 缩放档位；部分机型需重启后才出现。")
-                    bullet("「关闭 / 还原」会删除本程序为该显示器写入的 Override 文件，恢复默认缩放。")
-                    bullet("若开启后画面异常，可在「恢复模式」或另一台显示器下删除该文件，或在安全模式中还原。")
-                }
-            }
         }
         .onAppear { reload() }
         .alert("解锁自定义风扇曲线？", isPresented: $showUnlockWarning) {

@@ -60,6 +60,12 @@ enum FanProbe {
         return v
     }
 
+    /// GPU 风扇转速（F1Ac）。待机可能为 0（风扇停转），属正常，所以下限取 0。
+    static var gpuRPM: Double? {
+        guard let v = SMC.read("F1Ac")?.number, v >= 0, v <= 8000 else { return nil }
+        return v
+    }
+
     static var isAvailable: Bool {
         (1...6).contains(count) && rpm != nil
     }

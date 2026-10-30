@@ -20,6 +20,7 @@ struct SampleFrame {
     var at = Date()
     var temp: Double?
     var fanRPM: Double?
+    var fanRPMGPU: Double?
     var fanCount: Int = 0
     var fanOK = false
     var load = SystemLoadSnapshot()
@@ -55,6 +56,7 @@ final class SensorStore: ObservableObject {
     private(set) var freqHistory: [Double] = []
     private(set) var powerHistory: [Double] = []
     private(set) var fanRPM: Double?
+    private(set) var fanRPMGPU: Double?
     private(set) var fanCount = 0
     private(set) var fanAvailable = false
     private(set) var gpuTemp: Double?
@@ -257,6 +259,7 @@ final class SensorStore: ObservableObject {
             frame.fanRPM = rpm
             frame.fanOK = true
         }
+        frame.fanRPMGPU = FanProbe.gpuRPM
 
         frame.load = SystemLoad.sample()
         frame.net = NetSpeed.sample()
@@ -319,6 +322,7 @@ final class SensorStore: ObservableObject {
 
         mixRounded(frame.temp, 10)              // 0.1 °C
         mixRounded(frame.fanRPM, 0.1)           // 10 RPM
+        mixRounded(frame.fanRPMGPU, 0.1)
         mixRounded(frame.load.total, 500)       // 0.5 %
         mixRounded(frame.load.memoryUsedRatio, 500)
         mixRounded(frame.load.swapUsed > 0 ? Double(frame.load.swapUsed) / 1e6 : nil, 10)
@@ -366,10 +370,12 @@ final class SensorStore: ObservableObject {
         if frame.fanCount > 0 { fanCount = frame.fanCount }
         if frame.fanOK {
             fanRPM = frame.fanRPM
+            fanRPMGPU = frame.fanRPMGPU
             fanAvailable = true
         } else if fanAvailable {
             fanAvailable = false
             fanRPM = nil
+            fanRPMGPU = nil
         }
 
         load = frame.load
