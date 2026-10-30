@@ -33,7 +33,7 @@ struct ScrollerAutoHide: NSViewRepresentable {
 }
 
 enum Page: String, CaseIterable, Identifiable {
-    case overview, monitor, menubar, keyboard, performance, nvidia, diagnostics, advanced, settings, about
+    case overview, monitor, menubar, keyboard, performance, nvidia, advanced, diagnostics, settings, about
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -862,31 +862,30 @@ struct OverviewView: View {
         Card(padding: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 SectionTitle(text: "显卡", trailing: GPUProbe.displayName, color: Palette.violet)
-                HStack(alignment: .center, spacing: 8) {
-                    HStack(alignment: .firstTextBaseline, spacing: 3) {
-                        Text(store.gpuUsage.map { String(format: "%.0f", $0) } ?? "—")
-                            .font(.system(size: 25, weight: .semibold).monospacedDigit())
-                            .foregroundStyle(store.gpuUsage != nil ? Palette.accent2 : Palette.textSecondary)
-                        Text("%")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Palette.textSecondary)
-                    }
-                    // 占用率折线放在「占用率」与「温度」之间的空位（Sparkline 无网格）
-                    Sparkline(values: store.gpuHistory,
-                              color: Palette.violet,
-                              lowerBound: 0, upperBound: 100,
-                              filled: false)
-                        .frame(maxWidth: .infinity, minHeight: 34, maxHeight: 34)
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(store.gpuUsage.map { String(format: "%.0f", $0) } ?? "—")
+                        .font(.system(size: 25, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(store.gpuUsage != nil ? Palette.accent2 : Palette.textSecondary)
+                    Text("%")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Palette.textSecondary)
+                    Spacer()
                     if let t = store.gpuTemp {
-                        HStack(spacing: 2) {
+                        HStack(alignment: .firstTextBaseline, spacing: 2) {
                             Image(systemName: "thermometer.sun")
-                                .font(.system(size: 10))
+                                .font(.system(size: 12))
                             Text(String(format: "%.0f°", t))
-                                .font(.system(size: 12, weight: .medium).monospacedDigit())
+                                .font(.system(size: 25, weight: .semibold).monospacedDigit())
                         }
                         .foregroundStyle(Palette.forTemp(t))
                     }
                 }
+                // 占用率折线放到下方；用粉色，避免与其它卡片的曲线撞色
+                Sparkline(values: store.gpuHistory,
+                          color: Palette.pink,
+                          lowerBound: 0, upperBound: 100,
+                          filled: false)
+                    .frame(maxWidth: .infinity, minHeight: 22, maxHeight: 22)
             }
             .frame(maxHeight: .infinity, alignment: .top)
         }

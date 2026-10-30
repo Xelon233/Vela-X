@@ -123,6 +123,10 @@ enum Capabilities {
         let kbdMode = Control.mode
         let fanCount = Double(FanProbe.count)
         let fanUsable = FanProbe.isAvailable
+        // 曲线写入通道存在（kext 暴露了选风扇 + 触发键）→ 可改曲线
+        let fanCurveReady = SMC.exists("AFWg") && SMC.exists("AFMf")
+        // Aura RGB 以「能否打开 Aura HID 控制器」为准
+        let auraReady = AuraEffects.shared.isAvailable
         let hasALS = SMC.exists("ALV0")
         let bat = SystemProbe.battery()
 
@@ -185,9 +189,11 @@ enum Capabilities {
             ),
             Capability(
                 title: "风扇曲线 / 手动转速",
-                status: .unavailable,
-                summary: "ASUS 风扇曲线写的是 EC 寄存器，macOS 用户态没有 EC 通道；必须由 kext 暴露新的 SMC 键",
-                backend: "需要 AsusSMC 扩展（EC 0x?? 寄存器）"
+                status: fanCurveReady ? .available : .unavailable,
+                summary: fanCurveReady
+                    ? "SMCAsusFan.kext 已暴露 AFMf / AFW1–4 / AFWg，可读写 CPU / GPU 风扇曲线"
+                    : "未检测到曲线写入通道（AFWg / AFMf），当前机型只能读转速",
+                backend: "SMCAsusFan.kext → AFMf / AFW1–4 / AFWg"
             ),
             Capability(
                 title: "性能模式（静音/平衡/增强）",
@@ -196,22 +202,12 @@ enum Capabilities {
                 backend: "需要 kext 内部调用 _WDG/WMNB"
             ),
             Capability(
-                title: "显卡模式（独显直连 / Eco）",
-                status: .unavailable,
-                summary: "MUX 切换依赖同一套 ASUS WMI 方法，与显卡驱动是否加载无关；驱动正常也切不了",
-                backend: "需要 kext + MUX 支持"
-            ),
-            Capability(
-                title: "充电上限（60% / 80%）",
-                status: .unavailable,
-                summary: "G-Helper 写 EC 的充电阈值寄存器；AsusSMC 的 Battery Health Charging 只在特定机型 DSDT 上生效，且不可运行期调节",
-                backend: "需要 kext + EC 阈值寄存器"
-            ),
-            Capability(
                 title: "Aura RGB / Anime Matrix",
-                status: .unavailable,
-                summary: "需要 USB HID 直通到键盘/点阵屏控制器；macOS 侧没有对应驱动，内置键盘也只有白光 16 档",
-                backend: "需要 HID 驱动"
+                status: auraReady ? .available : .unavailable,
+                summary: auraReady
+                    ? "Aura HID 控制器已打开，可下发键盘灯效（0x5D 通道）"
+                    : "未找到可用的 Aura HID 控制器（可能需要「输入监控」授权）",
+                backend: "IOHIDManager → ASUS 0x0B05 Aura"
             )
         ]
 
