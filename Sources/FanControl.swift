@@ -197,6 +197,14 @@ final class FanControl: ObservableObject {
         }
     }
 
+    /// 自定义曲线下发成功后调用：把「当前档位」标成 custom，
+    /// 这样三档预设不会再显示「使用中」（否则会出现「预设使用中 + 实际跑自定义」的矛盾）。
+    func noteCustomApplied() {
+        lastApplied = "custom"
+        Prefs.set("custom", for: presetKey)
+        message = "已下发自定义曲线"
+    }
+
     /// UI 在免责弹窗里点了「我已知晓风险并继续」：标记确认风险（后续应用不再拦截）
     func acknowledgeMismatch() {
         acknowledgedMismatch = true

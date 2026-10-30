@@ -1510,8 +1510,8 @@ struct PerformanceView: View {
                 }
             }
 
-            // [VelaX-CustomCurve] 自定义曲线编辑器（删掉这两行即可移除）
-            CustomCurveCard()
+            // [VelaX-CustomCurve] 自定义曲线编辑器（未在「高级功能」解锁时不显示）
+            CustomCurveGate()
 
             // 机型不匹配 → 硬件损坏风险警告（应用曲线前必须先确认）
             if fan.status == .mismatched {
@@ -1676,6 +1676,7 @@ struct PerformanceView: View {
 
     private var currentPresetLabel: String {
         guard let name = fan.lastApplied else { return "未记录" }
+        if name == "custom" { return "自定义曲线" }
         return fan.presets?.preset(name)?.label ?? name
     }
 

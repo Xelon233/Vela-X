@@ -10,6 +10,8 @@ struct AdvancedView: View {
     @State private var busyID: CGDirectDisplayID?
     @State private var message: String?
     @State private var messageIsError = false
+    @ObservedObject private var customCurve = CustomCurveController.shared
+    @State private var showUnlockWarning = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -19,6 +21,43 @@ struct AdvancedView: View {
                 Text("面向进阶用户的系统级调整，操作需要管理员授权，请谨慎使用。")
                     .font(.system(size: 11.5))
                     .foregroundStyle(Palette.textSecondary)
+            }
+
+            SectionTitle(text: "风扇自定义曲线",
+                         trailing: customCurve.unlocked ? "已解锁" : "未解锁",
+                         color: Palette.warn)
+            Card(padding: 16) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 12) {
+                        Image(systemName: customCurve.unlocked ? "fanblades.fill" : "lock.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(customCurve.unlocked ? Palette.warn : Palette.textSecondary)
+                            .frame(width: 24)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("启用自定义风扇曲线")
+                                .font(.system(size: 12.5, weight: .medium))
+                            Text("解锁后「性能与风扇」页会出现自定义曲线编辑器，可手动拖拽 8 点曲线并写入 EC。默认关闭。")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Palette.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 0)
+                        Toggle("", isOn: Binding(
+                            get: { customCurve.unlocked },
+                            set: { on in
+                                if on { showUnlockWarning = true } else { customCurve.lock() }
+                            }
+                        ))
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .controlSize(.mini)
+                        .tint(Palette.warn)
+                    }
+                    Text("⚠️ 写入风扇曲线属于硬件级改动：可能造成风扇停转 / 狂转、过热，甚至损坏硬件，并可能使保修失效。仅在完全理解风险后解锁。")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(Palette.warn)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             SectionTitle(text: "HiDPI 显示器缩放", trailing: "one-key-hidpi")
@@ -74,6 +113,12 @@ struct AdvancedView: View {
             }
         }
         .onAppear { reload() }
+        .alert("解锁自定义风扇曲线？", isPresented: $showUnlockWarning) {
+            Button("取消", role: .cancel) { }
+            Button("我已知晓风险，同意解锁", role: .destructive) { customCurve.unlock() }
+        } message: {
+            Text("涉及风扇改动，有可能损坏硬件和失去保修。")
+        }
     }
 
     // MARK: - 子视图

@@ -91,11 +91,14 @@ final class CustomCurveController: ObservableObject {
     @Published private(set) var message: String?
     /// 是否已成功下发过（仅用于界面提示）
     @Published private(set) var lastApplied = false
+    /// 功能解锁开关：默认关，需在「高级功能」页确认风险后解锁
+    @Published private(set) var unlocked: Bool
 
     private let fan = FanControl.shared
     private var seeded = false
 
     private init() {
+        unlocked = Prefs.bool("fan.customUnlocked")
         if let json = Prefs.string("fan.customCurve"),
            let data = json.data(using: .utf8),
            let file = try? JSONDecoder().decode(CustomCurveFile.self, from: data),
@@ -165,6 +168,17 @@ final class CustomCurveController: ObservableObject {
         fan.acknowledgeMismatch()
     }
 
+    /// 高级功能页确认风险后解锁 / 关闭
+    func unlock() {
+        unlocked = true
+        Prefs.set(true, for: "fan.customUnlocked")
+    }
+
+    func lock() {
+        unlocked = false
+        Prefs.set(false, for: "fan.customUnlocked")
+    }
+
     /// 下发自定义曲线：写临时 JSON → 以 root 重跑自身 CLI `fan apply-custom`
     func apply() {
         guard !applying else { return }
@@ -194,6 +208,8 @@ final class CustomCurveController: ObservableObject {
                 if result.ok {
                     self.lastApplied = true
                     self.persist()
+                    // 让「当前档位」切到 custom，预设不再显示「使用中」
+                    FanControl.shared.noteCustomApplied()
                     self.message = "已下发自定义曲线，转速通常几秒内跟上"
                 } else {
                     let text = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -569,5 +585,18 @@ struct CurveEditorCanvas: View {
 
     private func yPos(_ d: Int, height: CGFloat) -> CGFloat {
         height - CGFloat(d - dutyRange.lowerBound) / dSpan * height
+    }
+}
+
+// MARK: - 解锁门
+
+/// 只有「高级功能」页里确认风险、解锁之后，才在「性能与风扇」页显示自定义曲线编辑器。
+struct CustomCurveGate: View {
+    @ObservedObject private var controller = CustomCurveController.shared
+
+    var body: some View {
+        if controller.unlocked {
+            CustomCurveCard()
+        }
     }
 }
