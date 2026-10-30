@@ -126,7 +126,6 @@ enum Capabilities {
         // 曲线写入通道存在（kext 暴露了选风扇 + 触发键）→ 可改曲线
         let fanCurveReady = SMC.exists("AFWg") && SMC.exists("AFMf")
         // Aura RGB 以「能否打开 Aura HID 控制器」为准
-        // Aura RGB 以「能否打开 Aura HID 控制器」为准
         let auraReady = AuraEffects.shared.isAvailable
         // 功耗墙通道存在（kext 暴露了 SMU 消息号 + 瓦数键）→ 可下发功耗上限
         let perfReady = SMC.exists(PowerLimitSpec.keyCmd) && SMC.exists(PowerLimitSpec.keyWatts)
