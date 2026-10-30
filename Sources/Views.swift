@@ -1510,6 +1510,9 @@ struct PerformanceView: View {
                 }
             }
 
+            // [VelaX-CustomCurve] 自定义曲线编辑器（删掉这两行即可移除）
+            CustomCurveCard()
+
             // 机型不匹配 → 硬件损坏风险警告（应用曲线前必须先确认）
             if fan.status == .mismatched {
                 Card {

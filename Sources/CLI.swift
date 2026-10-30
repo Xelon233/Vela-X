@@ -599,8 +599,48 @@ enum CLI {
                 return 4
             }
 
+        case "apply-custom":
+            // 自定义曲线：由 GUI 写到临时文件，这里以 root 读取并下发
+            guard args.count >= 2 else {
+                emit("ERR 用法：fan apply-custom <曲线json路径>", printOutput: printOutput)
+                return 2
+            }
+            guard FanController.isPrivileged else {
+                emit("ERR 需要 root 权限才能写 SMC 键", printOutput: printOutput)
+                return 3
+            }
+            let url = URL(fileURLWithPath: args[1])
+            guard let data = try? Data(contentsOf: url),
+                  let file = try? JSONDecoder().decode(CustomCurveFile.self, from: data) else {
+                emit("ERR 读不到自定义曲线文件：\(args[1])", printOutput: printOutput)
+                return 4
+            }
+            let prof = ECProfiles.match(currentModel()).profile
+            let pts = prof?.curvePoints ?? 8
+            let tr = (prof?.tempMin ?? 20)...(prof?.tempMax ?? 110)
+            let dr = (prof?.dutyMin ?? 0)...(prof?.dutyMax ?? 100)
+            if let e = EditableCurve(file.cpu).validationError(points: pts, tempRange: tr, dutyRange: dr) {
+                emit("ERR CPU 曲线非法：\(e)", printOutput: printOutput)
+                return 4
+            }
+            if let e = EditableCurve(file.gpu).validationError(points: pts, tempRange: tr, dutyRange: dr) {
+                emit("ERR GPU 曲线非法：\(e)", printOutput: printOutput)
+                return 4
+            }
+            do {
+                try ctrl.apply(file.cpu, fan: .cpu)
+                try ctrl.apply(file.gpu, fan: .gpu)
+                recordToolState("custom")
+                emit("OK 已下发自定义曲线\nCPU \(curveSummary(file.cpu))\nGPU \(curveSummary(file.gpu))",
+                     printOutput: printOutput)
+                return 0
+            } catch {
+                emit("ERR 下发失败：\(error.localizedDescription)", printOutput: printOutput)
+                return 4
+            }
+
         default:
-            emit("ERR 未知子命令：\(sub)\n用法：fan status | fan list | fan set <档位>",
+            emit("ERR 未知子命令：\(sub)\n用法：fan status | fan list | fan set <档位> | fan apply-custom <json>",
                  printOutput: printOutput)
             return 2
         }
