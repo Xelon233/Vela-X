@@ -569,7 +569,6 @@ struct OverviewView: View {
         case .fan:        fanCard
         case .battery:    batteryCard
         case .disk:       diskCard
-        case .keyboard:   keyboardCard
         case .load:       LoadCard()
         case .capability: capabilitySummary
         }
@@ -717,7 +716,7 @@ struct OverviewView: View {
                                 .foregroundStyle(Palette.textSecondary)
                         }
                     }
-                    .frame(width: 78)
+                    .frame(width: 78, alignment: .leading)
                     FreqECG(values: store.freqHistory,
                             color: Palette.ok,
                             lower: 0, upper: 5.5, height: 58)
@@ -740,7 +739,7 @@ struct OverviewView: View {
                                 .foregroundStyle(Palette.textSecondary)
                         }
                     }
-                    .frame(width: 78)
+                    .frame(width: 78, alignment: .leading)
                     Sparkline(values: store.powerHistory,
                               color: Palette.accent2,
                               lowerBound: 0, upperBound: 100,
@@ -896,64 +895,6 @@ struct OverviewView: View {
             .frame(maxHeight: .infinity, alignment: .top)
         }
         .frame(height: smallCardHeight)
-    }
-
-    private var keyboardCard: some View {
-        Card {
-            HStack(spacing: 16) {
-                Image(systemName: "keyboard.badge.ellipsis")
-                    .font(.system(size: 17))
-                    .foregroundStyle(store.kbdMaxLevel > 0 ? Palette.accent : Palette.textSecondary)
-                    .frame(width: 24)
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 6) {
-                        Text("键盘背光")
-                            .font(.system(size: 12.5, weight: .medium))
-                        if store.kbdMaxLevel > 0 {
-                            Text("\(store.kbdLevel)/\(store.kbdMaxLevel)")
-                                .font(.system(size: 11).monospacedDigit())
-                                .foregroundStyle(Palette.textSecondary)
-                            Pill(text: store.kbdMode.label, color: Palette.textSecondary)
-                        } else {
-                            Pill(text: "不可控", color: Palette.warn)
-                        }
-                        if store.kbdBusy {
-                            ProgressView().controlSize(.mini).scaleEffect(0.7)
-                        }
-                    }
-                    if store.kbdMaxLevel > 0 {
-                        LevelDots(level: store.kbdLevel, maxLevel: store.kbdMaxLevel) {
-                            store.setKeyboardBacklight($0)
-                        }
-                    } else if store.kbdPermission == .needsRestart {
-                        Text("已授权，需重启程序后生效 —— 去「键盘背光」页点「立即重启」")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Palette.accent2)
-                    } else if store.kbdPermission == .denied {
-                        Text("「输入监控」被拒绝 —— 去「键盘背光」页重新授权")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Palette.warn)
-                    } else if store.kbdPermission == .notDetermined {
-                        Text("尚未获得「输入监控」授权 —— 去「键盘背光」页申请")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Palette.warn)
-                    } else {
-                        Text("ATK 设备无 SKBV，且未找到 Aura HID 控制器 —— 详见「诊断」")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Palette.textSecondary)
-                    }
-                }
-                Spacer(minLength: 8)
-                if store.kbdMaxLevel > 0 {
-                    Button {
-                        store.setKeyboardBacklight(store.kbdLevel > 0 ? 0 : store.kbdMaxLevel)
-                    } label: {
-                        Text(store.kbdLevel > 0 ? "关闭" : "开启")
-                    }
-                    .buttonStyle(GrayButtonStyle())
-                }
-            }
-        }
     }
 
     private var capabilitySummary: some View {

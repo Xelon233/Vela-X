@@ -457,20 +457,6 @@ struct FreqECG: View {
         GeometryReader { geo in
             let pts = Self.points(values: values, size: geo.size, lower: lower, upper: upper)
             ZStack {
-                // 监护仪细网格
-                VStack(spacing: 0) {
-                    ForEach(0..<5, id: \.self) { i in
-                        if i > 0 { Rectangle().fill(Palette.subtle).frame(height: 1) }
-                        if i < 4 { Spacer(minLength: 0) }
-                    }
-                }
-                HStack(spacing: 0) {
-                    ForEach(0..<9, id: \.self) { i in
-                        if i > 0 { Rectangle().fill(Palette.subtle).frame(width: 1) }
-                        if i < 8 { Spacer(minLength: 0) }
-                    }
-                }
-
                 if pts.count > 1 {
                     // 宽而淡的辉光（比 .shadow 便宜，避免每帧离屏模糊）
                     Self.path(pts)

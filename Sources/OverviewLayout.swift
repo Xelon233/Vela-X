@@ -16,7 +16,6 @@ enum OverviewCard: String, CaseIterable, Identifiable {
     case fan         // 风扇
     case battery     // 电池
     case disk        // 磁盘（启动宗卷容量 / 已用）
-    case keyboard    // 键盘背光
     case load        // 系统负载
     case capability  // 能力边界
 
@@ -29,7 +28,6 @@ enum OverviewCard: String, CaseIterable, Identifiable {
         case .fan:        return "风扇"
         case .battery:    return "电池"
         case .disk:       return "磁盘"
-        case .keyboard:   return "键盘背光"
         case .load:       return "系统负载"
         case .capability: return "能力边界"
         }
@@ -42,7 +40,6 @@ enum OverviewCard: String, CaseIterable, Identifiable {
         case .fan:        return "fanblades"
         case .battery:    return "battery.75"
         case .disk:       return "internaldrive"
-        case .keyboard:   return "keyboard"
         case .load:       return "chart.bar.fill"
         case .capability: return "checklist"
         }
@@ -51,7 +48,7 @@ enum OverviewCard: String, CaseIterable, Identifiable {
     /// 是否占满整行（两列网格里占 2 列），窄卡只占 1 列两两并排
     var isWide: Bool {
         switch self {
-        case .cpuTemp, .keyboard, .load, .capability: return true
+        case .cpuTemp, .load, .capability: return true
         default: return false
         }
     }
