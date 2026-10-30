@@ -88,8 +88,8 @@ final class StatusBarController: NSObject {
                let img = Self.cachedIcon(item.metric.icon) {
                 let att = NSTextAttachment()
                 att.image = img
-                // 图标 12pt、贴齐数值基线；SF Symbol 是模板图，会跟随状态栏文字色
-                att.bounds = CGRect(x: 0, y: -2, width: 12, height: 12)
+                // 图标 13pt、贴齐数值基线；SF Symbol 是模板图，会跟随状态栏文字色
+                att.bounds = CGRect(x: 0, y: -2.5, width: 13, height: 13)
                 out.append(NSAttributedString(attachment: att))
             }
             out.append(NSAttributedString(string: " " + item.value, attributes: [

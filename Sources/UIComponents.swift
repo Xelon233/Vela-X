@@ -28,6 +28,14 @@ enum Palette {
     static let warn = Color.adaptive(0xC77F00, 0xFFB020)
     static let bad = Color.adaptive(0xD62A3C, 0xFF3B4E)
 
+    // 扩展色板：强调色仍是上面那支系统蓝，其余为「分类辅助色」，
+    // 用于不同卡片 / 指标做区分，让整体色彩更丰富而不喧宾夺主。
+    static let violet = Color.adaptive(0x7C5CFF, 0xA78BFA)
+    static let teal   = Color.adaptive(0x0FA890, 0x2DD4BF)
+    static let pink   = Color.adaptive(0xE0529C, 0xFF6FB5)
+    static let indigo = Color.adaptive(0x4F46E5, 0x818CF8)
+    static let mint   = Color.adaptive(0x00A884, 0x34E0B4)
+
     // 文字
     static let text = Color.adaptive(0x1B2331, 0xE9F0FA)
     static let textSecondary = Color.adaptive(0x52627A, 0xA3B2C6)
@@ -204,14 +212,16 @@ struct Card<Content: View>: View {
 struct SectionTitle: View {
     let text: String
     var trailing: String?
+    /// 左侧小竖条的颜色（默认系统蓝；不同板块可传分类辅助色）
+    var color: Color = Palette.accent
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
             RoundedRectangle(cornerRadius: 1)
-                .fill(LinearGradient(colors: [Palette.accent, Palette.accent.opacity(0.15)],
+                .fill(LinearGradient(colors: [color, color.opacity(0.15)],
                                      startPoint: .top, endPoint: .bottom))
                 .frame(width: 2.5, height: 12)
-                .shadow(color: Palette.accent.opacity(0.45), radius: 3)
+                .shadow(color: color.opacity(0.45), radius: 3)
             Text(text)
                 .font(.system(size: 12.5, weight: .semibold))
                 .tracking(0.6)

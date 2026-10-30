@@ -35,7 +35,7 @@ struct MonitorView: View {
 
     private var tempCurveSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionTitle(text: "温度曲线", trailing: "最近 240 秒")
+            SectionTitle(text: "温度曲线", trailing: "最近 240 秒", color: Palette.teal)
             Card {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -60,7 +60,7 @@ struct MonitorView: View {
 
     private var kernelCounterSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionTitle(text: "内核计数器", trailing: "不依赖 kext")
+            SectionTitle(text: "内核计数器", trailing: "不依赖 kext", color: Palette.violet)
             Card {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(alignment: .top, spacing: 22) {
@@ -105,7 +105,7 @@ struct MonitorView: View {
                          value: String(format: "%.0f", store.load.total * 100),
                          unit: "%",
                          sub: "\(store.load.perCore.count) 线程 · 热压力 \(store.load.thermalText)",
-                         color: Palette.accent2,
+                         color: Palette.violet,
                          series: samples.map { $0.load * 100 },
                          lower: 0, upper: 100)
                 liveTile(title: "CPU 频率",
@@ -120,7 +120,7 @@ struct MonitorView: View {
                          value: String(format: "%.0f", store.load.memoryUsedRatio * 100),
                          unit: "%",
                          sub: memorySubtitle,
-                         color: Palette.ok,
+                         color: Palette.mint,
                          series: samples.map { $0.mem * 100 },
                          lower: 0, upper: 100)
                 liveTile(title: "CPU 功耗",

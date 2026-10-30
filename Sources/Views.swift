@@ -33,7 +33,7 @@ struct ScrollerAutoHide: NSViewRepresentable {
 }
 
 enum Page: String, CaseIterable, Identifiable {
-    case overview, monitor, keyboard, menubar, performance, nvidia, diagnostics, advanced, settings, about
+    case overview, monitor, menubar, keyboard, performance, nvidia, diagnostics, advanced, settings, about
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -783,7 +783,8 @@ struct OverviewView: View {
     private var fanCard: some View {
         Card(padding: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                SectionTitle(text: "风扇", trailing: store.fanAvailable ? "实时" : "不可用")
+                SectionTitle(text: "风扇", trailing: store.fanAvailable ? "实时" : "不可用",
+                             color: Palette.teal)
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(store.fanAvailable ? (store.fanRPM.map { String(format: "%.0f", $0) } ?? "—") : "—")
                         .font(.system(size: 25, weight: .semibold).monospacedDigit())
@@ -812,7 +813,7 @@ struct OverviewView: View {
     private var batteryCard: some View {
         Card(padding: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                SectionTitle(text: "电池")
+                SectionTitle(text: "电池", color: Palette.mint)
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text("\(store.battery.charge)")
                         .font(.system(size: 25, weight: .semibold).monospacedDigit())
@@ -838,7 +839,8 @@ struct OverviewView: View {
     private var diskCard: some View {
         Card(padding: 16) {
             VStack(alignment: .leading, spacing: 6) {
-                SectionTitle(text: "磁盘", trailing: store.disk.volumeName.isEmpty ? "启动宗卷" : store.disk.volumeName)
+                SectionTitle(text: "磁盘", trailing: store.disk.volumeName.isEmpty ? "启动宗卷" : store.disk.volumeName,
+                             color: Palette.indigo)
                 // 占用率大字 + 剩余
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(String(format: "%.0f", store.disk.usedFraction * 100))
@@ -879,7 +881,7 @@ struct OverviewView: View {
     private var gpuCard: some View {
         Card(padding: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                SectionTitle(text: "显卡", trailing: GPUProbe.displayName)
+                SectionTitle(text: "显卡", trailing: GPUProbe.displayName, color: Palette.violet)
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(store.gpuUsage.map { String(format: "%.0f", $0) } ?? "—")
                         .font(.system(size: 25, weight: .semibold).monospacedDigit())
@@ -912,7 +914,7 @@ struct OverviewView: View {
     private var capabilitySummary: some View {
         Card {
             VStack(alignment: .leading, spacing: 2) {
-                SectionTitle(text: "macOS 上的能力边界", trailing: "详见「诊断」")
+                SectionTitle(text: "macOS 上的能力边界", trailing: "详见「诊断」", color: Palette.pink)
                 ForEach(store.capabilities.prefix(5)) { cap in
                     CapabilityRow(cap: cap)
                 }

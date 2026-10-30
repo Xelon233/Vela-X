@@ -414,14 +414,14 @@ enum MenuBarPrefs {
 extension Double {
     /// 字节速率 → 人类可读
     var asRate: String {
-        let units = ["B/s", "KB/s", "MB/s", "GB/s"]
-        var value = self
+        // 最小单位固定为 KB/s：低于 1 KB/s 也显示 0.x KB/s，不再出现 B/s
+        let units = ["KB/s", "MB/s", "GB/s"]
+        var value = max(self, 0) / 1024
         var idx = 0
         while value >= 1024, idx < units.count - 1 {
             value /= 1024
             idx += 1
         }
-        let fmt = idx == 0 ? "%.0f %@" : "%.1f %@"
-        return String(format: fmt, value, units[idx])
+        return String(format: "%.1f %@", value, units[idx])
     }
 }
