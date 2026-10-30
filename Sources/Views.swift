@@ -760,14 +760,17 @@ struct OverviewView: View {
             VStack(alignment: .leading, spacing: 4) {
                 SectionTitle(text: "风扇", trailing: store.fanAvailable ? "实时" : "不可用",
                              color: Palette.teal)
-                HStack(alignment: .firstTextBaseline, spacing: 16) {
-                    fanMetric("CPU", store.fanRPM)
-                    fanMetric("GPU", store.fanRPMGPU)
-                    Spacer(minLength: 0)
-                    Image(systemName: store.fanAvailable ? "fanblades.fill" : "fanblades")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Palette.textTertiary)
+                // 左右各占一半、中间细分隔线，两列对称
+                HStack(spacing: 0) {
+                    fanMetric("CPU", store.fanRPM, color: Palette.teal)
+                        .frame(maxWidth: .infinity)
+                    Rectangle()
+                        .fill(Palette.hairline)
+                        .frame(width: 1, height: 36)
+                    fanMetric("GPU", store.fanRPMGPU, color: Palette.violet)
+                        .frame(maxWidth: .infinity)
                 }
+                .padding(.top, 2)
             }
             .frame(maxHeight: .infinity, alignment: .top)
         }
@@ -775,20 +778,21 @@ struct OverviewView: View {
     }
 
     /// 风扇卡里的一列：小标题 CPU/GPU + 转速大字
-    private func fanMetric(_ label: String, _ rpm: Double?) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
+    private func fanMetric(_ label: String, _ rpm: Double?, color: Color) -> some View {
+        VStack(spacing: 2) {
             Text(label)
                 .font(.system(size: 9.5))
                 .foregroundStyle(Palette.textTertiary)
             HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text(store.fanAvailable ? (rpm.map { String(format: "%.0f", $0) } ?? "—") : "—")
-                    .font(.system(size: 20, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(store.fanAvailable ? Color.primary : Palette.textSecondary)
+                    .font(.system(size: 22, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(store.fanAvailable ? color : Palette.textSecondary)
                 Text("RPM")
                     .font(.system(size: 9))
                     .foregroundStyle(Palette.textTertiary)
             }
         }
+        .frame(maxWidth: .infinity)
     }
 
     private var batteryCard: some View {
@@ -880,7 +884,7 @@ struct OverviewView: View {
                             Text(String(format: "%.0f°", t))
                                 .font(.system(size: 25, weight: .semibold).monospacedDigit())
                         }
-                        .foregroundStyle(Palette.forTemp(t))
+                        .foregroundStyle(Palette.pink)
                     }
                 }
                 // 占用率折线放到下方；用粉色，避免与其它卡片的曲线撞色

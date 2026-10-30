@@ -7,7 +7,9 @@ import Foundation
 
 enum AppInfo {
     static let name = "Vela X"
-    static let author = "XelonJangs"
+    static let author = "Xelon Jangs"
+    static let githubURL = "https://github.com/Xelon233"
+    static let githubDisplay = "github.com/Xelon233"
     static let tagline = "macOS 上的华硕笔记本控制中心"
 
     /// G-Helper（本项目的灵感来源与功能参照）
@@ -29,8 +31,8 @@ enum AppInfo {
     }
 
     /// CLI 通过符号链接调用时 Bundle.main 拿不到 Info.plist，用编译期常量兜底
-    static let fallbackVersion = "1.7.7"
-    static let fallbackBuild = "40"
+    static let fallbackVersion = "1.7.8"
+    static let fallbackBuild = "41"
 
     /// 先问 Bundle，再沿可执行文件路径找 Info.plist（build/asuscontrol 符号链接场景）
     static func plistValue(_ key: String) -> String? {
