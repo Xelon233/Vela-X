@@ -216,7 +216,8 @@ enum CLI {
                 let temp = SMC.read("TC0P")?.number
                 samples.append(MetricSample(time: Date(), temp: temp,
                                             load: last.total, mem: last.memoryUsedRatio,
-                                            appCPU: nil, appMemMB: nil))
+                                            appCPU: nil, appMemMB: nil,
+                                            freqGHz: nil, power: nil))
                 Thread.sleep(forTimeInterval: 1.0)
             }
             if let summary = RecordingStore.save(label: label, appName: nil, appPID: nil,
@@ -253,6 +254,9 @@ enum CLI {
 
         case "model":
             return modelCommand(Array(args.dropFirst()), printOutput: printOutput)
+
+        case "amd":
+            return amdCommand(Array(args.dropFirst()), printOutput: printOutput)
 
         case "about", "version", "-v", "--version":
             emit("""
@@ -350,6 +354,41 @@ enum CLI {
     }
 
     // MARK: - 子命令
+
+    // MARK: - AMD CPU 功耗 / 频率
+
+    /// 通过 AMDRyzenCPUPowerManagement.kext 读取 AMD CPU 实时功耗与每核有效频率。
+    ///   vela amd        打印 kext 是否可用、当前功耗(W)、平均/最高频率(GHz)、核数
+    /// 参考 SMCAMDProcessor（trulyspinach），普通用户态即可读，不需要 root。
+    private static func amdCommand(_ args: [String], printOutput: Bool) -> Int32 {
+        let probe = AMDRyzenProbe.shared
+        guard probe.available else {
+            emit("""
+            AMDRyzenCPUPowerManagement.kext 未加载，读不到 CPU 功耗 / 频率。
+            它是 SMCAMDProcessor 套件的一部分（依赖 kext），装好并重启后再试：
+              https://github.com/trulyspinach/SMCAMDProcessor
+            """, printOutput: printOutput)
+            return 1
+        }
+        let s = probe.sample()
+        var lines = [
+            "AMDRyzenCPUPowerManagement.kext   已加载 ✓",
+            "核数（逻辑）                       \(s.coreCount)"
+        ]
+        if let w = s.powerWatts {
+            lines.append("CPU 整包功耗                     \(String(format: "%.2f W", w))")
+        } else {
+            lines.append("CPU 整包功耗                     本次采样为 0（可能刚启动）")
+        }
+        if let avg = s.avgFreqGHz {
+            lines.append("CPU 平均有效频率                 \(String(format: "%.2f GHz", avg))")
+        }
+        if let max = s.maxFreqGHz {
+            lines.append("CPU 最高单核频率                 \(String(format: "%.2f GHz", max))")
+        }
+        emit(lines.joined(separator: "\n"), printOutput: printOutput)
+        return 0
+    }
 
     // MARK: - 机型识别（安全相关：机型不匹配可能损坏硬件）
 

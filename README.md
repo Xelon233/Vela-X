@@ -22,9 +22,9 @@
 | 键盘背光      | HID 写入（report ID `0x5A`），0–3 档亮度                             |
 | Aura 灯效   | HID 写入（report ID `0x5D`），12 种灯效模式                            |
 | 传感器监控     | CPU / GPU 温度、负载、频率、内存、网速、功耗                                  |
-| 菜单栏       | 可勾选 7 项指标实时拼接进菜单栏标题                                          |
+| 菜单栏       | 可勾选 7 项指标实时拼接进菜单栏标题（含 CPU 频率 / 功耗）                    |
 | NVIDIA 驱动 | 检查 / 下载 / 安装 NullMoth 的 macOS NVIDIA 驱动                      |
-| 命令行       | 同源 CLI：`vela status` / `vela fan ...` / `vela aura ...`      |
+| 命令行       | 同源 CLI：`vela status` / `vela fan ...` / `vela aura ...` / `vela amd` |
 
 ---
 
@@ -33,6 +33,9 @@
 - 一台**黑苹果 / OpenCore** 的华硕 / ROG 笔记本（原生 Mac 没有这些 EC 设备，用不了）
 - macOS 13.0+，建议 macOS 26 以获得完整 Liquid Glass 观感
 - Command Line Tools（`xcode-select --install`，**不需要 Xcode**）
+- 想要 **CPU 实时功耗 / 频率**，需装 [SMCAMDProcessor](https://github.com/trulyspinach/SMCAMDProcessor) 套件里的
+  `AMDRyzenCPUPowerManagement.kext`（它给 Vela X 提供用户态可读的整包功耗与每核有效频率）；
+  没装时这两项指标自动降级为「不可用」，不会显示假数字。温度来自同套件的 `SMCAMDProcessor.kext`。
 - 风扇曲线需要 [`SMCAsusFan.kext`](https://github.com/seerge/g-helper)（EC 风扇邮箱 → SMC 键的桥接内核扩展）
 
 ---
@@ -94,20 +97,30 @@ sudo vela fan set silent|balanced|performance   # 下发曲线（写 SMC 需 roo
 不同机型的 EC（嵌入式控制器）布局不同——MMIO 地址、邮箱寄存器、曲线格式、风扇数量都不一样。
 **把 A 机型的曲线写进 B 机型，可能损坏硬件。** 所以程序会先做机型识别，并在不一致时强制确认。
 
-程序用**硬件指纹**判定机型：CPU 型号代号 + 独显世代 + 出厂电池容量 + 主屏规格，
-四条证据逐项打分（CPU 代号 50 分、独显 30 分、电池 12 分、屏幕 8 分），取最高分机型并给出置信度。
+程序用**硬件指纹**判定机型（黑苹果下 SMBIOS 被 OpenCore 换成 Mac，读不到真实 DMI 型号，
+故为「推断」而非「读取」；G-Helper 在 Windows 读 `Win32_ComputerSystem.Model` 能拿到真实型号）。
+判定维度取 G-Helper 选 EC 配置真正依赖的两个信号——**独显型号 + CPU 世代**，
+外加电池容量佐证：
+
+- **独显型号是闸门（+55）**：不匹配整条 0 分，宁可「未识别」也不误判。
+  魔霸6 只收 `RTX 3060`，枪神6（G533）用 `RTX 3070 Ti / 3080` 没有 3060，于是正确落到「未识别」，
+  而不是被误认成魔霸6。
+- **CPU 世代佐证（+30）**：只比世代前缀（`6900/6800` = 6000 系、`7945/7845` = 7000 系），不比 H/HX/HS 后缀。
+- **电池容量佐证（+15）**：主要用来排除幻15 的 76Wh（魔霸/枪神为 90Wh 档）。
 
 为什么不是读 `DeviceName`：OpenCore 会把 SMBIOS 整套换成 Mac（`hw.model` 恒为 `MacBookPro16,4`
 之类），看起来最可靠的「电池 `DeviceName`」其实是**电池部件号** —— 同一块电池装在多款机器上，
 实测魔霸6（G513RM）和魔霸7 Plus（G713PV）都报 `GA50358`。所以它只作为附注显示，不参与判定。
 
-CPU 代号之所以是最强证据，是因为华硕的 CPU 后缀就是产品线分界线：
+> 注意：枪神（G533）和魔霸（G513）**共用同一颗 CPU**（都是 6900HX），差别只在独显档位，
+> 因此 CPU 不能当主判据——这正是上面把独显设成闸门的原因。
 
-| 产品线 | CPU 代号 | 独显 |
+| 产品线 | CPU 世代 | 独显 |
 |---|---|---|
 | 幻15 GA503（2022） | `6900HS` / `5900HS`（**HS**） | RTX 30 |
-| 魔霸6 G513（2022） | `6900HX` / `6800H`（**H / HX**） | RTX 30 |
-| 魔霸7 Plus G713P（2023） | `7945HX` / `7845HX`（Dragon Range） | RTX 40 |
+| 魔霸6 G513（2022） | `6900HX` / `6800H`（**H / HX**） | RTX 3060 |
+| 枪神6 G533（2022） | `6900HX` / `6800H` | RTX 3070 Ti / 3080 |
+| 魔霸7 Plus G713P（2023） | `7945HX` / `7845HX`（Dragon Range） | RTX 4060 / 4070 |
 
 判定结果分三档，显示在「性能与风扇」页顶部的机型卡上（可展开「查看判定依据」逐条核对）：
 
@@ -210,6 +223,7 @@ Sources/                    Swift 源码
   AuraEffects.swift / AuraPanel.swift   Aura 灯效（report ID 0x5D）
   SystemLoad.swift / SystemInfo.swift  负载与硬件信息
   MenuMetrics.swift            菜单栏指标采集（网速、温度、内存…）
+  AMDRyzenProbe.swift          AMD CPU 实时功耗/频率（AMDRyzenCPUPowerManagement.kext 用户客户端）
   NvidiaUpdate.swift / NvidiaView.swift  NVIDIA 驱动检查、下载安装
   MonitorView.swift / LoadViews.swift / SensorStore.swift  监控与负载页面
   Prefs.swift / CLI.swift / AppInfo.swift  偏好、命令行、版本信息

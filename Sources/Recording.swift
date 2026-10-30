@@ -13,6 +13,8 @@ struct MetricSample {
     let mem: Double            // 内存占用 0...1
     let appCPU: Double?        // 绑定应用的 CPU（1.0 = 一核）
     let appMemMB: Double?      // 绑定应用的常驻内存
+    let freqGHz: Double?       // CPU 平均有效频率（来自 AMDRyzenCPUPowerManagement）
+    let power: Double?         // CPU 整包功耗（W）
 }
 
 /// 录制概要（存进索引）
@@ -76,14 +78,16 @@ enum RecordingStore {
         let url = directory.appendingPathComponent(name)
 
         let iso = ISO8601DateFormatter()
-        var csv = "timestamp,iso_time,temp_c,cpu_load_pct,mem_used_pct,app_cpu_pct,app_mem_mb\n"
+        var csv = "timestamp,iso_time,temp_c,cpu_load_pct,mem_used_pct,app_cpu_pct,app_mem_mb,cpu_freq_ghz,cpu_power_w\n"
         for s in samples {
             let temp = s.temp.map { String(format: "%.2f", $0) } ?? ""
             let appCPU = s.appCPU.map { String(format: "%.1f", $0 * 100) } ?? ""
             let appMem = s.appMemMB.map { String(format: "%.1f", $0) } ?? ""
+            let freq = s.freqGHz.map { String(format: "%.3f", $0) } ?? ""
+            let power = s.power.map { String(format: "%.2f", $0) } ?? ""
             csv += "\(Int(s.time.timeIntervalSince1970)),\(iso.string(from: s.time)),"
             csv += "\(temp),\(String(format: "%.1f", s.load * 100)),"
-            csv += "\(String(format: "%.1f", s.mem * 100)),\(appCPU),\(appMem)\n"
+            csv += "\(String(format: "%.1f", s.mem * 100)),\(appCPU),\(appMem),\(freq),\(power)\n"
         }
         try? csv.write(to: url, atomically: true, encoding: .utf8)
 

@@ -11,11 +11,13 @@
 //    · CPU 占用率  可用（host_processor_info）
 //    · 内存占用率  可用（host_statistics64）
 //    · 实时网速    可用（getifaddrs 字节计数做差）
-//    · CPU 频率    不可用 —— hw.cpufrequency 的 min/max 相等，是固件写死的标称值；
-//                  真实频率要 ring0 读 MSR，macOS 用户态没有这条路
+//    · CPU 频率    可用 —— 由 AMDRyzenCPUPowerManagement.kext 用户客户端读每核有效频率
+//                  （selector 4，APERF/MPERF 增量），不需要 root；
+//                  sysctl hw.cpufrequency 的 min/max 相等只是固件标称值，仅作兜底显示
 //    · 显卡占用率  不可用 —— NVAccel 的 PerformanceStatistics 里没有任何 utilization 键，
 //                  macOS 下也没有 NVML 的等价接口
-//    · 实时功耗    不可用 —— powermetrics 必须 root；SMC 也没有 PSTR/PCPC 这类功耗键
+//    · 实时功耗    可用 —— 同上，AMDRyzenCPUPowerManagement.kext selector 4 的整包功耗（Watt）
+//                  （powermetrics 必须 root、SMC 也没有 PSTR/PCPC 这类键，那条路在黑苹果上走不通）
 //
 
 import Foundation
@@ -108,8 +110,10 @@ enum NetSpeed {
 
 struct CPUFrequencyInfo {
     var nominalHz: UInt64 = 0
-    /// 能否拿到「实时」频率。macOS 用户态基本拿不到，这里绝大多数情况是 false
-    var live = false
+    /// 实时频率（GHz），来自 AMDRyzenCPUPowerManagement 用户客户端；拿不到就 nil
+    var liveGHz: Double?
+    /// 能否拿到「实时」频率：有 kext 且采到有效频率时为 true
+    var live: Bool { liveGHz != nil }
 }
 
 enum CPUFrequency {
@@ -127,9 +131,9 @@ enum CPUFrequency {
         s = MemoryLayout<UInt64>.size
         let gotHi = sysctlbyname("hw.cpufrequency_max", &hi, &s, nil, 0) == 0
 
-        // min 和 max 相等 → 这是固件/伪装写死的标称值，不会随负载变化
-        let isStatic = gotLo && gotHi && lo == hi
-        return CPUFrequencyInfo(nominalHz: hz, live: !isStatic)
+        // min 和 max 相等 → 这是固件/伪装写死的标称值，不会随负载变化。
+        // 这里只给标称值；实时频率（liveGHz）由 AMDRyzenProbe 每帧填充。
+        return CPUFrequencyInfo(nominalHz: hz)
     }
 }
 
@@ -203,21 +207,6 @@ enum GPUProbe {
     }
 }
 
-// MARK: - 功耗
-
-enum PowerProbe {
-    /// SMC 上可能的功耗键。Apple Silicon 才有（PSTR 系统总功耗、PCPC CPU 功耗），
-    /// Hackintosh 的 VirtualSMC 一般不提供，返回 nil。
-    private static let keys = ["PSTR", "PCPC", "PCPT", "PDTR", "PWRS"]
-
-    static func watts() -> Double? {
-        for key in keys {
-            if let r = SMC.read(key), let n = r.number, n > 0 { return n }
-        }
-        return nil
-    }
-}
-
 // MARK: - 一次性的可用性探测
 
 final class MetricProbe {
@@ -225,7 +214,7 @@ final class MetricProbe {
 
     private(set) var cpuFreq = CPUFrequencyInfo()
     private(set) var gpuUsage: Double?
-    private(set) var powerWatts: Double?
+    private(set) var amdAvailable = false
     private(set) var probed = false
 
     private let lock = NSLock()
@@ -238,12 +227,12 @@ final class MetricProbe {
 
         let freq = CPUFrequency.probe()
         let gpu = GPUProbe.usage()
-        let power = PowerProbe.watts()
+        let amd = AMDRyzenProbe.shared.available
 
         lock.lock()
         cpuFreq = freq
         gpuUsage = gpu
-        powerWatts = power
+        amdAvailable = amd
         probed = true
         lock.unlock()
     }
@@ -266,11 +255,11 @@ enum MenuMetric: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .cpuTemp:  return "CPU 温度"
         case .cpuLoad:  return "CPU 占用率"
-        case .cpuFreq:  return "CPU 频率"
+        case .cpuFreq:  return "AMDRyzenCPUPowerManagement.kext → 用户客户端 selector 4（APERF/MPERF）"
         case .memUsage: return "内存占用率"
         case .netSpeed: return "实时网速"
         case .gpuLoad:  return "显卡占用率"
-        case .power:    return "实时功耗"
+        case .power:    return "AMDRyzenCPUPowerManagement.kext → 用户客户端 selector 4（整包功耗）"
         }
     }
 
@@ -278,11 +267,11 @@ enum MenuMetric: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .cpuTemp:  return "thermometer.medium"
         case .cpuLoad:  return "chart.bar.fill"
-        case .cpuFreq:  return "speedometer"
+        case .cpuFreq:  return "AMDRyzenCPUPowerManagement.kext → 用户客户端 selector 4（APERF/MPERF）"
         case .memUsage: return "memorychip"
         case .netSpeed: return "arrow.down.arrow.up"
         case .gpuLoad:  return "display"
-        case .power:    return "bolt.fill"
+        case .power:    return "AMDRyzenCPUPowerManagement.kext → 用户客户端 selector 4（整包功耗）"
         }
     }
 
@@ -291,11 +280,11 @@ enum MenuMetric: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .cpuTemp:  return "AppleSMC → SMCAMDProcessor → MSR"
         case .cpuLoad:  return "Mach host_processor_info"
-        case .cpuFreq:  return "sysctl hw.cpufrequency"
+        case .cpuFreq:  return "AMDRyzenCPUPowerManagement.kext → 用户客户端 selector 4（APERF/MPERF）"
         case .memUsage: return "Mach host_statistics64"
         case .netSpeed: return "getifaddrs 接口字节计数"
         case .gpuLoad:  return "IORegistry IOAccelerator PerformanceStatistics"
-        case .power:    return "AppleSMC 功耗键（PSTR / PCPC）"
+        case .power:    return "AMDRyzenCPUPowerManagement.kext → 用户客户端 selector 4（整包功耗）"
         }
     }
 }
@@ -329,9 +318,11 @@ enum MenuBarPrefs {
     private static let metricsKey = "menubar.metrics"
     private static let netModeKey = "menubar.netmode"
 
-    /// 默认开这四项：都能拿到数据，且是大多数人会想看的。
+    /// 默认开这六项：温度 / 负载 / 频率 / 内存 / 网速 / 功耗。
+    /// 频率与功耗来自 AMDRyzenCPUPowerManagement.kext，没装时这两项自动降级为「不可用」、
+    /// 菜单栏标题里不会出现（shortText 返回 nil），不会显示假数字。
     /// 用户可以随时在「菜单栏」页增删，改动存在 Prefs 里。
-    static let defaultMetrics: [MenuMetric] = [.cpuTemp, .cpuLoad, .memUsage, .netSpeed]
+    static let defaultMetrics: [MenuMetric] = [.cpuTemp, .cpuLoad, .cpuFreq, .memUsage, .netSpeed, .power]
 
     static var enabled: [MenuMetric] {
         guard let raw = Prefs.string(metricsKey), !raw.isEmpty else { return defaultMetrics }

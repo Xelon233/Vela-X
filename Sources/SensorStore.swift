@@ -29,6 +29,8 @@ struct SampleFrame {
     var net = NetSpeedSnapshot()
     var gpuUsage: Double?
     var powerWatts: Double?
+    /// CPU 实时频率（GHz），来自 AMDRyzenCPUPowerManagement 用户客户端；nil = 没采到
+    var cpuFreqGHz: Double?
 }
 
 final class SensorStore: ObservableObject {
@@ -192,7 +194,6 @@ final class SensorStore: ObservableObject {
             MetricProbe.shared.probeIfNeeded()
             let freq = MetricProbe.shared.cpuFreq
             let gpu = MetricProbe.shared.gpuUsage
-            let power = MetricProbe.shared.powerWatts
             DispatchQueue.main.async {
                 store.hardware = hw
                 store.kexts = kext
@@ -201,7 +202,7 @@ final class SensorStore: ObservableObject {
                 store.keyNames = names
                 store.cpuFreq = freq
                 store.gpuUsage = gpu
-                store.powerWatts = power
+                // powerWatts / cpuFreq.liveGHz 每帧由 AMDRyzenProbe 填充（需 kext）
                 let mode = Control.mode
                 store.kbdMode = mode
                 store.kbdMaxLevel = mode.maxLevel
@@ -252,8 +253,12 @@ final class SensorStore: ObservableObject {
         if MetricProbe.shared.gpuUsage != nil, seq % 5 == 0 {
             frame.gpuUsage = GPUProbe.usage()
         }
-        if MetricProbe.shared.powerWatts != nil {
-            frame.powerWatts = PowerProbe.watts()
+        // CPU 功耗 / 频率来自 AMDRyzenCPUPowerManagement 用户客户端（selector 4），
+        // 普通用户态即可读，不需要 root。kext 没装时 amdAvailable=false，跳过。
+        if MetricProbe.shared.amdAvailable {
+            let s = AMDRyzenProbe.shared.sample()
+            frame.powerWatts = s.powerWatts
+            frame.cpuFreqGHz = s.avgFreqGHz
         }
 
         if config.wantTiles {
@@ -300,6 +305,7 @@ final class SensorStore: ObservableObject {
         mixRounded(frame.load.swapUsed > 0 ? Double(frame.load.swapUsed) / 1e6 : nil, 10)
         mixRounded(frame.gpuUsage, 1)
         mixRounded(frame.powerWatts, 1)
+        mixRounded(frame.cpuFreqGHz, 100)     // 0.01 GHz
         mixRounded(frame.net.down, 2)           // 0.5 KB/s
         mixRounded(frame.net.up, 2)
         mix(UInt64(frame.load.perCore.count))
@@ -346,6 +352,7 @@ final class SensorStore: ObservableObject {
         netSpeed = frame.net
         if let g = frame.gpuUsage { gpuUsage = g }
         if let w = frame.powerWatts { powerWatts = w }
+        if let ghz = frame.cpuFreqGHz { cpuFreq.liveGHz = ghz }
         if frame.load.sampled {
             loadHistory.append(frame.load.total)
             let cap = samplingRate.tempCapacity
@@ -371,7 +378,9 @@ final class SensorStore: ObservableObject {
             load: frame.load.sampled ? frame.load.total : (history.last?.load ?? 0),
             mem: frame.load.memoryUsedRatio,
             appCPU: nil,
-            appMemMB: nil
+            appMemMB: nil,
+            freqGHz: frame.cpuFreqGHz,
+            power: frame.powerWatts
         )
         appendHistory(sample)
         appendRecording(sample)
@@ -480,7 +489,8 @@ final class SensorStore: ObservableObject {
         if let pid = recording?.appPID,
            let p = ProcessSampler.findByPID(processes, pid: pid) {
             s = MetricSample(time: sample.time, temp: sample.temp, load: sample.load,
-                             mem: sample.mem, appCPU: p.cpu, appMemMB: p.memoryMB)
+                             mem: sample.mem, appCPU: p.cpu, appMemMB: p.memoryMB,
+                             freqGHz: sample.freqGHz, power: sample.power)
         }
         history.append(s)
         let cap = samplingRate.historyCapacity
@@ -492,7 +502,8 @@ final class SensorStore: ObservableObject {
         var s = sample
         if let pid = rec.appPID, let p = ProcessSampler.findByPID(processes, pid: pid) {
             s = MetricSample(time: sample.time, temp: sample.temp, load: sample.load,
-                             mem: sample.mem, appCPU: p.cpu, appMemMB: p.memoryMB)
+                             mem: sample.mem, appCPU: p.cpu, appMemMB: p.memoryMB,
+                             freqGHz: sample.freqGHz, power: sample.power)
         }
         rec.samples.append(s)
         recording = rec
@@ -624,15 +635,14 @@ final class SensorStore: ObservableObject {
             return MenuMetricValue(text: String(format: "%.0f%%", load.total * 100), available: true)
 
         case .cpuFreq:
-            guard cpuFreq.live else {
-                let nominal = cpuFreq.nominalHz > 0
-                    ? String(format: "sysctl 只给了一个标称值 %.2f GHz", Double(cpuFreq.nominalHz) / 1e9)
-                    : "sysctl 里连标称频率都没有"
-                return MenuMetricValue(text: "不可用", available: false,
-                                       reason: "macOS 用户态没有实时频率接口（真实频率要 ring0 读 MSR，本机没有这条路）；\(nominal)")
+            if let ghz = cpuFreq.liveGHz {
+                return MenuMetricValue(text: String(format: "%.2f GHz", ghz), available: true)
             }
-            return MenuMetricValue(text: String(format: "%.2f GHz", Double(cpuFreq.nominalHz) / 1e9),
-                                   available: true)
+            let nominal = cpuFreq.nominalHz > 0
+                ? String(format: "sysctl 只给了一个标称值 %.2f GHz", Double(cpuFreq.nominalHz) / 1e9)
+                : "sysctl 里连标称频率都没有"
+            return MenuMetricValue(text: "不可用", available: false,
+                                   reason: "需要 AMDRyzenCPUPowerManagement.kext（SMCAMDProcessor 套件）提供实时频率；\(nominal)")
 
         case .memUsage:
             guard load.memTotal > 0 else {
@@ -651,6 +661,7 @@ final class SensorStore: ObservableObject {
                                                available: true)
             }
 
+
         case .gpuLoad:
             guard let g = gpuUsage else {
                 return MenuMetricValue(text: "不可用", available: false,
@@ -661,7 +672,7 @@ final class SensorStore: ObservableObject {
         case .power:
             guard let w = powerWatts else {
                 return MenuMetricValue(text: "不可用", available: false,
-                                       reason: "powermetrics 必须 root 才能跑，AppleSMC 上也没有 PSTR / PCPC 这类功耗键")
+                                   reason: "需要 AMDRyzenCPUPowerManagement.kext（SMCAMDProcessor 套件）提供整包功耗；powermetrics 需 root 这条路在黑苹果上走不通")
             }
             return MenuMetricValue(text: String(format: "%.1f W", w), available: true)
         }

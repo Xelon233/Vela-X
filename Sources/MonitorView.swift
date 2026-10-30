@@ -49,6 +49,14 @@ struct MonitorView: View {
                          color: Palette.accent2,
                          series: samples.map { $0.load * 100 },
                          lower: 0, upper: 100)
+                liveTile(title: "CPU 频率",
+                         value: store.cpuFreq.liveGHz.map { String(format: "%.2f", $0) } ?? "—",
+                         unit: "GHz",
+                         sub: store.cpuFreq.liveGHz == nil
+                            ? "需 AMDRyzenCPUPowerManagement.kext" : "平均有效频率",
+                         color: Palette.accent,
+                         series: samples.compactMap(\.freqGHz).map { $0 * 100 },
+                         lower: 0, upper: 500)
                 liveTile(title: "内存占用",
                          value: String(format: "%.0f", store.load.memoryUsedRatio * 100),
                          unit: "%",
@@ -56,6 +64,14 @@ struct MonitorView: View {
                          color: Palette.ok,
                          series: samples.map { $0.mem * 100 },
                          lower: 0, upper: 100)
+                liveTile(title: "CPU 功耗",
+                         value: store.powerWatts.map { String(format: "%.1f", $0) } ?? "—",
+                         unit: "W",
+                         sub: store.powerWatts == nil
+                            ? "需 AMDRyzenCPUPowerManagement.kext" : "整包功耗",
+                         color: Palette.warn,
+                         series: samples.compactMap(\.power),
+                         lower: 0, upper: 120)
             }
         }
     }
@@ -115,6 +131,18 @@ struct MonitorView: View {
                     metricRow(name: "内存", unit: "%", color: Palette.ok,
                               values: samples.map { $0.mem * 100 }, lower: 0, upper: 100,
                               current: store.load.memoryUsedRatio * 100)
+                    if let ghz = store.cpuFreq.liveGHz {
+                        Divider().opacity(0.35)
+                        metricRow(name: "频率", unit: "GHz", color: Palette.accent,
+                                  values: samples.compactMap(\.freqGHz), lower: 0, upper: 5,
+                                  current: ghz)
+                    }
+                    if let w = store.powerWatts {
+                        Divider().opacity(0.35)
+                        metricRow(name: "功耗", unit: "W", color: Palette.warn,
+                                  values: samples.compactMap(\.power), lower: 0, upper: 120,
+                                  current: w)
+                    }
                     if store.recording?.appPID != nil {
                         Divider().opacity(0.35)
                         metricRow(name: "目标应用 CPU", unit: "%", color: Palette.warn,
