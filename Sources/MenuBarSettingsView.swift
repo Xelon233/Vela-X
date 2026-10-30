@@ -12,7 +12,8 @@ struct MenuBarSettingsView: View {
     @EnvironmentObject var store: SensorStore
     @State private var selected: [MenuMetric] = MenuBarPrefs.enabled
     @State private var netMode: NetSpeedDisplay = MenuBarPrefs.netMode
-    @State private var showOrderSheet = false
+    /// 正在长按拖拽的指标（预览界面排序用）
+    @State private var draggingMetric: MenuMetric?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -35,15 +36,12 @@ struct MenuBarSettingsView: View {
                         .padding(.bottom, 4)
 
                     HStack(spacing: 4) {
-                        Image(systemName: "arrow.up.arrow.down")
+                        Image(systemName: "hand.draw")
                             .font(.system(size: 9))
                             .foregroundStyle(Palette.textTertiary)
-                        Button("调换菜单栏顺序") {
-                            showOrderSheet = true
-                        }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 10.5, weight: .medium))
-                        .foregroundStyle(Palette.accent)
+                        Text("在下方「标题栏预览」里长按拖拽即可调整顺序")
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(Palette.textSecondary)
                         Spacer()
                     }
                     .padding(.bottom, 10)
@@ -55,9 +53,6 @@ struct MenuBarSettingsView: View {
                         }
                     }
                 }
-            }
-            .sheet(isPresented: $showOrderSheet) {
-                MenuBarOrderSheet(selected: $selected)
             }
 
             if selected.contains(.netSpeed) {
@@ -98,12 +93,22 @@ struct MenuBarSettingsView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     SectionTitle(text: "标题栏预览")
                     HStack(spacing: 6) {
-                        if store.menuBarItems.isEmpty {
+                        if selected.isEmpty {
                             Text("Vela X")
                         } else {
-                            ForEach(store.menuBarItems, id: \.metric) { item in
-                                MenuBarMetricLabel(item: item,
-                                                   iconSize: 13, valueSize: 14, labelSize: 10)
+                            ForEach(selected) { metric in
+                                if let value = store.shortText(metric) {
+                                    MenuBarMetricLabel(item: MenuBarItem(metric: metric, value: value),
+                                                       iconSize: 13, valueSize: 14, labelSize: 10)
+                                        .onDrag {
+                                            draggingMetric = metric
+                                            return NSItemProvider(object: metric.rawValue as NSString)
+                                        }
+                                        .onDrop(of: [.text],
+                                                delegate: MenuBarOrderDropDelegate(target: metric,
+                                                                                   selected: $selected,
+                                                                                   dragging: $draggingMetric))
+                                }
                             }
                         }
                     }
@@ -116,7 +121,7 @@ struct MenuBarSettingsView: View {
                             .fill(Color.primary.opacity(0.05))
                     )
                     Text("这是状态栏上那个按钮现在的样子。图标区分类型，小字是项目标签；"
-                         + "项目太多会被系统截断，建议控制在 4 项以内。")
+                         + "长按拖拽可调整顺序，项目太多会被系统截断，建议控制在 4 项以内。")
                         .font(.system(size: 10.5))
                         .foregroundStyle(Palette.textTertiary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -195,54 +200,29 @@ struct MenuBarSettingsView: View {
     }
 }
 
-/// 拖拽调整已勾选菜单栏指标的先后顺序（原生 List onMove）
-struct MenuBarOrderSheet: View {
-    @Environment(\.dismiss) private var dismiss
+/// 菜单栏预览界面里的长按拖拽排序：把拖拽中的指标移到目标指标的位置
+struct MenuBarOrderDropDelegate: DropDelegate {
+    let target: MenuMetric
     @Binding var selected: [MenuMetric]
+    @Binding var dragging: MenuMetric?
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("调换菜单栏顺序")
-                    .font(.system(size: 15, weight: .bold))
-                Text("拖拽调整已勾选项在顶部菜单栏里的先后顺序。")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
-
-            if selected.isEmpty {
-                Text("还没有勾选任何项")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List {
-                    ForEach(selected, id: \.self) { metric in
-                        HStack(spacing: 10) {
-                            Image(systemName: metric.icon)
-                                .font(.system(size: 12))
-                                .frame(width: 16)
-                                .foregroundStyle(Palette.accent)
-                            Text(metric.title)
-                                .font(.system(size: 12))
-                        }
-                        .padding(.vertical, 2)
-                    }
-                    .onMove { from, to in
-                        selected.move(fromOffsets: from, toOffset: to)
-                        MenuBarPrefs.setEnabled(selected)
-                    }
-                }
-                .listStyle(.inset)
-            }
-
-            HStack {
-                Spacer()
-                Button("完成") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
-            }
+    func dropEntered(info: DropInfo) {
+        guard let dragging, dragging != target,
+              let from = selected.firstIndex(of: dragging),
+              let to = selected.firstIndex(of: target), from != to else { return }
+        withAnimation(.easeInOut(duration: 0.15)) {
+            let m = selected.remove(at: from)
+            selected.insert(m, at: to)
         }
-        .padding(18)
-        .frame(width: 340, height: 380)
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        MenuBarPrefs.setEnabled(selected)
+        dragging = nil
+        return true
     }
 }

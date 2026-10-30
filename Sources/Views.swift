@@ -382,6 +382,8 @@ struct OverviewView: View {
     @State private var showModelPicker = false
     @State private var showLayoutSheet = false
     @State private var cards: [OverviewCard] = OverviewLayoutPrefs.visibleCards
+    /// 正在长按拖拽的卡片（拖拽排序用）
+    @State private var draggingCard: OverviewCard?
 
     /// 窄卡（功耗/频率/显卡/风扇/电池）统一高度，保证两两并排时对齐
     private let smallCardHeight: CGFloat = 108
@@ -396,13 +398,22 @@ struct OverviewView: View {
                     .foregroundStyle(Palette.textSecondary)
                     .frame(maxWidth: .infinity, minHeight: 200)
             } else {
-                LazyVGrid(columns: [
-                    GridItem(.flexible(), spacing: 12),
-                    GridItem(.flexible(), spacing: 12)
-                ], alignment: .leading, spacing: 12) {
-                    ForEach(cards) { card in
-                        cardView(card)
-                            .gridCellColumns(card.isWide ? 2 : 1)
+                VStack(spacing: 12) {
+                    ForEach(Array(cardRows.enumerated()), id: \.offset) { _, row in
+                        HStack(spacing: 12) {
+                            ForEach(row) { card in
+                                cardView(card)
+                                    .frame(maxWidth: row.count == 1 ? .infinity : nil)
+                                    .onDrag {
+                                        draggingCard = card
+                                        return NSItemProvider(object: card.rawValue as NSString)
+                                    }
+                                    .onDrop(of: [.text],
+                                            delegate: OverviewCardDropDelegate(target: card,
+                                                                               cards: $cards,
+                                                                               dragging: $draggingCard))
+                            }
+                        }
                     }
                 }
             }
@@ -413,6 +424,26 @@ struct OverviewView: View {
         .onChange(of: showLayoutSheet) { showing in
             if !showing { cards = OverviewLayoutPrefs.visibleCards }
         }
+    }
+
+    /// 把卡片分成行：宽卡独占一行，窄卡两两并排；落单窄卡占满整行（避免左右不对称）
+    private var cardRows: [[OverviewCard]] {
+        var rows: [[OverviewCard]] = []
+        var i = 0
+        while i < cards.count {
+            let card = cards[i]
+            if card.isWide {
+                rows.append([card])
+                i += 1
+            } else if i + 1 < cards.count, !cards[i + 1].isWide {
+                rows.append([card, cards[i + 1]])
+                i += 2
+            } else {
+                rows.append([card])
+                i += 1
+            }
+        }
+        return rows
     }
 
     @ViewBuilder

@@ -299,7 +299,7 @@ enum MenuMetric: String, CaseIterable, Identifiable, Hashable {
         case .cpuLoad:  return "chart.bar.fill"
         case .cpuFreq:  return "speedometer"
         case .memUsage: return "memorychip"
-        case .netSpeed: return "arrow.down.arrow.up"
+        case .netSpeed: return "arrow.up.arrow.down"
         case .gpuLoad:  return "display"
         case .gpuTemp:  return "thermometer.sun"
         case .power:    return "bolt.fill"

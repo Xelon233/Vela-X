@@ -173,3 +173,30 @@ struct OverviewLayoutSheet: View {
         )
     }
 }
+
+/// 概览页卡片的长按拖拽排序：把拖拽中的卡片移到目标卡片的位置
+struct OverviewCardDropDelegate: DropDelegate {
+    let target: OverviewCard
+    @Binding var cards: [OverviewCard]
+    @Binding var dragging: OverviewCard?
+
+    func dropEntered(info: DropInfo) {
+        guard let dragging, dragging != target,
+              let from = cards.firstIndex(of: dragging),
+              let to = cards.firstIndex(of: target), from != to else { return }
+        withAnimation(.easeInOut(duration: 0.15)) {
+            let card = cards.remove(at: from)
+            cards.insert(card, at: to)
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        OverviewLayoutPrefs.setOrder(cards)
+        dragging = nil
+        return true
+    }
+}

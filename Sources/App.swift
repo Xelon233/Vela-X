@@ -38,21 +38,36 @@ struct AsusControlApp: App {
         .menuBarExtraStyle(.window)
     }
 
-    /// 菜单栏状态项：图标 + 数值 + 缩小字标签，逐个指标拼起来。
-    /// 图标区分类型（温度计=温度、显示器=显卡、内存条=内存…），小字标签辅助说明。
+    /// 菜单栏状态项：图标 + 数值 + 缩小字标签，合并成单个富文本。
+    /// 为什么不能拼多个 View：macOS 的 MenuBarExtra label 对多元素 HStack
+    /// 只渲染第一个子视图，必须合并成单个 Text（AttributedString）。
     private var menuBarLabel: some View {
-        let items = store.menuBarItems
-        return Group {
-            if items.isEmpty {
-                Text("Vela X")
-            } else {
-                HStack(spacing: 5) {
-                    ForEach(items, id: \.metric) { item in
-                        MenuBarMetricLabel(item: item)
-                    }
-                }
+        Text(Self.menuBarAttributedText(store.menuBarItems))
+    }
+
+    private static func menuBarAttributedText(_ items: [MenuBarItem]) -> AttributedString {
+        guard !items.isEmpty else { return AttributedString("Vela X") }
+        let out = NSMutableAttributedString()
+        for (idx, item) in items.enumerated() {
+            if let img = NSImage(systemSymbolName: item.metric.icon, accessibilityDescription: nil) {
+                let att = NSTextAttachment()
+                att.image = img
+                // 图标缩小到 10pt、贴齐文字基线；SF Symbol 是模板图，会跟随菜单栏文字色
+                att.bounds = CGRect(x: 0, y: -1.5, width: 10, height: 10)
+                out.append(NSAttributedString(attachment: att))
+            }
+            out.append(NSAttributedString(string: item.value, attributes: [
+                .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+            ]))
+            out.append(NSAttributedString(string: " \(item.metric.shortLabel)", attributes: [
+                .font: NSFont.systemFont(ofSize: 8),
+                .foregroundColor: NSColor.secondaryLabelColor
+            ]))
+            if idx < items.count - 1 {
+                out.append(NSAttributedString(string: "  "))
             }
         }
+        return AttributedString(out)
     }
 }
 
