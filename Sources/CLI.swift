@@ -854,6 +854,7 @@ enum CLI {
           fan status          风扇转速 + SMCAsusFan kext 状态
           fan list            列出风扇曲线档位（静音/平衡/性能）
           fan set <档位>       下发风扇曲线（需 root）
+          fan apply-custom <json>  下发自定义曲线（GUI 生成，需 root）
           model               显示检测到的机型 / 当前选择 / 匹配状态
           model set <代码>    手动选择机型（不匹配时须加 --i-understand）
           smc list            列出全部 SMC 键
