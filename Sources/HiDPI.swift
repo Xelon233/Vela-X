@@ -56,14 +56,14 @@ enum HiDPI {
         var best = (0, 0)
         var bestArea = 0
         for m in modes {
-            let w = CGDisplayModeGetPixelWidth(m)
-            let h = CGDisplayModeGetPixelHeight(m)
+            let w = m.pixelWidth
+            let h = m.pixelHeight
             guard w >= h, w > 0 else { continue }
             let area = w * h
             if area > bestArea { bestArea = area; best = (w, h) }
         }
-        if best.0 == 0 {
-            return (CGDisplayPixelsWide(id), CGDisplayPixelsHigh(id))
+        if best.0 == 0, let cur = CGDisplayCopyDisplayMode(id) {
+            best = (cur.pixelWidth, cur.pixelHeight)
         }
         return best
     }
