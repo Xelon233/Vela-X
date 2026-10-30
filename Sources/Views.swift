@@ -324,8 +324,15 @@ struct OverviewView: View {
     /// 全量顺序（含被隐藏的卡）；显示时再过滤。这样拖拽排序后存回去不会把隐藏项弄丢。
     @State private var cards: [OverviewCard] = OverviewLayoutPrefs.order
     @State private var hidden: Set<OverviewCard> = OverviewLayoutPrefs.hidden
-    /// 正在拖拽的卡片（拖拽排序用）
-    @State private var draggingCard: OverviewCard?
+    /// 正在拖拽的卡片（拖拽排序用）。
+    /// 必须是 @GestureState 而不是 @State：实时重排时若被拖卡片跨行，它所在的 ForEach 会先移除、
+    /// 再插到另一行，原 View 被销毁导致系统直接「取消」手势、onEnded 不再触发；
+    /// @State 就会永久停在「放大中」，表现为松手后那张卡大一圈、必须切页才恢复。
+    /// @GestureState 由手势自身持有，手势结束或被取消都会自动复位为 nil。
+    @GestureState private var draggingCard: OverviewCard?
+    /// 本次拖拽的「源卡片」：手势期间锁存，避免卡片让位后按起始坐标认错。
+    /// 只用于逻辑判断；视觉（抬起/缩回）一律由上面的 @GestureState 驱动。
+    @State private var dragSource: OverviewCard?
     /// 各卡片在全局坐标系下的 frame，松手时用来判断落在哪张卡上
     @State private var dragFrames: [OverviewCard: CGRect] = [:]
     /// 编辑模式（iOS 小组件式）：开 = 窗口固定、卡片可拖/可增删；关 = 窗口可拖、卡片固定。
@@ -358,6 +365,11 @@ struct OverviewView: View {
                         }
                     }
                 }
+                // 手势挂在「卡片网格」这一层，而不是每张卡自己身上。
+                // 卡片实时让位时若跨行，它会被从 A 行的 ForEach 移除、插到 B 行 → 原 View 销毁 →
+                // 挂在它上面的手势被系统取消（onEnded 不再触发），表现为拖到一半就断。
+                // 容器在整个拖拽过程中一直存在，手势不会被中途掐掉。
+                .gesture(windowState.isEditMode ? gridDragGesture() : nil)
                 .onPreferenceChange(FramePreferenceKey<OverviewCard>.self) { dragFrames = $0 }
             }
 
@@ -428,7 +440,6 @@ struct OverviewView: View {
             }
             .animation(.spring(response: 0.30, dampingFraction: 0.8), value: draggingCard)
             .collectFrame(id: card)
-            .gesture(windowState.isEditMode ? dragCardGesture(card) : nil)
     }
 
     /// 编辑模式下每张卡右上角的「移除」角标（minus 圆标）。
@@ -518,29 +529,32 @@ struct OverviewView: View {
     /// 拖的过程中实时重排——手指移到另一张卡片的槽位上时，立即把被拖卡片插到它旁边，
     /// 其它卡片用弹簧动画让位，整个过程连续顺滑，不再等松手才「啪」地跳一下。
     /// 窗口背景拖动由 WindowState.isEditMode 联动关掉，所以拖卡片时窗口绝不会被带跑。
-    private func dragCardGesture(_ card: OverviewCard) -> some Gesture {
+    /// 挂在卡片网格容器上：抬起的视觉效果交给 @GestureState，无论手势正常结束还是被取消都会自动缩回。
+    private func gridDragGesture() -> some Gesture {
         DragGesture(minimumDistance: 8, coordinateSpace: .global)
-            .onChanged { value in
-                if draggingCard == nil {
-                    // 抓起卡片：弹簧抬起（放大 + 投影），手感更跟手
-                    withAnimation(.spring(response: 0.30, dampingFraction: 0.8)) {
-                        draggingCard = card
-                    }
+            .updating($draggingCard) { value, state, _ in
+                // 只在抓起的一瞬确定动的是哪张卡：之后卡片会互相让位，
+                // 再按起点坐标去重算会认到让位后的那张卡上。
+                if state == nil {
+                    state = cardUnder(value.startLocation)
                 }
-                // 手指下方（且不是被拖卡片自己）的槽位 → 实时把被拖卡片挪到它旁边
-                guard let target = dragFrames.first(where: {
-                    $0.key != card && $0.value.contains(value.location)
-                })?.key, target != card else { return }
+            }
+            .onChanged { value in
+                if dragSource == nil { dragSource = cardUnder(value.startLocation) }
+                guard let card = dragSource,
+                      let target = cardUnder(value.location), target != card else { return }
                 reorderLive(card, to: target)
             }
             .onEnded { _ in
-                // 松手：先把卡片「放下」（缩回 + 投影消失），再持久化顺序。
-                // 被拖卡片的槽位在拖拽过程中已经实时挪到位，所以松手没有位置跳变，只是收尾动画。
-                withAnimation(.spring(response: 0.30, dampingFraction: 0.8)) {
-                    draggingCard = nil
-                }
+                // 松开后 @GestureState 自己复位；这里只收尾 + 持久化顺序。
+                dragSource = nil
                 OverviewLayoutPrefs.setOrder(cards)
             }
+    }
+
+    /// 命中测试：返回某点下方的卡片（拖拽排序与角标移除的判断都用全局坐标）
+    private func cardUnder(_ point: CGPoint) -> OverviewCard? {
+        dragFrames.first(where: { $0.value.contains(point) })?.key
     }
 
     /// 实时重排（不落盘，松手才持久化）：把 card 移动到 target 旁边。

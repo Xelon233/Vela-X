@@ -13,7 +13,8 @@ struct MenuBarSettingsView: View {
     @State private var selected: [MenuMetric] = MenuBarPrefs.enabled
     @State private var netMode: NetSpeedDisplay = MenuBarPrefs.netMode
     /// 正在长按拖拽的指标（预览界面排序用）
-    @State private var draggingMetric: MenuMetric?
+    /// 同样用 @GestureState（与概览一致）：手势被系统取消时也会自动复位，不会卡在放大状态
+    @GestureState private var draggingMetric: MenuMetric?
     /// 各标签在全局坐标系下的 frame，松手时用来判断落在哪个标签上
     @State private var dragFrames: [MenuMetric: CGRect] = [:]
     /// 编辑模式（iOS 小组件式）：开 = 窗口固定、预览标签可拖；关 = 窗口可拖、标签固定。
@@ -235,11 +236,9 @@ struct MenuBarSettingsView: View {
 private extension MenuBarSettingsView {
     func dragMetricGesture(_ metric: MenuMetric) -> some Gesture {
         DragGesture(minimumDistance: 8, coordinateSpace: .global)
-            .onChanged { _ in
-                if draggingMetric == nil { draggingMetric = metric }
-            }
+            .updating($draggingMetric) { _, state, _ in state = metric }
             .onEnded { value in
-                defer { draggingMetric = nil }
+                // @GestureState 自己会复位，这里只做落位判断
                 guard let target = dragFrames.first(where: { $0.key != metric && $0.value.contains(value.location) })?.key else { return }
                 reorderMetric(metric, to: target)
             }

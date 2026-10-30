@@ -176,7 +176,7 @@ struct OverviewLayoutSheet: View {
     }
 }
 
-/// 概览页卡片的长按拖拽排序已改用手势实现，见 Views.swift 的 `dragCardGesture`。
+/// 概览页卡片的长按拖拽排序已改用手势实现，见 Views.swift 的 `gridDragGesture`。
 /// （原先的 OverviewCardDropDelegate 基于 .onDrop，会在拖拽过程中持续重排导致整片
 ///  网格回流、并且压不住窗口随卡片一起被拖走，已移除。）
 

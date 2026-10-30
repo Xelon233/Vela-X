@@ -43,7 +43,7 @@ struct AboutView: View {
                 Divider().opacity(0.35)
                 whatsNewRow("fanblades", "自定义风扇曲线", "可拖拽 8 点曲线，CPU / GPU 分别编辑与下发；默认关闭，需在「高级功能」确认风险后解锁。")
                 Divider().opacity(0.35)
-                whatsNewRow("slider.horizontal.3", "诊断能力判断修正", "风扇曲线 / Aura RGB 改按实际通道判断，不再写死「不可用」；移除显卡模式与充电上限两项。")
+                whatsNewRow("slider.horizontal.3", "诊断能力判断修正", "风扇曲线 / Aura RGB / 性能模式（功耗墙）改按实际通道判断，不再写死「不可用」；移除显卡模式、充电上限、环境光三项。")
                 Divider().opacity(0.35)
                 whatsNewRow("waveform.path.ecg", "监控页整合", "原「传感器」页的温度曲线、内核计数器并入监控页，侧栏少一项。")
                 Divider().opacity(0.35)

@@ -126,8 +126,10 @@ enum Capabilities {
         // 曲线写入通道存在（kext 暴露了选风扇 + 触发键）→ 可改曲线
         let fanCurveReady = SMC.exists("AFWg") && SMC.exists("AFMf")
         // Aura RGB 以「能否打开 Aura HID 控制器」为准
+        // Aura RGB 以「能否打开 Aura HID 控制器」为准
         let auraReady = AuraEffects.shared.isAvailable
-        let hasALS = SMC.exists("ALV0")
+        // 功耗墙通道存在（kext 暴露了 SMU 消息号 + 瓦数键）→ 可下发功耗上限
+        let perfReady = SMC.exists(PowerLimitSpec.keyCmd) && SMC.exists(PowerLimitSpec.keyWatts)
         let bat = SystemProbe.battery()
 
         var list: [Capability] = [
@@ -166,12 +168,6 @@ enum Capabilities {
                 backend: "host_processor_info · ProcessInfo.thermalState（无需 kext）"
             ),
             Capability(
-                title: "环境光 / 自动背光",
-                status: hasALS ? .available : .unavailable,
-                summary: hasALS ? "ALV0 可用，由 AsusSMC 直接接管" : "未找到 ALV0",
-                backend: "AppleSMC → AsusSMC(ALS) → EC"
-            ),
-            Capability(
                 title: "电池状态与健康度",
                 status: bat.present ? .available : .unavailable,
                 summary: bat.present
@@ -196,10 +192,12 @@ enum Capabilities {
                 backend: "SMCAsusFan.kext → AFMf / AFW1–4 / AFWg"
             ),
             Capability(
-                title: "性能模式（静音/平衡/增强）",
-                status: .unavailable,
-                summary: "G-Helper 通过 ACPI-WMI（ASUS WMI GUID）调用 DEVS/threshhold 方法，macOS 的 ACPI 实现不把 WMI 暴露给用户态",
-                backend: "需要 kext 内部调用 _WDG/WMNB"
+                title: "性能模式 / 功耗墙（静音·平衡·性能）",
+                status: perfReady ? .available : .unavailable,
+                summary: perfReady
+                    ? "SMCAsusFan.kext 已暴露 AFsC / AFsw，可下发 25 / 30 / 35W 与自定义 15–50W 功耗墙，一键恢复默认"
+                    : "未检测到功耗墙通道（AFsC / AFsw，需要 kext v20-stapm 及以上），当前只能读功耗、不能限制",
+                backend: "SMCAsusFan.kext → SMU STAPM"
             ),
             Capability(
                 title: "Aura RGB / Anime Matrix",
