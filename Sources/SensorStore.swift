@@ -28,6 +28,7 @@ struct SampleFrame {
     var processes: [ProcSample]?
     var net = NetSpeedSnapshot()
     var gpuUsage: Double?
+    var gpuTemp: Double?
     var powerWatts: Double?
     /// CPU 实时频率（GHz），来自 AMDRyzenCPUPowerManagement 用户客户端；nil = 没采到
     var cpuFreqGHz: Double?
@@ -194,6 +195,7 @@ final class SensorStore: ObservableObject {
             MetricProbe.shared.probeIfNeeded()
             let freq = MetricProbe.shared.cpuFreq
             let gpu = MetricProbe.shared.gpuUsage
+            let gpuTemp = MetricProbe.shared.gpuTemp
             DispatchQueue.main.async {
                 store.hardware = hw
                 store.kexts = kext
@@ -202,6 +204,7 @@ final class SensorStore: ObservableObject {
                 store.keyNames = names
                 store.cpuFreq = freq
                 store.gpuUsage = gpu
+                store.gpuTemp = gpuTemp
                 // powerWatts / cpuFreq.liveGHz 每帧由 AMDRyzenProbe 填充（需 kext）
                 let mode = Control.mode
                 store.kbdMode = mode
@@ -249,9 +252,11 @@ final class SensorStore: ObservableObject {
         frame.load = SystemLoad.sample()
         frame.net = NetSpeed.sample()
 
-        // 显卡占用要遍历 IORegistry 并拷属性字典，比其它项重，降频到每 5 帧
-        if MetricProbe.shared.gpuUsage != nil, seq % 5 == 0 {
-            frame.gpuUsage = GPUProbe.usage()
+        // 显卡占用/温度要遍历 IORegistry 并拷属性字典，比其它项重，降频到每 5 帧
+        if (MetricProbe.shared.gpuUsage != nil || MetricProbe.shared.gpuTemp != nil), seq % 5 == 0 {
+            let g = GPUProbe.stats()
+            frame.gpuUsage = g.usage
+            frame.gpuTemp = g.temperature
         }
         // CPU 功耗 / 频率来自 AMDRyzenCPUPowerManagement 用户客户端（selector 4），
         // 普通用户态即可读，不需要 root。kext 没装时 amdAvailable=false，跳过。
@@ -304,6 +309,7 @@ final class SensorStore: ObservableObject {
         mixRounded(frame.load.memoryUsedRatio, 500)
         mixRounded(frame.load.swapUsed > 0 ? Double(frame.load.swapUsed) / 1e6 : nil, 10)
         mixRounded(frame.gpuUsage, 1)
+        mixRounded(frame.gpuTemp, 1)
         mixRounded(frame.powerWatts, 1)
         mixRounded(frame.cpuFreqGHz, 100)     // 0.01 GHz
         mixRounded(frame.net.down, 2)           // 0.5 KB/s
@@ -351,6 +357,7 @@ final class SensorStore: ObservableObject {
         load = frame.load
         netSpeed = frame.net
         if let g = frame.gpuUsage { gpuUsage = g }
+        if let t = frame.gpuTemp { gpuTemp = t }
         if let w = frame.powerWatts { powerWatts = w }
         if let ghz = frame.cpuFreqGHz { cpuFreq.liveGHz = ghz }
         if frame.load.sampled {
@@ -618,6 +625,13 @@ final class SensorStore: ObservableObject {
         return picked.isEmpty ? "Vela X" : picked.joined(separator: " ")
     }
 
+    /// 菜单栏状态项用的结构化条目（图标 + 短标签 + 数值），供 App.swift 渲染图标版标签
+    var menuBarItems: [MenuBarItem] {
+        MenuBarPrefs.enabled.compactMap { metric in
+            shortText(metric).map { MenuBarItem(metric: metric, value: $0) }
+        }
+    }
+
     /// 菜单栏窗口里每一行的完整显示（带项目名）
     func menuValue(_ metric: MenuMetric) -> MenuMetricValue {
         switch metric {
@@ -669,6 +683,13 @@ final class SensorStore: ObservableObject {
             }
             return MenuMetricValue(text: String(format: "%.0f%%", g), available: true)
 
+        case .gpuTemp:
+            guard let t = gpuTemp else {
+                return MenuMetricValue(text: "不可用", available: false,
+                                       reason: "驱动没有上报温度：\(GPUProbe.displayName) 的 PerformanceStatistics 里没有 Temperature(C) 键")
+            }
+            return MenuMetricValue(text: String(format: "%.0f °C", t), available: true)
+
         case .power:
             guard let w = powerWatts else {
                 return MenuMetricValue(text: "不可用", available: false,
@@ -688,6 +709,7 @@ final class SensorStore: ObservableObject {
         case .memUsage: return load.memTotal > 0
         case .netSpeed: return true
         case .gpuLoad:  return gpuUsage != nil
+        case .gpuTemp:  return gpuTemp != nil
         case .power:    return powerWatts != nil
         }
     }
@@ -697,7 +719,7 @@ final class SensorStore: ObservableObject {
     }
 
     /// 菜单栏标题用的紧凑写法（不带项目名，长度要控制）
-    private func shortText(_ metric: MenuMetric) -> String? {
+    func shortText(_ metric: MenuMetric) -> String? {
         switch metric {
         case .cpuTemp:
             guard let t = cpuTemp else { return nil }
@@ -717,11 +739,14 @@ final class SensorStore: ObservableObject {
             case .both: return "↓\(netSpeed.down.asRate) ↑\(netSpeed.up.asRate)"
             }
         case .cpuFreq:
-            guard cpuFreq.live else { return nil }
-            return String(format: "%.2fG", Double(cpuFreq.nominalHz) / 1e9)
+            guard let ghz = cpuFreq.liveGHz else { return nil }
+            return String(format: "%.2fG", ghz)
         case .gpuLoad:
             guard let g = gpuUsage else { return nil }
             return String(format: "%.0f%%", g)
+        case .gpuTemp:
+            guard let t = gpuTemp else { return nil }
+            return String(format: "%.0f°", t)
         case .power:
             guard let w = powerWatts else { return nil }
             return String(format: "%.0fW", w)

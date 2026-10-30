@@ -14,8 +14,10 @@
 //    · CPU 频率    可用 —— 由 AMDRyzenCPUPowerManagement.kext 用户客户端读每核有效频率
 //                  （selector 4，APERF/MPERF 增量），不需要 root；
 //                  sysctl hw.cpufrequency 的 min/max 相等只是固件标称值，仅作兜底显示
-//    · 显卡占用率  不可用 —— NVAccel 的 PerformanceStatistics 里没有任何 utilization 键，
-//                  macOS 下也没有 NVML 的等价接口
+//    · 显卡占用率  可用 —— NullMoth 新驱动（NVAccel / NVMTLDriver）在 PerformanceStatistics
+//                  里上报「Device Utilization %」「GPU Core Utilization %」等键
+//    · 显卡温度    可用 —— 同上，「Temperature(C)」键
+//    · 显卡功耗    不可用 —— PerformanceStatistics 里没有功耗键，macOS 下也没有 NVML 的等价接口
 //    · 实时功耗    可用 —— 同上，AMDRyzenCPUPowerManagement.kext selector 4 的整包功耗（Watt）
 //                  （powermetrics 必须 root、SMC 也没有 PSTR/PCPC 这类键，那条路在黑苹果上走不通）
 //
@@ -137,13 +139,32 @@ enum CPUFrequency {
     }
 }
 
-// MARK: - 显卡占用率
+// MARK: - 显卡占用率 / 温度
+
+/// 显卡实时统计。NullMoth 新驱动（NVAccel / NVMTLDriver）会在 PerformanceStatistics
+/// 里上报「Device Utilization %」「GPU Core Utilization %」「Temperature(C)」等键；
+/// Apple/AMD 加速器驱动用「Device Utilization %」。macOS 下没有 NVML，
+/// 显卡**功耗**没有公开接口（PerformanceStatistics 里也没有），所以功耗拿不到。
+struct GPUStats {
+    /// 占用率 %（0...100），读不到为 nil
+    var usage: Double?
+    /// 温度 °C，读不到为 nil
+    var temperature: Double?
+}
 
 enum GPUProbe {
-    /// 在 IORegistry 里找加速器驱动报的利用率。
-    /// Apple 的 AGXAccelerator、AMD 的 AMDRadeonX* 会在 PerformanceStatistics 里给
-    /// 「Device Utilization %」这类键；NVIDIA（NullMoth / NVAccel）实测没有，返回 nil。
-    static func usage() -> Double? {
+    /// 一次遍历同时取占用率与温度，避免每帧重复枚举 IORegistry
+    static func stats() -> GPUStats {
+        guard let dict = performanceStatistics() else { return GPUStats() }
+        return GPUStats(usage: utilization(in: dict),
+                        temperature: number(dict["Temperature(C)"])
+                                     ?? number(dict["GPU Temperature(C)"]))
+    }
+
+    static func usage() -> Double? { stats().usage }
+    static func temperature() -> Double? { stats().temperature }
+
+    private static func performanceStatistics() -> [String: Any]? {
         var iter: io_iterator_t = 0
         let kr = IOServiceGetMatchingServices(kIOMainPortDefault,
                                               IOServiceMatching("IOAccelerator"), &iter)
@@ -155,17 +176,10 @@ enum GPUProbe {
             var props: Unmanaged<CFMutableDictionary>?
             let ok = IORegistryEntryCreateCFProperties(entry, &props, kCFAllocatorDefault, 0)
             if ok == KERN_SUCCESS, let raw = props?.takeRetainedValue(),
-               let dict = raw as? [String: Any] {
-                if let stats = dict["PerformanceStatistics"] as? [String: Any],
-                   let v = utilization(in: stats) {
-                    IOObjectRelease(entry)
-                    return v
-                }
-                // 少数驱动把统计平铺在顶层
-                if let v = utilization(in: dict) {
-                    IOObjectRelease(entry)
-                    return v
-                }
+               let dict = raw as? [String: Any],
+               let stats = dict["PerformanceStatistics"] as? [String: Any], !stats.isEmpty {
+                IOObjectRelease(entry)
+                return stats
             }
             IOObjectRelease(entry)
             entry = IOIteratorNext(iter)
@@ -173,19 +187,31 @@ enum GPUProbe {
         return nil
     }
 
-    private static func utilization(in dict: [String: Any]) -> Double? {
-        for (key, value) in dict {
+    /// 优先整卡占用率，其次核心占用率，最后兜底任何含 utilization 的键。
+    /// 新驱动会同时给 5 个 utilization 键，若不固定优先级会误取到
+    /// 「Video Engine Utilization %=0」而不是整卡占用率。
+    private static func utilization(in stats: [String: Any]) -> Double? {
+        for key in ["Device Utilization %", "GPU Core Utilization %"] {
+            if let v = number(stats[key]) { return normalized(v) }
+        }
+        for (key, value) in stats {
             let lk = key.lowercased()
             guard lk.contains("utilization") || lk.contains("utilisation") else { continue }
-            let v: Double?
-            if let d = value as? Double { v = d }
-            else if let i = value as? Int { v = Double(i) }
-            else if let n = value as? NSNumber { v = n.doubleValue }
-            else { continue }
-            guard let v else { continue }
-            // 0...1 的是比率，>1 的按百分比处理
-            return v <= 1.0 ? v * 100 : v
+            if let v = number(value) { return normalized(v) }
         }
+        return nil
+    }
+
+    private static func normalized(_ v: Double) -> Double {
+        // 0...1 的是比率，>1 的按百分比处理
+        v <= 1.0 ? v * 100 : v
+    }
+
+    private static func number(_ value: Any?) -> Double? {
+        guard let value else { return nil }
+        if let d = value as? Double { return d }
+        if let i = value as? Int { return Double(i) }
+        if let n = value as? NSNumber { return n.doubleValue }
         return nil
     }
 
@@ -214,6 +240,7 @@ final class MetricProbe {
 
     private(set) var cpuFreq = CPUFrequencyInfo()
     private(set) var gpuUsage: Double?
+    private(set) var gpuTemp: Double?
     private(set) var amdAvailable = false
     private(set) var probed = false
 
@@ -226,12 +253,13 @@ final class MetricProbe {
         guard !done else { return }
 
         let freq = CPUFrequency.probe()
-        let gpu = GPUProbe.usage()
+        let gpu = GPUProbe.stats()
         let amd = AMDRyzenProbe.shared.available
 
         lock.lock()
         cpuFreq = freq
-        gpuUsage = gpu
+        gpuUsage = gpu.usage
+        gpuTemp = gpu.temperature
         amdAvailable = amd
         probed = true
         lock.unlock()
@@ -247,6 +275,7 @@ enum MenuMetric: String, CaseIterable, Identifiable, Hashable {
     case memUsage
     case netSpeed
     case gpuLoad
+    case gpuTemp
     case power
 
     var id: String { rawValue }
@@ -255,11 +284,12 @@ enum MenuMetric: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .cpuTemp:  return "CPU 温度"
         case .cpuLoad:  return "CPU 占用率"
-        case .cpuFreq:  return "AMDRyzenCPUPowerManagement.kext → 用户客户端 selector 4（APERF/MPERF）"
+        case .cpuFreq:  return "CPU 频率"
         case .memUsage: return "内存占用率"
         case .netSpeed: return "实时网速"
         case .gpuLoad:  return "显卡占用率"
-        case .power:    return "AMDRyzenCPUPowerManagement.kext → 用户客户端 selector 4（整包功耗）"
+        case .gpuTemp:  return "显卡温度"
+        case .power:    return "整机功耗"
         }
     }
 
@@ -267,11 +297,26 @@ enum MenuMetric: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .cpuTemp:  return "thermometer.medium"
         case .cpuLoad:  return "chart.bar.fill"
-        case .cpuFreq:  return "AMDRyzenCPUPowerManagement.kext → 用户客户端 selector 4（APERF/MPERF）"
+        case .cpuFreq:  return "speedometer"
         case .memUsage: return "memorychip"
         case .netSpeed: return "arrow.down.arrow.up"
         case .gpuLoad:  return "display"
-        case .power:    return "AMDRyzenCPUPowerManagement.kext → 用户客户端 selector 4（整包功耗）"
+        case .gpuTemp:  return "thermometer.sun"
+        case .power:    return "bolt.fill"
+        }
+    }
+
+    /// 菜单栏标题里数值旁的短标签（缩小字），用来区分同类指标
+    var shortLabel: String {
+        switch self {
+        case .cpuTemp:  return "CPU"
+        case .cpuLoad:  return "CPU"
+        case .cpuFreq:  return "CPU"
+        case .memUsage: return "内存"
+        case .netSpeed: return "网速"
+        case .gpuLoad:  return "GPU"
+        case .gpuTemp:  return "GPU"
+        case .power:    return "功耗"
         }
     }
 
@@ -283,7 +328,8 @@ enum MenuMetric: String, CaseIterable, Identifiable, Hashable {
         case .cpuFreq:  return "AMDRyzenCPUPowerManagement.kext → 用户客户端 selector 4（APERF/MPERF）"
         case .memUsage: return "Mach host_statistics64"
         case .netSpeed: return "getifaddrs 接口字节计数"
-        case .gpuLoad:  return "IORegistry IOAccelerator PerformanceStatistics"
+        case .gpuLoad:  return "IORegistry IOAccelerator PerformanceStatistics（Device Utilization %）"
+        case .gpuTemp:  return "IORegistry IOAccelerator PerformanceStatistics（Temperature(C)）"
         case .power:    return "AMDRyzenCPUPowerManagement.kext → 用户客户端 selector 4（整包功耗）"
         }
     }
@@ -294,6 +340,12 @@ struct MenuMetricValue {
     var text: String
     var available: Bool
     var reason: String?
+}
+
+/// 菜单栏状态项用的紧凑显示项：图标 + 短标签 + 数值由渲染层（App.swift）拼接
+struct MenuBarItem {
+    let metric: MenuMetric
+    let value: String
 }
 
 // MARK: - 网速显示模式

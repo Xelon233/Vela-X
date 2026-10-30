@@ -380,25 +380,53 @@ private struct SelectionGlass: View {
 struct OverviewView: View {
     @EnvironmentObject var store: SensorStore
     @State private var showModelPicker = false
+    @State private var showLayoutSheet = false
+    @State private var cards: [OverviewCard] = OverviewLayoutPrefs.visibleCards
+
+    /// 窄卡（功耗/频率/显卡/风扇/电池）统一高度，保证两两并排时对齐
+    private let smallCardHeight: CGFloat = 108
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
 
-            HStack(alignment: .top, spacing: 12) {
-                temperatureCard
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                VStack(spacing: 12) {
-                    fanCard
-                    batteryCard
+            if cards.isEmpty {
+                Text("没有显示任何卡片 —— 点标题栏的「自定义布局」添加。")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Palette.textSecondary)
+                    .frame(maxWidth: .infinity, minHeight: 200)
+            } else {
+                LazyVGrid(columns: [
+                    GridItem(.flexible(), spacing: 12),
+                    GridItem(.flexible(), spacing: 12)
+                ], alignment: .leading, spacing: 12) {
+                    ForEach(cards) { card in
+                        cardView(card)
+                            .gridCellColumns(card.isWide ? 2 : 1)
+                    }
                 }
-                .frame(width: 252)
             }
-            .frame(height: 240)
+        }
+        .sheet(isPresented: $showLayoutSheet) {
+            OverviewLayoutSheet()
+        }
+        .onChange(of: showLayoutSheet) { showing in
+            if !showing { cards = OverviewLayoutPrefs.visibleCards }
+        }
+    }
 
-            keyboardCard
-            LoadCard()
-            capabilitySummary
+    @ViewBuilder
+    private func cardView(_ card: OverviewCard) -> some View {
+        switch card {
+        case .cpuTemp:    temperatureCard
+        case .power:      powerCard
+        case .cpuFreq:    cpuFreqCard
+        case .gpu:        gpuCard
+        case .fan:        fanCard
+        case .battery:    batteryCard
+        case .keyboard:   keyboardCard
+        case .load:       LoadCard()
+        case .capability: capabilitySummary
         }
     }
 
@@ -429,6 +457,20 @@ struct OverviewView: View {
                     }
                     .buttonStyle(.plain)
                     .help("改机型名称")
+                    Button {
+                        showLayoutSheet = true
+                    } label: {
+                        Text("自定义布局")
+                            .font(.system(size: 9.5, weight: .medium))
+                            .tracking(0.5)
+                            .foregroundStyle(Palette.textSecondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Palette.faintFill))
+                        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(Palette.hairline, lineWidth: 0.8))
+                    }
+                    .buttonStyle(.plain)
+                    .help("自定义概览页卡片顺序与显隐")
                 }
                 Spacer()
                 HStack(spacing: 0) {
@@ -512,7 +554,6 @@ struct OverviewView: View {
                 }
                 Spacer(minLength: 10)
             }
-            .frame(maxHeight: .infinity)
         }
     }
 
@@ -560,7 +601,7 @@ struct OverviewView: View {
             }
             .frame(maxHeight: .infinity, alignment: .top)
         }
-        .frame(maxHeight: .infinity)
+        .frame(height: smallCardHeight)
     }
 
     private var batteryCard: some View {
@@ -586,7 +627,94 @@ struct OverviewView: View {
             }
             .frame(maxHeight: .infinity, alignment: .top)
         }
-        .frame(maxHeight: .infinity)
+        .frame(height: smallCardHeight)
+    }
+
+    private var powerCard: some View {
+        Card(padding: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                SectionTitle(text: "整机功耗", trailing: "AMD kext")
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(store.powerWatts.map { String(format: "%.1f", $0) } ?? "—")
+                        .font(.system(size: 25, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(store.powerWatts != nil ? Color.primary : Palette.textSecondary)
+                    Text("W")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Palette.textSecondary)
+                    Spacer()
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Palette.accent2)
+                }
+                Spacer(minLength: 0)
+                Text("整包功耗（AMDRyzenCPUPowerManagement）")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(Palette.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxHeight: .infinity, alignment: .top)
+        }
+        .frame(height: smallCardHeight)
+    }
+
+    private var cpuFreqCard: some View {
+        Card(padding: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                SectionTitle(text: "CPU 频率", trailing: "AMD kext")
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(store.cpuFreq.liveGHz.map { String(format: "%.2f", $0) } ?? "—")
+                        .font(.system(size: 25, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(store.cpuFreq.liveGHz != nil ? Color.primary : Palette.textSecondary)
+                    Text("GHz")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Palette.textSecondary)
+                    Spacer()
+                    Image(systemName: "speedometer")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Palette.accent2)
+                }
+                Spacer(minLength: 0)
+                Text("每核有效频率均值（APERF/MPERF）")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(Palette.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxHeight: .infinity, alignment: .top)
+        }
+        .frame(height: smallCardHeight)
+    }
+
+    private var gpuCard: some View {
+        Card(padding: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                SectionTitle(text: "显卡", trailing: GPUProbe.displayName)
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(store.gpuUsage.map { String(format: "%.0f", $0) } ?? "—")
+                        .font(.system(size: 25, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(store.gpuUsage != nil ? Palette.accent2 : Palette.textSecondary)
+                    Text("%")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Palette.textSecondary)
+                    Spacer()
+                    if let t = store.gpuTemp {
+                        HStack(spacing: 2) {
+                            Image(systemName: "thermometer.sun")
+                                .font(.system(size: 10))
+                            Text(String(format: "%.0f°", t))
+                                .font(.system(size: 12, weight: .medium).monospacedDigit())
+                        }
+                        .foregroundStyle(Palette.forTemp(t))
+                    }
+                }
+                Spacer(minLength: 0)
+                Text("占用率 + 温度 · 功耗无公开接口")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(Palette.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxHeight: .infinity, alignment: .top)
+        }
+        .frame(height: smallCardHeight)
     }
 
     private var keyboardCard: some View {

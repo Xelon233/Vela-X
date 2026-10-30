@@ -12,6 +12,7 @@ struct MenuBarSettingsView: View {
     @EnvironmentObject var store: SensorStore
     @State private var selected: [MenuMetric] = MenuBarPrefs.enabled
     @State private var netMode: NetSpeedDisplay = MenuBarPrefs.netMode
+    @State private var showOrderSheet = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -31,7 +32,21 @@ struct MenuBarSettingsView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     SectionTitle(text: "可显示的监控项",
                                  trailing: "\(selected.count)/\(MenuMetric.allCases.count) 已选")
-                        .padding(.bottom, 10)
+                        .padding(.bottom, 4)
+
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.up.arrow.down")
+                            .font(.system(size: 9))
+                            .foregroundStyle(Palette.textTertiary)
+                        Button("调换菜单栏顺序") {
+                            showOrderSheet = true
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundStyle(Palette.accent)
+                        Spacer()
+                    }
+                    .padding(.bottom, 10)
 
                     ForEach(MenuMetric.allCases) { metric in
                         metricRow(metric)
@@ -40,6 +55,9 @@ struct MenuBarSettingsView: View {
                         }
                     }
                 }
+            }
+            .sheet(isPresented: $showOrderSheet) {
+                MenuBarOrderSheet(selected: $selected)
             }
 
             if selected.contains(.netSpeed) {
@@ -79,17 +97,26 @@ struct MenuBarSettingsView: View {
             Card {
                 VStack(alignment: .leading, spacing: 8) {
                     SectionTitle(text: "标题栏预览")
-                    Text(store.menuBarTitle)
-                        .font(.system(size: 14, weight: .medium).monospacedDigit())
-                        .foregroundStyle(Palette.text)
-                        .padding(.vertical, 6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(
-                            RoundedRectangle(cornerRadius: Palette.cornerRadius, style: .continuous)
-                                .fill(Color.primary.opacity(0.05))
-                        )
-                    Text("这是状态栏上那个按钮现在的样子。项目太多会被系统截断，"
-                         + "建议控制在 4 项以内。")
+                    HStack(spacing: 6) {
+                        if store.menuBarItems.isEmpty {
+                            Text("Vela X")
+                        } else {
+                            ForEach(store.menuBarItems, id: \.metric) { item in
+                                MenuBarMetricLabel(item: item,
+                                                   iconSize: 13, valueSize: 14, labelSize: 10)
+                            }
+                        }
+                    }
+                    .foregroundStyle(Palette.text)
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: Palette.cornerRadius, style: .continuous)
+                            .fill(Color.primary.opacity(0.05))
+                    )
+                    Text("这是状态栏上那个按钮现在的样子。图标区分类型，小字是项目标签；"
+                         + "项目太多会被系统截断，建议控制在 4 项以内。")
                         .font(.system(size: 10.5))
                         .foregroundStyle(Palette.textTertiary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -165,5 +192,57 @@ struct MenuBarSettingsView: View {
                 MenuBarPrefs.setEnabled(selected)
             }
         )
+    }
+}
+
+/// 拖拽调整已勾选菜单栏指标的先后顺序（原生 List onMove）
+struct MenuBarOrderSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var selected: [MenuMetric]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("调换菜单栏顺序")
+                    .font(.system(size: 15, weight: .bold))
+                Text("拖拽调整已勾选项在顶部菜单栏里的先后顺序。")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+
+            if selected.isEmpty {
+                Text("还没有勾选任何项")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List {
+                    ForEach(selected, id: \.self) { metric in
+                        HStack(spacing: 10) {
+                            Image(systemName: metric.icon)
+                                .font(.system(size: 12))
+                                .frame(width: 16)
+                                .foregroundStyle(Palette.accent)
+                            Text(metric.title)
+                                .font(.system(size: 12))
+                        }
+                        .padding(.vertical, 2)
+                    }
+                    .onMove { from, to in
+                        selected.move(fromOffsets: from, toOffset: to)
+                        MenuBarPrefs.setEnabled(selected)
+                    }
+                }
+                .listStyle(.inset)
+            }
+
+            HStack {
+                Spacer()
+                Button("完成") { dismiss() }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(18)
+        .frame(width: 340, height: 380)
     }
 }

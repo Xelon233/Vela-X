@@ -33,9 +33,47 @@ struct AsusControlApp: App {
             MenuBarView()
                 .environmentObject(store)
         } label: {
-            Text(store.menuBarTitle)
+            menuBarLabel
         }
         .menuBarExtraStyle(.window)
+    }
+
+    /// 菜单栏状态项：图标 + 数值 + 缩小字标签，逐个指标拼起来。
+    /// 图标区分类型（温度计=温度、显示器=显卡、内存条=内存…），小字标签辅助说明。
+    private var menuBarLabel: some View {
+        let items = store.menuBarItems
+        return Group {
+            if items.isEmpty {
+                Text("Vela X")
+            } else {
+                HStack(spacing: 5) {
+                    ForEach(items, id: \.metric) { item in
+                        MenuBarMetricLabel(item: item)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// 菜单栏状态项里的单个指标：小图标 + 数值 + 缩小字的标签。
+/// 预览（菜单栏设置页）传更大的字号即可复用。
+struct MenuBarMetricLabel: View {
+    let item: MenuBarItem
+    var iconSize: CGFloat = 9
+    var valueSize: CGFloat = 11
+    var labelSize: CGFloat = 8
+
+    var body: some View {
+        HStack(spacing: 2) {
+            Image(systemName: item.metric.icon)
+                .font(.system(size: iconSize))
+            Text(item.value)
+                .font(.system(size: valueSize, weight: .medium).monospacedDigit())
+            Text(item.metric.shortLabel)
+                .font(.system(size: labelSize))
+                .foregroundStyle(.secondary)
+        }
     }
 }
 

@@ -4,7 +4,7 @@
 > 性能模式、风扇曲线、键盘背光与 Aura 灯效、传感器监控、菜单栏多指标、NVIDIA 驱动管理，  
 > 全部跑在原生 SwiftUI + Liquid Glass 界面里。
 
-- 版本：**1.4.0**（build 10）
+- 版本：**1.5.0**（build 13）
 - 界面：macOS 26 Liquid Glass（透明窗 + behindWindow 玻璃 + 26pt 窗口圆角）
 - 最低系统：**macOS 13.0**（Liquid Glass 效果在 macOS 26 上最完整）
 - 架构：Universal（x86_64 + arm64）
@@ -21,8 +21,9 @@
 | 性能与风扇     | 性能模式切换；双风扇实时转速；**三档风扇曲线**（静音 / 平衡 / 性能），依赖 `SMCAsusFan.kext` |
 | 键盘背光      | HID 写入（report ID `0x5A`），0–3 档亮度                             |
 | Aura 灯效   | HID 写入（report ID `0x5D`），12 种灯效模式                            |
-| 传感器监控     | CPU / GPU 温度、负载、频率、内存、网速、功耗                                  |
-| 菜单栏       | 可勾选 7 项指标实时拼接进菜单栏标题（含 CPU 频率 / 功耗）                    |
+| 传感器监控     | CPU / GPU 温度、CPU / GPU 占用率、频率、内存、网速、整机功耗                     |
+| 菜单栏       | 8 项指标带图标实时显示在菜单栏，可自由勾选、拖拽排序（含 CPU 频率 / 整机功耗 / 显卡温度） |
+| 概览         | 卡片自由选择与调换顺序（整机功耗 / CPU 频率 / 显卡 / 风扇 / 电池…）               |
 | NVIDIA 驱动 | 检查 / 下载 / 安装 NullMoth 的 macOS NVIDIA 驱动                      |
 | 命令行       | 同源 CLI：`vela status` / `vela fan ...` / `vela aura ...` / `vela amd` |
 
@@ -36,6 +37,9 @@
 - 想要 **CPU 实时功耗 / 频率**，需装 [SMCAMDProcessor](https://github.com/trulyspinach/SMCAMDProcessor) 套件里的
   `AMDRyzenCPUPowerManagement.kext`（它给 Vela X 提供用户态可读的整包功耗与每核有效频率）；
   没装时这两项指标自动降级为「不可用」，不会显示假数字。温度来自同套件的 `SMCAMDProcessor.kext`。
+- 显卡占用率与温度来自 [NullMoth](https://github.com/nullmoth/nvidia-macos-driver) 新驱动
+  （NVAccel 的 `PerformanceStatistics` 上报 `Device Utilization %` 与 `Temperature(C)`）；
+  显卡**功耗**没有公开接口，暂不可用。
 - 风扇曲线需要 [`SMCAsusFan.kext`](https://github.com/seerge/g-helper)（EC 风扇邮箱 → SMC 键的桥接内核扩展）
 
 ---
@@ -222,7 +226,7 @@ Sources/                    Swift 源码
   HIDBacklight.swift               键盘背光（report ID 0x5A）
   AuraEffects.swift / AuraPanel.swift   Aura 灯效（report ID 0x5D）
   SystemLoad.swift / SystemInfo.swift  负载与硬件信息
-  MenuMetrics.swift            菜单栏指标采集（网速、温度、内存…）
+  MenuMetrics.swift            菜单栏指标采集（网速、温度、内存、GPU 占用/温度…）
   AMDRyzenProbe.swift          AMD CPU 实时功耗/频率（AMDRyzenCPUPowerManagement.kext 用户客户端）
   NvidiaUpdate.swift / NvidiaView.swift  NVIDIA 驱动检查、下载安装
   MonitorView.swift / LoadViews.swift / SensorStore.swift  监控与负载页面
