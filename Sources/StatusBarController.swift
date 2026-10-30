@@ -93,7 +93,8 @@ final class StatusBarController: NSObject {
                 out.append(NSAttributedString(attachment: att))
             }
             out.append(NSAttributedString(string: " " + item.value, attributes: [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: 12.5, weight: .medium)
+                // 恢复系统菜单栏默认字体（之前用 12.5pt 等宽数字，字形偏小、与其他菜单栏项不一致）
+                .font: NSFont.systemFont(ofSize: NSFont.systemFontSize)
             ]))
             if idx < items.count - 1 {
                 out.append(NSAttributedString(string: "  "))

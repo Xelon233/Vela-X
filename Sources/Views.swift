@@ -697,7 +697,19 @@ struct OverviewView: View {
                                  color: store.load.thermal == .nominal ? Palette.ok : Palette.warn)
                         statLine("采样", "\(store.sampleCount) 点 · \(store.samplingRate.longLabel)")
                     }
-                    Spacer(minLength: 0)
+                    // 右侧空白用 CPU 温度曲线填充（Sparkline 无网格 / 表格背景）
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("温度曲线")
+                            .font(.system(size: 10))
+                            .tracking(0.5)
+                            .foregroundStyle(Palette.textTertiary)
+                        Sparkline(values: store.tempHistory,
+                                  color: Palette.forTemp(store.cpuTemp),
+                                  lowerBound: 30, upperBound: 100,
+                                  filled: false)
+                            .frame(maxWidth: .infinity, minHeight: 84, maxHeight: 84)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
                 Spacer(minLength: 10)
                 // 频率：大数 + 心电监护仪风格波形（表征 CPU 频率随时间起伏）
