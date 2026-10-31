@@ -258,10 +258,10 @@ final class SensorStore: ObservableObject {
         }
 
         func save(since: TimeInterval) {
-            Prefs.set(String(down), for: downKey)
-            Prefs.set(String(up), for: upKey)
-            Prefs.set(String(Int64(boot)), for: bootKey)
-            Prefs.set(String(Int64(since)), for: sinceKey)
+            Prefs.set(String(down), for: NetTotals.downKey)
+            Prefs.set(String(up), for: NetTotals.upKey)
+            Prefs.set(String(Int64(boot)), for: NetTotals.bootKey)
+            Prefs.set(String(Int64(since)), for: NetTotals.sinceKey)
         }
 
         static func savedSince() -> TimeInterval {
