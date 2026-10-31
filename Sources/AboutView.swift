@@ -41,6 +41,8 @@ struct AboutView: View {
                 Divider().opacity(0.35)
                 whatsNewRow("menubar.rectangle", "菜单栏新增 GPU 功耗 / 显存占用", "两个可勾选的菜单栏指标，与温度、占用率一样可排序、可选合并显示；未装 SMCNvidiaGPU 驱动时标为不可用并说明原因。")
                 Divider().opacity(0.35)
+                whatsNewRow("powerplug.fill", "新增「整机功耗」监测", "监控页「实时」新增整机功耗卡：CPU 整包 + GPU 合计（macOS 没有系统级功耗接口，只能把两路相加）。缺一路时自动退化为单项，并在副标题里注明「仅 CPU / 仅 GPU」，不会虚报。")
+                Divider().opacity(0.35)
                 whatsNewRow("sparkles", "渲染与缩放性能优化", "每张卡片的装饰层拍平成单张纹理，滚动与缩放时复用，窗口动画不再掉帧。")
                 Divider().opacity(0.35)
                 whatsNewRow("bolt.fill", "新增「功耗墙」档位", "替代原先不可用的「性能模式」：静音 25W / 平衡 30W / 性能 35W 随时可切，自定义 15–50W 默认上锁，需在「高级功能」确认风险后解锁。")
@@ -78,56 +80,98 @@ struct AboutView: View {
 
     private var brandCard: some View {
         Card(padding: 20, accent: Palette.accent, glow: true) {
-            HStack(alignment: .center, spacing: 22) {
-                // 用程序自身的图标（AppIcon.icns），而不是 ROG 品牌标。
-                // 550W 限定皮肤下换成 550W 的机号标，整页跟着换气质。
-                if Palette.isMoss {
-                    MossLogo(height: 34)
-                        .frame(width: 112, alignment: .leading)
-                } else {
-                    Image(nsImage: NSApp.applicationIconImage
-                          ?? NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath))
-                        .resizable()
-                        .interpolation(.high)
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 46, height: 46)
-                }
-
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(AppInfo.name)
-                            .font(.system(size: 26, weight: .bold))
-                            .tracking(0.4)
-                            .foregroundStyle(LinearGradient(colors: [Palette.text, Palette.text.opacity(0.7)],
-                                                            startPoint: .top, endPoint: .bottom))
-                            .shadow(color: Palette.isMoss ? .clear : Palette.accent.opacity(0.35),
-                                    radius: Palette.isMoss ? 0 : 12, y: Palette.isMoss ? 0 : 2)
-                        Pill(text: AppInfo.displayVersion, color: Palette.accent)
-                    }
-                    Text(AppInfo.tagline)
-                        .font(.system(size: 11))
-                        .foregroundStyle(Palette.textSecondary)
-                    // 550W 皮肤：把电影里那行字幕放到标语下面
-                    if Palette.isMoss {
-                        MossCaption(width: 300)
-                            .padding(.top, 3)
-                    }
-                }
-
-                Spacer(minLength: 8)
-
-                VStack(alignment: .trailing, spacing: 6) {
-                    Button {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(AppInfo.oneLine, forType: .string)
-                        copied = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { copied = false }
-                    } label: {
-                        Text(copied ? "已复制" : "复制版本信息")
-                    }
-                    .buttonStyle(GrayButtonStyle())
-                }
+            if Palette.isMoss {
+                mossBrandRow
+            } else {
+                classicBrandRow
             }
+        }
+    }
+
+    /// 550W：机号标 + 产品名 + 一句话简介 + 电影字幕条**压在同一行**，
+    /// 读起来像一行播出的台标字幕（原来字幕另起一行，整块偏高）。
+    private var mossBrandRow: some View {
+        HStack(alignment: .center, spacing: 10) {
+            MossLogo(height: 24)
+            Text(AppInfo.name)
+                .font(.system(size: 17, weight: .bold, design: .monospaced))
+                .tracking(0.6)
+                .foregroundStyle(Palette.text)
+                .fixedSize()
+            Pill(text: AppInfo.displayVersion, color: Palette.accent)
+            Text(AppInfo.tagline)
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(Palette.textSecondary)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            MossCaption(width: 240)
+            copyVersionButton
+        }
+    }
+
+    private var classicBrandRow: some View {
+        HStack(alignment: .center, spacing: 22) {
+            // 用程序自身的图标（AppIcon.icns），而不是 ROG 品牌标
+            Image(nsImage: Self.brandIcon)
+                .resizable()
+                .interpolation(.high)
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 46, height: 46)
+
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(AppInfo.name)
+                        .font(.system(size: 26, weight: .bold))
+                        .tracking(0.4)
+                        .foregroundStyle(LinearGradient(colors: [Palette.text, Palette.text.opacity(0.7)],
+                                                        startPoint: .top, endPoint: .bottom))
+                        .shadow(color: Palette.accent.opacity(0.35), radius: 12, y: 2)
+                    Pill(text: AppInfo.displayVersion, color: Palette.accent)
+                }
+                Text(AppInfo.tagline)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Palette.textSecondary)
+            }
+
+            Spacer(minLength: 8)
+            copyVersionButton
+        }
+    }
+
+    /// 程序图标（摊平成单张位图）。
+    /// ⚠️ 直接把 `NSApp.applicationIconImage` 塞进 `Image(nsImage:)`，会让 `ImageRenderer`
+    /// 把**整页**渲染成一张全透明空图（只在离屏出图时发作，窗口里正常）。
+    /// 先用位图上下文重画一遍再交给 SwiftUI，就没事了。
+    static let brandIcon: NSImage = {
+        let src = NSApp.applicationIconImage
+            ?? NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath)
+        let side: CGFloat = 128
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil,
+                                         pixelsWide: Int(side), pixelsHigh: Int(side),
+                                         bitsPerSample: 8, samplesPerPixel: 4,
+                                         hasAlpha: true, isPlanar: false,
+                                         colorSpaceName: .deviceRGB,
+                                         bytesPerRow: 0, bitsPerPixel: 0) else { return src }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        src.draw(in: NSRect(x: 0, y: 0, width: side, height: side))
+        NSGraphicsContext.restoreGraphicsState()
+        let flat = NSImage(size: NSSize(width: side, height: side))
+        flat.addRepresentation(rep)
+        return flat
+    }()
+
+    private var copyVersionButton: some View {
+        VStack(alignment: .trailing, spacing: 6) {
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(AppInfo.oneLine, forType: .string)
+                copied = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { copied = false }
+            } label: {
+                Text(copied ? "已复制" : "复制版本信息")
+            }
+            .buttonStyle(GrayButtonStyle())
         }
     }
 

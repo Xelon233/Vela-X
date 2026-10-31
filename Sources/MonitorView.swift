@@ -142,6 +142,14 @@ struct MonitorView: View {
                          color: Palette.mGPUPow,
                          series: store.gpuPowerHistory,
                          lower: 0, upper: max(30, store.gpuPowerLimitWatts ?? 120))
+                liveTile(title: "整机功耗",
+                         value: store.systemPowerWatts.map { String(format: "%.1f", $0) } ?? "—",
+                         unit: "W",
+                         sub: sysPowerSubtitle,
+                         color: Palette.mSysPower,
+                         series: store.systemPowerHistory,
+                         lower: 0,
+                         upper: max(60, (store.systemPowerHistory.max() ?? 60) * 1.15))
                 liveTile(title: "显存占用",
                          value: store.vramUsedMB.map { String(format: "%.1f", $0 / 1024) } ?? "—",
                          unit: "GB",
@@ -157,6 +165,16 @@ struct MonitorView: View {
         guard store.gpuPowerWatts != nil else { return "需 SMCNvidiaGPU 驱动" }
         if let lim = store.gpuPowerLimitWatts { return String(format: "上限 %.0f W", lim) }
         return "RUSD 平均功耗"
+    }
+
+    /// 整机功耗 = CPU 整包 + GPU；缺一路时退化为单项，这里如实说明
+    private var sysPowerSubtitle: String {
+        switch (store.powerWatts != nil, store.gpuPowerWatts != nil) {
+        case (true, true):  return "CPU + GPU 合计"
+        case (true, false): return "仅 CPU（GPU 需驱动）"
+        case (false, true): return "仅 GPU（CPU 需 kext）"
+        default:            return "需 CPU / GPU 功耗通道"
+        }
     }
 
     private var vramSubtitle: String {

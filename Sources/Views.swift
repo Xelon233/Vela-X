@@ -58,7 +58,7 @@ enum Page: String, CaseIterable, Identifiable {
         case .monitor:     return "观测站"
         case .network:     return "通信链路"
         case .menubar:     return "顶栏指示"
-        case .keyboard:    return "舱内照明"
+        case .keyboard:    return "照明矩阵"
         case .performance: return "动力与冷却"
         case .nvidia:      return "加速单元"
         case .advanced:    return "高级授权"
@@ -254,8 +254,8 @@ struct SidebarView: View {
                      : (store.hardware.productName.isEmpty
                         ? (store.hardware.modelCode.isEmpty ? "macOS" : store.hardware.modelCode)
                         : store.hardware.productName))
-                    .font(Palette.isMoss ? .system(size: 9, design: .monospaced)
-                                         : .system(size: 9.5))
+                    .font(Palette.isMoss ? .system(size: 9.5, design: .monospaced)
+                                         : .system(size: 10))
                     .tracking(Palette.isMoss ? 0.5 : 0.4)
                     .foregroundStyle(Palette.textTertiary)
             }
@@ -277,14 +277,14 @@ struct SidebarView: View {
                             // 这里留同宽的透明占位，保证没选中时文字位置不跳
                             Color.clear.frame(width: 2, height: 14)
                             Image(systemName: p.icon)
-                                .font(.system(size: 12, weight: page == p ? .semibold : .regular))
-                                .frame(width: 15)
+                                .font(.system(size: 13.5, weight: page == p ? .semibold : .regular))
+                                .frame(width: 17)
                                 .foregroundStyle(page == p ? Palette.accent : Palette.textSecondary)
                             Text(Palette.isMoss ? p.mossTitle : p.title)
                                 .font(Palette.isMoss
-                                      ? .system(size: 11.5, weight: page == p ? .semibold : .regular,
+                                      ? .system(size: 12.5, weight: page == p ? .semibold : .regular,
                                                 design: .monospaced)
-                                      : .system(size: 12, weight: page == p ? .semibold : .regular))
+                                      : .system(size: 13, weight: page == p ? .semibold : .regular))
                                 .tracking(Palette.isMoss ? 0.5 : 0.4)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.85)
@@ -293,7 +293,7 @@ struct SidebarView: View {
                         }
                         .padding(.leading, 6)
                         .padding(.trailing, 10)
-                        .padding(.vertical, 7)
+                        .padding(.vertical, 7.5)
                         .background {
                             // 全场只有这一块玻璃：选中项变了，它靠 matchedGeometryEffect
                             // 在行与行之间滑动，而不是每行各自亮一下
@@ -322,16 +322,16 @@ struct SidebarView: View {
                     Text(Palette.isMoss
                          ? (store.smcReady ? "SMC 链路正常" : "SMC 链路中断")
                          : (store.smcReady ? "AppleSMC 已连接" : "SMC 不可用"))
-                        .font(Palette.isMoss ? .system(size: 9, design: .monospaced)
-                                             : .system(size: 9.5))
+                        .font(Palette.isMoss ? .system(size: 9.5, design: .monospaced)
+                                             : .system(size: 10))
                         .foregroundStyle(Palette.textSecondary)
                 }
                 Text(Palette.isMoss
                      ? "// 子系统 \(store.availableCount)/\(store.capabilities.count) 在线"
                      : "\(store.availableCount)/\(store.capabilities.count) 项能力可用")
                     .font(Palette.isMoss
-                          ? .system(size: 9, design: .monospaced)
-                          : .system(size: 9.5))
+                          ? .system(size: 9.5, design: .monospaced)
+                          : .system(size: 10))
                     .foregroundStyle(Palette.textTertiary)
 
                 Divider()
@@ -344,12 +344,12 @@ struct SidebarView: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "gearshape")
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(Palette.textSecondary)
                         Text(Palette.isMoss ? Page.settings.mossTitle : "设置")
                             .font(Palette.isMoss
-                                  ? .system(size: 10.5, design: .monospaced)
-                                  : .system(size: 11))
+                                  ? .system(size: 11, design: .monospaced)
+                                  : .system(size: 11.5))
                             .foregroundStyle(Palette.text)
                         Spacer(minLength: 0)
                         Image(systemName: "chevron.right")

@@ -53,6 +53,7 @@ enum Palette {
     //   显卡功耗              → mGPUPow（粉）
     //   显存                  → mVRAM（靛）
     //   网络                  → mNet（天蓝）
+    //   整机功耗              → mSysPower（玫红，CPU+GPU 合计）
     static let mLoad    = Color.skin(0x2F7BEF, 0x5C9DFF, 0xC8102E)
     static let mFreq    = Color.skin(0x06B6D4, 0x22D3EE, 0xE4572E)
     static let mPower   = Color.skin(0xD97706, 0xFBBF24, 0xB26A00)
@@ -64,6 +65,8 @@ enum Palette {
     static let mGPUPow  = Color.skin(0xEC4899, 0xFF6FB5, 0xA8322D)
     static let mVRAM    = Color.skin(0x6366F1, 0x8B93FF, 0x6B4E71)
     static let mNet     = Color.skin(0x0EA5E9, 0x38BDF8, 0x4A6FA5)
+    /// 整机功耗（CPU 整包 + GPU 合计）—— 比 CPU 功耗的琥珀更深一档，读作「总和」
+    static let mSysPower = Color.skin(0xB91C1C, 0xF87171, 0x6E1210)
 
     // 文字
     static let text = Color.skin(0x1B2331, 0xE9F0FA, 0x14161A)

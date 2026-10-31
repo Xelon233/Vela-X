@@ -64,6 +64,8 @@ final class SensorStore: ObservableObject {
     private(set) var powerHistory: [Double] = []
     private(set) var gpuHistory: [Double] = []
     private(set) var gpuPowerHistory: [Double] = []
+    /// 整机功耗（CPU 整包 + GPU）的历史；缺一路时按可用的一路记
+    private(set) var systemPowerHistory: [Double] = []
     private(set) var vramHistory: [Double] = []
     private(set) var fanRPM: Double?
     private(set) var fanRPMGPU: Double?
@@ -89,6 +91,17 @@ final class SensorStore: ObservableObject {
     private(set) var powerWatts: Double?
     /// 显卡功耗（W）与显存占用（MB）：来自 SMCNvidiaGPU-PowerVRAM 的 sysctl
     private(set) var gpuPowerWatts: Double?
+
+    /// 整机功耗估算 = CPU 整包 + GPU（两项都得自行注入，macOS 没有系统级功耗接口）。
+    /// 只有一路可用时退化为该路的值，UI 会在副标题里说明「仅 CPU / 仅 GPU」。
+    var systemPowerWatts: Double? {
+        switch (powerWatts, gpuPowerWatts) {
+        case let (cpu?, gpu?): return cpu + gpu
+        case let (cpu?, nil):  return cpu
+        case let (nil, gpu?):  return gpu
+        default: return nil
+        }
+    }
     private(set) var gpuPowerLimitWatts: Double?
     private(set) var vramUsedMB: Double?
     private(set) var vramTotalMB: Double?
@@ -510,6 +523,11 @@ final class SensorStore: ObservableObject {
             powerHistory.append(w)
             let cap = samplingRate.tempCapacity
             if powerHistory.count > cap { powerHistory.removeFirst(powerHistory.count - cap) }
+        }
+        if let total = systemPowerWatts {
+            systemPowerHistory.append(total)
+            let cap = samplingRate.tempCapacity
+            if systemPowerHistory.count > cap { systemPowerHistory.removeFirst(systemPowerHistory.count - cap) }
         }
         if let ghz = frame.cpuFreqGHz {
             cpuFreq.liveGHz = ghz
