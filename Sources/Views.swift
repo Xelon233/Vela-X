@@ -312,6 +312,9 @@ private struct SelectionGlass: View {
                     .padding(.leading, 6)
                     .shadow(color: Palette.accent.opacity(0.9), radius: 5)
             }
+            // 装饰层是纯形状 / 渐变，拍平成一张纹理：侧栏选中滑块在行与行之间滑动
+            // （matchedGeometryEffect）时复用这张纹理，滑动更顺；里面没有控件，拍平安全。
+            .drawingGroup(opaque: false, colorMode: .extendedLinear)
             // 一点点中性投影，让滑块在玻璃上「浮」起来（不带颜色）
             .shadow(color: Color.black.opacity(light ? 0.10 : 0.28), radius: 6, y: 1)
     }

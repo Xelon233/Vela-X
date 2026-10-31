@@ -33,6 +33,8 @@ struct AboutView: View {
     private var whatsNewCard: some View {
         Card {
             VStack(alignment: .leading, spacing: 9) {
+                whatsNewRow("sparkles", "渲染与缩放缓动优化", "窗口缩放 / 最小化动画改为按需重排（松手才刷新，拖拽时直接缩放上一帧），卡顿消失；每张玻璃卡把装饰层拍平成单张纹理，滚动与悬停时复用，GPU 占用率不升却更跟手。")
+                Divider().opacity(0.35)
                 whatsNewRow("bolt.fill", "新增「功耗墙」档位", "替代原先不可用的「性能模式」：静音 25W / 平衡 30W / 性能 35W 随时可切，自定义 15–50W 默认上锁，需在「高级功能」确认风险后解锁；支持一键恢复默认。")
                 Divider().opacity(0.35)
                 whatsNewRow("slider.horizontal.3", "概览新增「当前模式」卡", "一张卡同时显示当前功耗墙档位与风扇档位，可在概览布局里隐藏或调序。")

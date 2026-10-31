@@ -137,39 +137,34 @@ struct Card<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        content
-            .padding(padding)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                ZStack {
-                    // 玻璃本体（半透明，让桌面和背景光晕透出来）
-                    glassShape.fill(glassFill)
-                    // 顶部镜面高光（Liquid Glass 的关键反光）
-                    glassShape.fill(topSheen)
+        ZStack {
+            // 装饰层：纯形状 / 渐变 / 描边，不含任何交互控件（Toggle/Slider/Button 都在 content 里）。
+            // 整层一次性拍平成一张 Metal 纹理（drawingGroup）：滚动 / 悬停 / 透明度过渡时
+            // 复用这张纹理，不再每帧重新混合「填充 + 高光 + 描边 + 霓虹竖条 + 竖条阴影」五层矢量；
+            // 这正是之前整页卡顿、GPU 占用率不高却窗口合成掉帧的根因（阴影离屏模糊很贵，卡一多成负担）。
+            // 控件留在 content，不参与拍平，所以照常可点；只拍平装饰层则规避了黄底禁止符号的坑。
+            glassShape
+                .fill(glassFill)
+                .overlay(glassShape.fill(topSheen))
+                .overlay(glassShape.strokeBorder(glassEdge, lineWidth: 1))
+                .overlay(alignment: .leading) {
+                    if let accent {
+                        LinearGradient(colors: [accent, accent.opacity(0)],
+                                       startPoint: .top, endPoint: .bottom)
+                            .frame(width: 2)
+                            .shadow(color: accent.opacity(0.7), radius: 5)
+                            .padding(.vertical, 18)
+                            .offset(x: 1)
+                    }
                 }
-            )
-            .overlay(
-                // 玻璃边缘：上亮 → 中淡 → 下微亮，模拟折射
-                glassShape.strokeBorder(glassEdge, lineWidth: 1)
-            )
-            .overlay(alignment: .leading) {
-                if let accent {
-                    LinearGradient(colors: [accent, accent.opacity(0)],
-                                   startPoint: .top, endPoint: .bottom)
-                        .frame(width: 2)
-                        .shadow(color: accent.opacity(0.7), radius: 5)
-                        .padding(.vertical, 18)
-                        .offset(x: 1)
-                }
-            }
-            // 阴影是离屏高斯模糊，半径 12 意味着每个像素几十次采样 —— 卡片一多，
-            // GPU 一半时间都耗在这。只有 glow 卡（少数重点卡）保留外发光，
-            // 其余靠描边和玻璃渐变分层，观感几乎无差。
-            .shadow(color: glow ? Palette.accent.opacity(scheme == .light ? 0.07 : 0.10) : .clear,
-                    radius: glow ? 7 : 0, x: 0, y: glow ? 3 : 0)
-            // 这里【不能】用 .drawingGroup() 把整张卡拍平成一张纹理：
-            // 卡片里常放 Toggle / Slider / Button，被拍进 Metal 纹理后画不出来，
-            // 会变成黄底禁止符号（菜单栏页那一排开关会全废）。实测踩过这个坑。
+                .drawingGroup(opaque: false, colorMode: .extendedLinear)
+            content
+                .padding(padding)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        // 外发光仍是实时阴影（glow 卡才给）；其余卡不发光，靠描边与玻璃分层，观感几乎无差。
+        .shadow(color: glow ? Palette.accent.opacity(scheme == .light ? 0.07 : 0.10) : .clear,
+                radius: glow ? 7 : 0, x: 0, y: glow ? 3 : 0)
     }
 
     private var glassShape: RoundedRectangle {

@@ -93,6 +93,12 @@ enum WindowChrome {
             window.isMovableByWindowBackground = true
         }
 
+        // 实时缩放（拖窗口边角 / 点缩放按钮）时不再每帧重排整棵 SwiftUI 子树，
+        // 而是把上一帧直接缩放、松手才一次性重排。透明窗 + 玻璃 + 阴影在每帧重排时
+        // 非常吃 WindowServer 的合成（GPU 占用率不高却窗口动画掉帧的根因之一），
+        // 这个开关让缩放动画丝滑、松手即清晰 —— 纯视觉欺骗，零行为变化。
+        window.allowsOnDemandContentResizing = true
+
         // 编辑模式联动：开启时窗口固定（只留卡片可拖动），关闭时窗口可拖动。
         // 这一步是「拖卡片整窗被带跑」的终极解法 —— 不再靠探测鼠标落点，
         // 而是由开关直接决定窗口是否可移动（见 WindowState / ReorderSupport.swift）。
