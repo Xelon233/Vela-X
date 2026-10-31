@@ -73,7 +73,7 @@ struct LoadCard: View {
             HStack(alignment: .top, spacing: 18) {
                 VStack(alignment: .leading, spacing: 5) {
                     SectionTitle(text: "系统负载", trailing: store.samplingRate.label,
-                                 color: Palette.mLoad)
+                                 color: Palette.mLoad, code: "COMPUTE")
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
                         Text(String(format: "%.0f", store.load.total * 100))
                             .font(.system(size: 24, weight: .semibold).monospacedDigit())
@@ -85,12 +85,16 @@ struct LoadCard: View {
                             .foregroundStyle(Palette.textTertiary)
                             .padding(.leading, 4)
                     }
-                    Text("Mach 内核计数器 · 无需 kext")
-                        .font(.system(size: 10))
+                    Text(Palette.isMoss
+                         ? "// MACH.KERNEL · 无需 kext"
+                         : "Mach 内核计数器 · 无需 kext")
+                        .font(Palette.isMoss
+                              ? .system(size: 9.5, design: .monospaced)
+                              : .system(size: 10))
                         .foregroundStyle(Palette.textTertiary)
                         .padding(.top, 2)
                 }
-                .frame(width: 200, alignment: .leading)
+                .frame(width: Palette.isMoss ? 212 : 200, alignment: .leading)
 
                 CoreBars(values: store.load.perCore, height: 46)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -102,16 +106,25 @@ struct LoadCard: View {
                                         store.load.load1, store.load.load5, store.load.load15))
                     metric("内存", String(format: "%.0f%%", store.load.memoryUsedRatio * 100))
                 }
-                .frame(width: 130, alignment: .trailing)
+                // 550W 的等宽字段名更长（LOAD.AVG），列宽要跟着放宽
+                .frame(width: Palette.isMoss ? 172 : 130, alignment: .trailing)
             }
         }
     }
 
     private func metric(_ label: String, _ value: String, color: Color = Palette.text) -> some View {
         HStack(spacing: 6) {
-            Text(label)
-                .font(.system(size: 10))
-                .foregroundStyle(Palette.textTertiary)
+            if Palette.isMoss {
+                // 550W：右侧三项读作三个运行时字段
+                Text(["热压力": "THERMAL", "负载": "LOAD.AVG", "内存": "MEM.USED"][label] ?? label)
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .tracking(0.4)
+                    .foregroundStyle(Palette.accent.opacity(0.78))
+            } else {
+                Text(label)
+                    .font(.system(size: 10))
+                    .foregroundStyle(Palette.textTertiary)
+            }
             Spacer(minLength: 0)
             Text(value)
                 .font(.system(size: 10.5).monospacedDigit())

@@ -415,7 +415,7 @@ struct ModeStatusCard: View {
     var body: some View {
         Card(padding: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                SectionTitle(text: "当前模式", trailing: "功耗 / 风扇", color: Palette.warn)
+                SectionTitle(text: "当前模式", trailing: "功耗 / 风扇", color: Palette.warn, code: "MISSION")
                 HStack(spacing: 0) {
                     modeColumn("功耗墙",
                                powerLabel,
@@ -439,9 +439,17 @@ struct ModeStatusCard: View {
     private func modeColumn(_ title: String, _ value: String, _ sub: String,
                             color: Color) -> some View {
         VStack(spacing: 2) {
-            Text(title)
-                .font(.system(size: 9.5))
-                .foregroundStyle(Palette.textTertiary)
+            if Palette.isMoss {
+                // 550W：两列读起来像两条运行时配置项
+                Text(title == "功耗墙" ? "CAP.WALL" : "COOLANT")
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .tracking(0.5)
+                    .foregroundStyle(Palette.accent.opacity(0.8))
+            } else {
+                Text(title)
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(Palette.textTertiary)
+            }
             Text(value)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(color)

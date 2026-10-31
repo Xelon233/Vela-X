@@ -425,9 +425,47 @@ struct OverviewView: View {
 
     private var visibleCards: [OverviewCard] { cards.filter { !hidden.contains($0) } }
 
+    /// 550W：MOSS 的运行时状态行。纯装饰、不参与任何逻辑，
+    /// 只为把这一屏拉进电影里 —— 一排等宽的「系统自述」最像它的口吻。
+    private var mossStatusStrip: some View {
+        HStack(spacing: 9) {
+            Text("▮")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(Palette.accent)
+            Text("MOSS · 550W 在线")
+                .foregroundStyle(Palette.text)
+            stripSeparator
+            Text("元指令：延续人类文明")
+                .foregroundStyle(Palette.textSecondary)
+            stripSeparator
+            Text("本地节点 \(store.hardware.modelCode.isEmpty ? "UNKNOWN" : store.hardware.modelCode)")
+                .foregroundStyle(Palette.textSecondary)
+            Spacer(minLength: 8)
+            Text("// 观察日志已开启")
+                .foregroundStyle(Palette.textTertiary)
+        }
+        .font(.system(size: 10, weight: .medium, design: .monospaced))
+        .tracking(0.3)
+        .lineLimit(1)
+        .padding(.horizontal, 11)
+        .padding(.vertical, 7)
+        .background(Palette.accent.opacity(0.06))
+        .overlay(alignment: .leading) {
+            Rectangle().fill(Palette.accent).frame(width: 2)
+        }
+    }
+
+    private var stripSeparator: some View {
+        Text("│")
+            .font(.system(size: 9, design: .monospaced))
+            .foregroundStyle(Palette.accent.opacity(0.35))
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
+
+            if Palette.isMoss { mossStatusStrip }
 
             if visibleCards.isEmpty {
                 emptyHint
@@ -758,7 +796,7 @@ struct OverviewView: View {
         // 竖着堆两整行纯属浪费，卡片高度因此少了约三分之一。
         Card(padding: 16, glow: true) {
             VStack(alignment: .leading, spacing: 0) {
-                SectionTitle(text: "CPU", trailing: "温度 · 频率 · 功耗", color: Palette.mLoad)
+                SectionTitle(text: "CPU", trailing: "温度 · 频率 · 功耗", color: Palette.mLoad, code: "SYS.CPU")
                 Spacer(minLength: 6)
                 HStack(alignment: .center, spacing: 16) {
                     TempRing(value: store.cpuTemp, size: 96)
@@ -839,7 +877,7 @@ struct OverviewView: View {
         Card(padding: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 SectionTitle(text: "风扇", trailing: store.fanAvailable ? "实时" : "不可用",
-                             color: Palette.mFan)
+                             color: Palette.mFan, code: "COOLANT")
                 // 左右各占一半、中间细分隔线，两列对称
                 // CPU 风扇用风扇色（青绿），GPU 风扇跟随显卡的身份色（紫），一眼看出属谁
                 HStack(spacing: 0) {
@@ -861,12 +899,22 @@ struct OverviewView: View {
     /// 风扇卡里的一列：小标题 CPU/GPU + 转速大字
     private func fanMetric(_ label: String, _ rpm: Double?, color: Color) -> some View {
         VStack(spacing: 2) {
-            Text(label)
-                .font(.system(size: 9.5))
-                .foregroundStyle(Palette.textTertiary)
+            if Palette.isMoss {
+                // 550W：风扇是「回路编号」，不是 CPU/GPU 这种中文标注
+                Text(label == "CPU" ? "FAN.0" : "FAN.1")
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .tracking(0.5)
+                    .foregroundStyle(Palette.accent.opacity(0.8))
+            } else {
+                Text(label)
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(Palette.textTertiary)
+            }
             HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text(store.fanAvailable ? (rpm.map { String(format: "%.0f", $0) } ?? "—") : "—")
-                    .font(.system(size: 22, weight: .semibold).monospacedDigit())
+                    .font(Palette.isMoss
+                          ? .system(size: 21, weight: .semibold, design: .monospaced)
+                          : .system(size: 22, weight: .semibold).monospacedDigit())
                     .foregroundStyle(store.fanAvailable ? color : Palette.textSecondary)
                 Text("RPM")
                     .font(.system(size: 9))
@@ -879,7 +927,7 @@ struct OverviewView: View {
     private var batteryCard: some View {
         Card(padding: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                SectionTitle(text: "电池", color: Palette.mBattery)
+                SectionTitle(text: "电池", color: Palette.mBattery, code: "PWR.CELL")
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text("\(store.battery.charge)")
                         .font(.system(size: 25, weight: .semibold).monospacedDigit())
@@ -892,9 +940,16 @@ struct OverviewView: View {
                         .foregroundStyle(store.battery.externalPower ? Palette.ok : .secondary)
                 }
                 BatteryBar(percent: store.battery.charge)
-                Text("健康 \(String(format: "%.0f%%", store.battery.healthPercent)) · \(store.battery.cycleCount) 次循环")
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(Palette.textSecondary)
+                if Palette.isMoss {
+                    CodeRow(key: "CELL",
+                            value: String(format: "健康 %.0f%% · %d cyc",
+                                          store.battery.healthPercent, store.battery.cycleCount),
+                            size: 10)
+                } else {
+                    Text("健康 \(String(format: "%.0f%%", store.battery.healthPercent)) · \(store.battery.cycleCount) 次循环")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(Palette.textSecondary)
+                }
                 Spacer(minLength: 0)
             }
             .frame(maxHeight: .infinity, alignment: .top)
@@ -906,7 +961,7 @@ struct OverviewView: View {
         Card(padding: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 SectionTitle(text: "磁盘", trailing: store.disk.volumeName.isEmpty ? "启动宗卷" : store.disk.volumeName,
-                             color: Palette.mDisk)
+                             color: Palette.mDisk, code: "STORAGE")
                 // 占用率大字 + 剩余
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(String(format: "%.0f", store.disk.usedFraction * 100))
@@ -916,10 +971,16 @@ struct OverviewView: View {
                         .font(.system(size: 11))
                         .foregroundStyle(Palette.textSecondary)
                     Spacer()
-                    Text("可用 \(ByteCountFormatter.vela.string(fromByteCount: store.disk.availableBytes))")
-                        .font(.system(size: 10.5))
-                        .foregroundStyle(Palette.textSecondary)
-                        .lineLimit(1)
+                    if Palette.isMoss {
+                        CodeRow(key: "FREE",
+                                value: ByteCountFormatter.vela.string(fromByteCount: store.disk.availableBytes),
+                                size: 10, valueColor: Palette.textSecondary)
+                    } else {
+                        Text("可用 \(ByteCountFormatter.vela.string(fromByteCount: store.disk.availableBytes))")
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(Palette.textSecondary)
+                            .lineLimit(1)
+                    }
                 }
                 Spacer(minLength: 0)
                 // 占用率条
@@ -935,11 +996,17 @@ struct OverviewView: View {
                     }
                 }
                 .frame(height: 6)
-                Text("已用 \(ByteCountFormatter.vela.string(fromByteCount: store.disk.usedBytes)) / 共 \(ByteCountFormatter.vela.string(fromByteCount: store.disk.totalBytes))")
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(Palette.textSecondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                if Palette.isMoss {
+                    CodeRow(key: "USED",
+                            value: "\(ByteCountFormatter.vela.string(fromByteCount: store.disk.usedBytes)) / \(ByteCountFormatter.vela.string(fromByteCount: store.disk.totalBytes))",
+                            size: 10, valueColor: Palette.textSecondary)
+                } else {
+                    Text("已用 \(ByteCountFormatter.vela.string(fromByteCount: store.disk.usedBytes)) / 共 \(ByteCountFormatter.vela.string(fromByteCount: store.disk.totalBytes))")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(Palette.textSecondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
             }
             .frame(maxHeight: .infinity, alignment: .top)
         }
@@ -952,7 +1019,7 @@ struct OverviewView: View {
         // 功耗与显存原先是两张独立的窄卡，按「温度 · 功耗 · 显存」并到这里。
         Card(padding: 16) {
             VStack(alignment: .leading, spacing: 0) {
-                SectionTitle(text: "GPU", trailing: "温度 · 占用 · 功耗 · 显存", color: Palette.mGPU)
+                SectionTitle(text: "GPU", trailing: "温度 · 占用 · 功耗 · 显存", color: Palette.mGPU, code: "SYS.GPU")
                 Spacer(minLength: 6)
                 HStack(alignment: .center, spacing: 16) {
                     TempRing(value: store.gpuTemp, size: 96)

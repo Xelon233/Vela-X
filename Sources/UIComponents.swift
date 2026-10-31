@@ -306,6 +306,8 @@ struct SectionTitle: View {
     var trailing: String?
     /// 左侧小竖条的颜色（默认系统蓝；不同板块可传分类辅助色）
     var color: Color = Palette.accent
+    /// 550W 皮肤下的子系统代号，会以 `// CODE · 说明` 的形式出现在右侧
+    var code: String?
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
@@ -328,6 +330,9 @@ struct SectionTitle: View {
                 .font(.system(size: 12.5, weight: Palette.isMoss ? .bold : .semibold))
                 .tracking(Palette.isMoss ? 1.6 : 0.6)
                 .foregroundStyle(Palette.isMoss ? color : Palette.text)
+                // 标题绝不允许换行：550W 下中间有虚线占位，不给死宽度就会被挤成两行
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
             if Palette.isMoss {
                 // 工程图式虚线分栏：把标题和右侧注释连起来
                 DashedRule()
@@ -335,12 +340,15 @@ struct SectionTitle: View {
                             style: StrokeStyle(lineWidth: 1, dash: [2, 4]))
                     .frame(height: 1)
                     .frame(maxWidth: .infinity)
+                    .layoutPriority(-1)
             } else {
                 Spacer()
             }
             if let trailing {
                 // 550W：右侧注释改成「// …」的代码注释写法
-                Text(Palette.isMoss ? "// \(trailing)" : trailing)
+                Text(Palette.isMoss
+                     ? "// \(code.map { "\($0) · " } ?? "")\(trailing)"
+                     : trailing)
                     .font(Palette.isMoss
                           ? .system(size: 9.5, design: .monospaced)
                           : .system(size: 10).monospacedDigit())
@@ -1258,5 +1266,28 @@ struct DashedRule: Shape {
         p.move(to: CGPoint(x: rect.minX, y: rect.midY))
         p.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
         return p
+    }
+}
+
+/// 550W 皮肤下的一行「配置项」：等宽 KEY + 等宽 VALUE。
+/// 像读一份 MOSS 的运行时配置，而不是看一个仪表盘。
+struct CodeRow: View {
+    let key: String
+    let value: String
+    var size: CGFloat = 10
+    var valueColor: Color = Palette.text
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(key)
+                .font(.system(size: size - 0.5, weight: .semibold, design: .monospaced))
+                .foregroundStyle(Palette.accent.opacity(0.78))
+                .lineLimit(1)
+            Text(value)
+                .font(.system(size: size, weight: .medium, design: .monospaced))
+                .foregroundStyle(valueColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
     }
 }
