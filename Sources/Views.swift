@@ -585,6 +585,8 @@ struct OverviewView: View {
         switch card {
         case .cpuTemp:    cpuCard
         case .gpu:        gpuCard
+        case .gpuPower:   gpuPowerCard
+        case .gpuVRAM:    vramCard
         case .fan:        fanCard
         case .battery:    batteryCard
         case .disk:       diskCard
@@ -909,6 +911,75 @@ struct OverviewView: View {
                 Sparkline(values: store.gpuHistory,
                           color: Palette.pink,
                           lowerBound: 0, upperBound: 100,
+                          filled: false)
+                    .frame(maxWidth: .infinity, minHeight: 22, maxHeight: 22)
+            }
+            .frame(maxHeight: .infinity, alignment: .top)
+        }
+        .frame(height: smallCardHeight)
+    }
+
+    /// 显卡功耗：macOS 没有 NVML，驱动也不往 PerformanceStatistics 里写功耗，
+    /// 唯一能拿到真实功耗的通道是 SMCNvidiaGPU（RUSD 共享内存）。没装驱动时显示「—」。
+    private var gpuPowerCard: some View {
+        Card(padding: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                SectionTitle(text: "显卡功耗",
+                             trailing: NvidiaRUSD.powerAvailable ? "RUSD" : "需驱动",
+                             color: Palette.pink)
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(store.gpuPowerWatts.map { String(format: "%.1f", $0) } ?? "—")
+                        .font(.system(size: 25, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(store.gpuPowerWatts != nil ? Palette.pink : Palette.textSecondary)
+                    Text("W")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Palette.textSecondary)
+                    Spacer()
+                    if let lim = store.gpuPowerLimitWatts {
+                        Text(String(format: "上限 %.0f W", lim))
+                            .font(.system(size: 10).monospacedDigit())
+                            .foregroundStyle(Palette.textTertiary)
+                    }
+                }
+                Sparkline(values: store.gpuPowerHistory,
+                          color: Palette.pink,
+                          lowerBound: 0,
+                          upperBound: max(30, store.gpuPowerLimitWatts ?? 120),
+                          filled: false)
+                    .frame(maxWidth: .infinity, minHeight: 22, maxHeight: 22)
+            }
+            .frame(maxHeight: .infinity, alignment: .top)
+        }
+        .frame(height: smallCardHeight)
+    }
+
+    /// 显存占用：已用 / 总量，同一驱动提供
+    private var vramCard: some View {
+        let used = store.vramUsedMB
+        let total = store.vramTotalMB
+        return Card(padding: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                SectionTitle(text: "显存占用",
+                             trailing: NvidiaRUSD.vramAvailable ? "VRAM" : "需驱动",
+                             color: Palette.pink)
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(used.map { String(format: "%.1f", $0 / 1024) } ?? "—")
+                        .font(.system(size: 25, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(used != nil ? Palette.pink : Palette.textSecondary)
+                    Text("GB")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Palette.textSecondary)
+                    Spacer()
+                    if let used, let total, total > 0 {
+                        Text(String(format: "%.0f%% · 共 %.0f GB", used / total * 100, total / 1024))
+                            .font(.system(size: 10).monospacedDigit())
+                            .foregroundStyle(Palette.textTertiary)
+                    }
+                }
+                Sparkline(values: store.vramHistory,
+                          color: Palette.pink,
+                          lowerBound: 0,
+                          upperBound: max(1, total ?? 1),
                           filled: false)
                     .frame(maxWidth: .infinity, minHeight: 22, maxHeight: 22)
             }

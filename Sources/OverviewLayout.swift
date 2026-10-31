@@ -13,6 +13,8 @@ import SwiftUI
 enum OverviewCard: String, CaseIterable, Identifiable {
     case cpuTemp     // CPU（温度环 + 状态/极值/热压力/功耗/采样 + 频率与心电图，已合并功耗）
     case gpu         // 显卡（占用率 + 温度）
+    case gpuPower    // 显卡功耗（W），来自 SMCNvidiaGPU-PowerVRAM
+    case gpuVRAM     // 显存占用（已用 / 总量 MB）
     case fan         // 风扇
     case battery     // 电池
     case disk        // 磁盘（启动宗卷容量 / 已用）
@@ -26,6 +28,8 @@ enum OverviewCard: String, CaseIterable, Identifiable {
         switch self {
         case .cpuTemp:    return "CPU"
         case .gpu:        return "显卡"
+        case .gpuPower:   return "显卡功耗"
+        case .gpuVRAM:    return "显存占用"
         case .fan:        return "风扇"
         case .battery:    return "电池"
         case .disk:       return "磁盘"
@@ -39,6 +43,8 @@ enum OverviewCard: String, CaseIterable, Identifiable {
         switch self {
         case .cpuTemp:    return "cpu"
         case .gpu:        return "display"
+        case .gpuPower:   return "bolt.fill"
+        case .gpuVRAM:    return "memorychip"
         case .fan:        return "fanblades"
         case .battery:    return "battery.75"
         case .disk:       return "internaldrive"

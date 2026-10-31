@@ -33,6 +33,7 @@ struct AboutView: View {
     private var whatsNewCard: some View {
         Card {
             VStack(alignment: .leading, spacing: 9) {
+                whatsNewRow("bolt.fill", "显卡功耗与显存占用", "概览与监控页新增「显卡功耗」「显存占用」两张卡：macOS 没有 NVML、驱动也不上报功耗，这两项取自 SMCNvidiaGPU（zzzyy678）的二改驱动，它在内核侧读 GSP 的 RUSD 共享内存并挂成 sysctl，本程序只读不改。没装驱动时显示「—」。")
                 whatsNewRow("bolt.shield", "开机静默应用配置", "「设置」新增「开机自动应用配置」：开启后，登录与睡眠唤醒时自动、无密码框地静默下发当前功耗墙和风扇曲线（首次开启需输入一次管理员密码，用于授权本程序的 CLI 免密以 root 运行；EC 在重启 / 唤醒后会重置配置，故两个时机都会重发）。")
                 Divider().opacity(0.35)
                 whatsNewRow("sparkles", "渲染与缩放缓动优化", "窗口缩放 / 最小化动画改为按需重排（松手才刷新，拖拽时直接缩放上一帧），卡顿消失；每张玻璃卡把装饰层拍平成单张纹理，滚动与悬停时复用，GPU 占用率不升却更跟手。")
@@ -182,6 +183,14 @@ struct AboutView: View {
                           name: "angus666888",
                           detail: "提供 EC 层灯效修复思路，本项目的键盘背光 / Aura 通道握手因此得以在 macOS 上正确工作。",
                           action: ("打开主页", { open("https://github.com/angus666888?tab=repositories") }))
+
+                Divider().opacity(0.35)
+
+                creditRow(icon: "display",
+                          title: "GPU 功耗与显存占用",
+                          name: "zzzyy678 · SMCNvidiaGPU",
+                          detail: "GPU功耗与显存占用来自该项目的二改驱动。它在内核侧借驱动入口读出 GSP 的 RUSD 共享内存并把结果挂成 sysctl，本程序只读取这些读数——macOS 没有 NVML，驱动也不上报功耗，否则这两项无从获取。",
+                          action: ("打开项目", { open("https://github.com/zzzyy678/SMCNvidiaGPU") }))
             }
         }
     }

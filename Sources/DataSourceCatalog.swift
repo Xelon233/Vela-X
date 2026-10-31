@@ -22,6 +22,8 @@ enum DataSourceCatalog {
         .init(metric: "热压力", channel: "ProcessInfo.thermalState", needsKext: false),
         .init(metric: "内存占用", channel: "Mach host_statistics64", needsKext: false),
         .init(metric: "电池", channel: "IOKit AppleSmartBattery", needsKext: false),
-        .init(metric: "显卡驱动", channel: "IORegistry · CFBundleIdentifier", needsKext: false)
+        .init(metric: "显卡驱动", channel: "IORegistry · CFBundleIdentifier", needsKext: false),
+        .init(metric: "显卡功耗", channel: "SMCNvidiaGPU · sysctl kern.nvgpupower（RUSD，mW）", needsKext: true),
+        .init(metric: "显存占用", channel: "SMCNvidiaGPU · sysctl kern.nvgvramused／nvgvramtotal（MB）", needsKext: true)
     ]
 }

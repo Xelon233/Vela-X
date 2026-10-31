@@ -93,7 +93,10 @@ struct MonitorView: View {
     private var liveRow: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionTitle(text: "实时", trailing: "\(store.samplingRate.longLabel)采样 · 历史保留 15 分钟")
-            HStack(spacing: 12) {
+            // 卡片多了会挤成一排细条，改用自适应网格：宽度够就一行排开，不够自动换行。
+            // 最小列宽 132 与原先 5 张卡时的实际宽度一致，窗口默认宽度下观感不变。
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 132, maximum: 220), spacing: 12)],
+                      spacing: 12) {
                 liveTile(title: "CPU 温度",
                          value: store.cpuTemp.map { String(format: "%.1f", $0) } ?? "—",
                          unit: "°C",
@@ -131,8 +134,35 @@ struct MonitorView: View {
                          color: Palette.warn,
                          series: samples.compactMap(\.power),
                          lower: 0, upper: 120)
+                liveTile(title: "显卡功耗",
+                         value: store.gpuPowerWatts.map { String(format: "%.1f", $0) } ?? "—",
+                         unit: "W",
+                         sub: gpuPowerSubtitle,
+                         color: Palette.pink,
+                         series: store.gpuPowerHistory,
+                         lower: 0, upper: max(30, store.gpuPowerLimitWatts ?? 120))
+                liveTile(title: "显存占用",
+                         value: store.vramUsedMB.map { String(format: "%.1f", $0 / 1024) } ?? "—",
+                         unit: "GB",
+                         sub: vramSubtitle,
+                         color: Palette.pink,
+                         series: store.vramHistory,
+                         lower: 0, upper: max(1, store.vramTotalMB ?? 1))
             }
         }
+    }
+
+    private var gpuPowerSubtitle: String {
+        guard store.gpuPowerWatts != nil else { return "需 SMCNvidiaGPU 驱动" }
+        if let lim = store.gpuPowerLimitWatts { return String(format: "上限 %.0f W", lim) }
+        return "RUSD 平均功耗"
+    }
+
+    private var vramSubtitle: String {
+        guard let used = store.vramUsedMB, let total = store.vramTotalMB, total > 0 else {
+            return "需 SMCNvidiaGPU 驱动"
+        }
+        return String(format: "%.0f%% · 共 %.1f GB", used / total * 100, total / 1024)
     }
 
     private var memorySubtitle: String {

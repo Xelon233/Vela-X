@@ -31,6 +31,13 @@ struct SampleFrame {
     var gpuUsage: Double?
     var gpuTemp: Double?
     var powerWatts: Double?
+    /// 显卡功耗（W），来自 SMCNvidiaGPU-PowerVRAM 的 sysctl；nil = 没装驱动
+    var gpuPowerWatts: Double?
+    /// 显卡强制功耗上限（W）
+    var gpuPowerLimitWatts: Double?
+    /// 已用显存 / 显存总量（MB）
+    var vramUsedMB: Double?
+    var vramTotalMB: Double?
     /// CPU 实时频率（GHz），来自 AMDRyzenCPUPowerManagement 用户客户端；nil = 没采到
     var cpuFreqGHz: Double?
     var disk: DiskInfo?
@@ -56,6 +63,8 @@ final class SensorStore: ObservableObject {
     private(set) var freqHistory: [Double] = []
     private(set) var powerHistory: [Double] = []
     private(set) var gpuHistory: [Double] = []
+    private(set) var gpuPowerHistory: [Double] = []
+    private(set) var vramHistory: [Double] = []
     private(set) var fanRPM: Double?
     private(set) var fanRPMGPU: Double?
     private(set) var fanCount = 0
@@ -78,6 +87,11 @@ final class SensorStore: ObservableObject {
     private(set) var netTotalsSince = Date()
     private(set) var gpuUsage: Double?
     private(set) var powerWatts: Double?
+    /// 显卡功耗（W）与显存占用（MB）：来自 SMCNvidiaGPU-PowerVRAM 的 sysctl
+    private(set) var gpuPowerWatts: Double?
+    private(set) var gpuPowerLimitWatts: Double?
+    private(set) var vramUsedMB: Double?
+    private(set) var vramTotalMB: Double?
     private(set) var cpuFreq = CPUFrequencyInfo()
 
     // 应用级监控
@@ -196,6 +210,8 @@ final class SensorStore: ObservableObject {
         if freqHistory.count > tempCap { freqHistory.removeFirst(freqHistory.count - tempCap) }
         if powerHistory.count > tempCap { powerHistory.removeFirst(powerHistory.count - tempCap) }
         if gpuHistory.count > tempCap { gpuHistory.removeFirst(gpuHistory.count - tempCap) }
+        if gpuPowerHistory.count > tempCap { gpuPowerHistory.removeFirst(gpuPowerHistory.count - tempCap) }
+        if vramHistory.count > tempCap { vramHistory.removeFirst(vramHistory.count - tempCap) }
         let histCap = samplingRate.historyCapacity
         if history.count > histCap { history.removeFirst(history.count - histCap) }
     }
@@ -290,6 +306,15 @@ final class SensorStore: ObservableObject {
             frame.powerWatts = s.powerWatts
             frame.cpuFreqGHz = s.avgFreqGHz
         }
+        // 显卡功耗 / 显存：sysctl 只要一次系统调用，比 IORegistry 便宜得多，每帧都读。
+        // 没装 SMCNvidiaGPU-PowerVRAM 时 isAvailable 为 false，一次都不会进。
+        if NvidiaRUSD.isAvailable {
+            let n = NvidiaRUSD.sample()
+            frame.gpuPowerWatts = n.powerWatts
+            frame.vramUsedMB = n.vramUsedMB
+            frame.vramTotalMB = n.vramTotalMB
+            frame.gpuPowerLimitWatts = n.limitWatts
+        }
 
         if config.wantTiles {
             var dict: [String: SMCReading] = [:]
@@ -342,6 +367,8 @@ final class SensorStore: ObservableObject {
         mixRounded(frame.gpuUsage, 1)
         mixRounded(frame.gpuTemp, 1)
         mixRounded(frame.powerWatts, 1)
+        mixRounded(frame.gpuPowerWatts, 10)       // 0.1 W
+        mixRounded(frame.vramUsedMB, 1)           // 1 MB
         mixRounded(frame.cpuFreqGHz, 100)     // 0.01 GHz
         mixRounded(frame.net.down, 2)           // 0.5 KB/s
         mixRounded(frame.net.up, 2)
@@ -405,6 +432,20 @@ final class SensorStore: ObservableObject {
             if gpuHistory.count > cap { gpuHistory.removeFirst(gpuHistory.count - cap) }
         }
         if let t = frame.gpuTemp { gpuTemp = t }
+        if let w = frame.gpuPowerWatts {
+            gpuPowerWatts = w
+            gpuPowerHistory.append(w)
+            let cap = samplingRate.tempCapacity
+            if gpuPowerHistory.count > cap { gpuPowerHistory.removeFirst(gpuPowerHistory.count - cap) }
+        }
+        if let mb = frame.vramUsedMB {
+            vramUsedMB = mb
+            vramHistory.append(mb)
+            let cap = samplingRate.tempCapacity
+            if vramHistory.count > cap { vramHistory.removeFirst(vramHistory.count - cap) }
+        }
+        if let mb = frame.vramTotalMB { vramTotalMB = mb }
+        if let w = frame.gpuPowerLimitWatts { gpuPowerLimitWatts = w }
         if let w = frame.powerWatts {
             powerWatts = w
             powerHistory.append(w)
