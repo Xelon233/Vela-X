@@ -261,6 +261,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // （先迁 label：AsusControl 时期用的是 dev.asuscontrol.mac.autostart）
         LaunchAtLogin.migrateLegacyLabel()
         LaunchAtLogin.repairIfMoved()
+        // 若「开机自动应用配置」已授权但 App 被移动过，sudoers 里的路径会失效，这里重写
+        SilentApply.repairIfMoved()
+        // 睡眠唤醒后 EC 会把功耗墙 / 风扇曲线重置，重新静默下发一遍
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(onWake),
+            name: NSWorkspace.didWakeNotification, object: nil)
         // 由开机自启拉起时只驻留菜单栏：SwiftUI 的 WindowGroup 默认会给一个窗口，
         // 这里在它建好之后收起来，避免登录时突然弹一个窗口。
         if LaunchAtLogin.isAutostartLaunch {
@@ -272,6 +278,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // 外观由 ThemeManager 决定（默认深色，可切浅色 / 跟随系统）
+        // 开机 / 唤醒自动下发功耗墙 + 风扇：仅正常启动执行，自检模式不动硬件。
+        // 启动初期 kext / SMC 可能还没完全就绪，稍等再发；未授权 / 不支持时内部静默跳过。
+        if ProcessInfo.processInfo.environment["ASUS_SELFTEST"] == nil {
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2.0) {
+                SilentApply.applyCurrentConfig()
+            }
+        }
         guard ProcessInfo.processInfo.environment["ASUS_SELFTEST"] != nil else { return }
         setbuf(stdout, nil)   // 自测输出不缓冲，崩溃时也能看到进度
         // 默认等 4 秒。机器慢的时候 4 秒只够采一轮，网速和 CPU 占用率
@@ -309,6 +322,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                       + "themeFrame=\(tf?.bounds.size ?? .zero) contentView=\(window.contentView?.bounds.size ?? .zero)")
             }
             NSApp.terminate(nil)
+        }
+    }
+
+    /// 睡眠唤醒后 EC 重置功耗墙 / 风扇曲线，重新静默下发一遍。
+    /// 唤醒后硬件（kext / SMC）需一点时间重新就绪，稍等再发；未启用 / 未授权时内部跳过。
+    @objc private func onWake() {
+        guard SilentApply.isEnabled else { return }
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 3.0) {
+            SilentApply.applyCurrentConfig()
         }
     }
 

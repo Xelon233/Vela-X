@@ -33,6 +33,8 @@ struct AboutView: View {
     private var whatsNewCard: some View {
         Card {
             VStack(alignment: .leading, spacing: 9) {
+                whatsNewRow("bolt.shield", "开机静默应用配置", "「设置」新增「开机自动应用配置」：开启后，登录与睡眠唤醒时自动、无密码框地静默下发当前功耗墙和风扇曲线（首次开启需输入一次管理员密码，用于授权本程序的 CLI 免密以 root 运行；EC 在重启 / 唤醒后会重置配置，故两个时机都会重发）。")
+                Divider().opacity(0.35)
                 whatsNewRow("sparkles", "渲染与缩放缓动优化", "窗口缩放 / 最小化动画改为按需重排（松手才刷新，拖拽时直接缩放上一帧），卡顿消失；每张玻璃卡把装饰层拍平成单张纹理，滚动与悬停时复用，GPU 占用率不升却更跟手。")
                 Divider().opacity(0.35)
                 whatsNewRow("bolt.fill", "新增「功耗墙」档位", "替代原先不可用的「性能模式」：静音 25W / 平衡 30W / 性能 35W 随时可切，自定义 15–50W 默认上锁，需在「高级功能」确认风险后解锁；支持一键恢复默认。")

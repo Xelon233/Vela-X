@@ -74,6 +74,8 @@ final class FanControl: ObservableObject {
     @Published private(set) var lastApplied: String?
 
     private let presetKey = "fan.preset"
+    /// 给 SilentApply 这类模块读「上次应用的档位」用的公开名字（值就是 "fan.preset"）
+    var presetKeyName: String { presetKey }
     private var refreshing = false
 
     /// 交付包里的命令行工具把档位记录在 /tmp/fanmode.state（它们不回读 EC），
@@ -203,6 +205,12 @@ final class FanControl: ObservableObject {
         lastApplied = "custom"
         Prefs.set("custom", for: presetKey)
         message = "已下发自定义曲线"
+    }
+
+    /// 预设档静默下发成功后记账（被 SilentApply 在开机 / 唤醒时调用，不弹框）。
+    func notePresetApplied(_ name: String) {
+        lastApplied = name
+        Prefs.set(name, for: presetKey)
     }
 
     /// UI 在免责弹窗里点了「我已知晓风险并继续」：标记确认风险（后续应用不再拦截）

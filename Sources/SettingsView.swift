@@ -11,6 +11,8 @@ struct SettingsView: View {
     @EnvironmentObject var theme: ThemeManager
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
     @State private var launchError: String?
+    @State private var silentApply = SilentApply.isEnabled
+    @State private var silentError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -49,6 +51,58 @@ struct SettingsView: View {
                     }
                     if let launchError {
                         Text(launchError)
+                            .font(.system(size: 10))
+                            .foregroundStyle(Palette.bad)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Divider()
+
+                    // 开机自动应用配置：开机与唤醒时静默下发当前功耗墙 + 风扇曲线。
+                    // 首次开启需输入一次管理员密码（装 sudoers 免密规则）；之后不再弹框。
+                    HStack(spacing: 10) {
+                        Image(systemName: "bolt.shield")
+                            .font(.system(size: 13))
+                            .foregroundStyle(silentApply ? Palette.accent : Palette.textTertiary)
+                            .frame(width: 18)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("开机自动应用配置")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Palette.text)
+                            Text("开机与唤醒时静默下发当前功耗墙和风扇曲线（首次开启需输入一次管理员密码）")
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(Palette.textSecondary)
+                        }
+                        Spacer(minLength: 0)
+                        Toggle("", isOn: $silentApply)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                            .controlSize(.regular)
+                            .tint(Palette.accent)
+                            .onChange(of: silentApply) { on in
+                                if on {
+                                    if SilentApply.isAuthorized {
+                                        Prefs.set(true, for: SilentApply.enabledKey)
+                                        silentError = nil
+                                    } else {
+                                        // 首次开启：装 sudoers 免密规则（一次性管理员密码）
+                                        let err = SilentApply.installAuthorization()
+                                        if err == nil {
+                                            Prefs.set(true, for: SilentApply.enabledKey)
+                                            silentError = nil
+                                        } else {
+                                            silentApply = false
+                                            silentError = err
+                                        }
+                                    }
+                                } else {
+                                    Prefs.set(false, for: SilentApply.enabledKey)
+                                    silentError = nil
+                                }
+                            }
+                    }
+                    if let silentError {
+                        Text(silentError)
                             .font(.system(size: 10))
                             .foregroundStyle(Palette.bad)
                             .fixedSize(horizontal: false, vertical: true)
@@ -110,6 +164,6 @@ struct SettingsView: View {
 
             Spacer(minLength: 0)
         }
-        .onAppear { launchAtLogin = LaunchAtLogin.isEnabled }
+        .onAppear { launchAtLogin = LaunchAtLogin.isEnabled; silentApply = SilentApply.isEnabled }
     }
 }
