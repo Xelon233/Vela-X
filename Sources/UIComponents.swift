@@ -396,6 +396,59 @@ struct TempRing: View {
 
 // MARK: - 折线图（带发光）
 
+/// 曲线背景的坐标系：左侧竖轴 + 底部横轴 + 几条虚线网格。
+/// 全部用一条 `Path` 一次描边（不堆 Rectangle / Divider），逐帧几乎零成本。
+struct ChartAxes: View {
+    /// 水平网格线条数（不含两条轴）
+    var rows: Int = 3
+    /// 竖向网格线条数
+    var columns: Int = 4
+    /// 网格是否画出来（只留两条轴时关掉更干净）
+    var grid: Bool = true
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            ZStack(alignment: .topLeading) {
+                if grid {
+                    // 水平虚线：用「距底 1/(n+1)」等分，末条不会贴在轴线上
+                    Path { p in
+                        for i in 1...max(rows, 1) {
+                            let y = h * CGFloat(i) / CGFloat(rows + 1)
+                            p.move(to: CGPoint(x: 0, y: y))
+                            p.addLine(to: CGPoint(x: w, y: y))
+                        }
+                    }
+                    .stroke(Palette.ringTick.opacity(0.45),
+                            style: StrokeStyle(lineWidth: 1, dash: [2, 3]))
+
+                    // 竖向虚线更淡，避免和曲线抢注意力
+                    Path { p in
+                        for i in 1...max(columns, 1) {
+                            let x = w * CGFloat(i) / CGFloat(columns + 1)
+                            p.move(to: CGPoint(x: x, y: 0))
+                            p.addLine(to: CGPoint(x: x, y: h))
+                        }
+                    }
+                    .stroke(Palette.ringTick.opacity(0.22),
+                            style: StrokeStyle(lineWidth: 1, dash: [1, 4]))
+                }
+
+                // 两条实心轴：左竖轴 + 底横轴（比网格实一档，才有「坐标轴」的感觉）
+                Path { p in
+                    p.move(to: CGPoint(x: 0.5, y: 0))
+                    p.addLine(to: CGPoint(x: 0.5, y: h - 0.5))
+                    p.move(to: CGPoint(x: 0, y: h - 0.5))
+                    p.addLine(to: CGPoint(x: w, y: h - 0.5))
+                }
+                .stroke(Palette.ringTick, lineWidth: 1)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
 struct Sparkline: View {
     let values: [Double]
     var color: Color = Palette.accent2
@@ -403,11 +456,18 @@ struct Sparkline: View {
     var upperBound: Double = 100
     /// false = 只画发光线，不填面积（小卡片用，避免整块色块）
     var filled: Bool = true
+    /// 背景坐标轴（左竖轴 + 底横轴 + 虚线网格）
+    var axes: Bool = false
 
     var body: some View {
         GeometryReader { geo in
             let pts = points(size: geo.size)
             ZStack {
+                if axes {
+                    // 网格密度随可用高度变：小图形少画几根，否则一屏全是虚线
+                    ChartAxes(rows: geo.size.height >= 60 ? 3 : 2,
+                              columns: geo.size.width >= 280 ? 4 : 3)
+                }
                 if pts.count > 1 {
                     if filled {
                         area(pts, size: geo.size)
@@ -486,11 +546,17 @@ struct FreqECG: View {
     var lower: Double = 0
     var upper: Double = 5.5
     var height: CGFloat = 60
+    /// 背景坐标轴（与 Sparkline 共用同一个 ChartAxes）
+    var axes: Bool = false
 
     var body: some View {
         GeometryReader { geo in
             let pts = Self.points(values: values, size: geo.size, lower: lower, upper: upper)
             ZStack {
+                if axes {
+                    ChartAxes(rows: geo.size.height >= 60 ? 3 : 2,
+                              columns: geo.size.width >= 280 ? 4 : 3)
+                }
                 if pts.count > 1 {
                     // 宽而淡的辉光（比 .shadow 便宜，避免每帧离屏模糊）
                     Self.path(pts)

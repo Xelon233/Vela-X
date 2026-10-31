@@ -691,6 +691,8 @@ struct OverviewView: View {
                         statLine("热压力", store.load.thermalText,
                                  color: store.load.thermal == .nominal ? Palette.ok : Palette.warn)
                     }
+                    // 固定宽度：让 CPU 卡与 GPU 卡的曲线起点落在同一条竖线上
+                    .frame(width: 120, alignment: .leading)
                     // 右侧空白用 CPU 负载曲线填充（Sparkline 无网格 / 表格背景）
                     VStack(alignment: .leading, spacing: 4) {
                         Text("负载曲线")
@@ -700,7 +702,7 @@ struct OverviewView: View {
                         Sparkline(values: store.loadHistory.map { $0 * 100 },
                                   color: Palette.mLoad,
                                   lowerBound: 0, upperBound: 100,
-                                  filled: false)
+                                  filled: false, axes: true)
                             .frame(maxWidth: .infinity, minHeight: 68, maxHeight: 68)
                     }
                     .frame(maxWidth: .infinity)
@@ -716,7 +718,7 @@ struct OverviewView: View {
                                    color: Palette.mFreq)
                         FreqECG(values: store.freqHistory,
                                 color: Palette.mFreq,
-                                lower: 0, upper: 5.5, height: 46)
+                                lower: 0, upper: 5.5, height: 46, axes: true)
                             .frame(maxWidth: .infinity)
                     }
                     .frame(maxWidth: .infinity)
@@ -731,7 +733,7 @@ struct OverviewView: View {
                         Sparkline(values: store.powerHistory,
                                   color: Palette.mPower,
                                   lowerBound: 0, upperBound: 100,
-                                  filled: true)
+                                  filled: true, axes: true)
                             .frame(maxWidth: .infinity, minHeight: 46, maxHeight: 46)
                     }
                     .frame(maxWidth: .infinity)
@@ -886,10 +888,9 @@ struct OverviewView: View {
                                  color: Palette.forTemp(store.gpuTemp))
                         statLine("占用率", store.gpuUsage.map { String(format: "%.0f %%", $0) } ?? "—",
                                  color: Palette.mGPU)
-                        statLine("功耗", store.gpuPowerWatts.map { String(format: "%.1f W", $0) } ?? "—",
-                                 color: Palette.mGPUPow)
-                        statLine("显存", vramShortText, color: Palette.mVRAM)
+                        // 功耗与显存不再在这里列一遍 —— 底部有大数 + 曲线，重复显示只会让卡更挤
                     }
+                    .frame(width: 120, alignment: .leading)
                     // 右侧用显卡占用率曲线填充（与 CPU 卡的负载曲线同一位置）
                     VStack(alignment: .leading, spacing: 4) {
                         Text("占用率曲线")
@@ -899,7 +900,7 @@ struct OverviewView: View {
                         Sparkline(values: store.gpuHistory,
                                   color: Palette.mGPU,
                                   lowerBound: 0, upperBound: 100,
-                                  filled: false)
+                                  filled: false, axes: true)
                             .frame(maxWidth: .infinity, minHeight: 68, maxHeight: 68)
                     }
                     .frame(maxWidth: .infinity)
@@ -917,7 +918,7 @@ struct OverviewView: View {
                                   color: Palette.mGPUPow,
                                   lowerBound: 0,
                                   upperBound: max(30, store.gpuPowerLimitWatts ?? 120),
-                                  filled: true)
+                                  filled: true, axes: true)
                             .frame(maxWidth: .infinity, minHeight: 46, maxHeight: 46)
                     }
                     .frame(maxWidth: .infinity)
@@ -932,7 +933,7 @@ struct OverviewView: View {
                                   color: Palette.mVRAM,
                                   lowerBound: 0,
                                   upperBound: max(1, store.vramTotalMB ?? 1),
-                                  filled: true)
+                                  filled: true, axes: true)
                             .frame(maxWidth: .infinity, minHeight: 46, maxHeight: 46)
                     }
                     .frame(maxWidth: .infinity)
