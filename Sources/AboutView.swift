@@ -33,6 +33,7 @@ struct AboutView: View {
     private var whatsNewCard: some View {
         Card {
             VStack(alignment: .leading, spacing: 9) {
+                whatsNewRow("bolt.shield", "修「开机静默下发无效」", "1.8.5 写的 sudoers 规则用双引号包了带空格的路径，sudo 判为非法、整份规则被拒读，所以开机后无论风扇还是功耗都没真正下发。现在改用反斜杠转义，并在落盘前用 visudo 校验（不通过就不写，避免连带影响其他 sudo）。同时：规则只在 App 移动 / 被清理 / 格式升级时才重装（以前每次登录都弹一次密码框），授权完成后立刻补发一次，设置页也会显示「上次自动下发」的结果。")
                 whatsNewRow("network", "网络统计跟随系统", "总量改读内核 64 位网卡字节计数器（sysctl net.link.generic.ifdata，与系统统计同源，也不会像旧的 32 位计数那样超过 4 GiB 就回绕），基线存在本地 —— 退出或重启本程序后接着算，只有重启系统或点「重置统计」才归零。")
                 whatsNewRow("paintpalette", "概览与监控页重新配色", "两项指标配一色：负载蓝、频率青、功耗橙、内存黄绿、风扇青绿、电池绿、磁盘灰蓝、GPU 紫、GPU 功耗粉、显存靛、网络天蓝。同一指标在概览与监控页同色，一眼对得上。概览「显卡」卡改名「GPU」。")
                 whatsNewRow("menubar.rectangle", "菜单栏新增 GPU 功耗 / 显存占用", "「菜单栏」设置页多了两个可勾选指标，与温度、占用率一样可排序、可选上下行合并显示；未装 SMCNvidiaGPU 驱动时标为不可用并说明原因。")

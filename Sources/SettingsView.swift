@@ -107,6 +107,22 @@ struct SettingsView: View {
                             .foregroundStyle(Palette.bad)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                    if silentApply {
+                        // 上次真的发下去了没有 —— 以前这里没有任何反馈，
+                        // 规则坏了（比如 sudoers 语法非法）也看不出来
+                        if let last = SilentApply.lastResultText {
+                            Text("上次自动下发：\(last)")
+                                .font(.system(size: 10))
+                                .foregroundStyle(last.contains("失败") ? Palette.bad : Palette.textTertiary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        if !SilentApply.isAuthorized {
+                            Text("免密规则当前无效（App 移动过或规则被清理）：关掉再打开此开关可重新授权")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Palette.warn)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                 }
             }
 

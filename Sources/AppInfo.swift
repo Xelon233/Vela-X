@@ -31,8 +31,8 @@ enum AppInfo {
     }
 
     /// CLI 通过符号链接调用时 Bundle.main 拿不到 Info.plist，用编译期常量兜底
-    static let fallbackVersion = "1.8.8"
-    static let fallbackBuild = "50"
+    static let fallbackVersion = "1.8.9"
+    static let fallbackBuild = "51"
 
     /// 先问 Bundle，再沿可执行文件路径找 Info.plist（build/asuscontrol 符号链接场景）
     static func plistValue(_ key: String) -> String? {

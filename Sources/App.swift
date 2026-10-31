@@ -261,8 +261,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // （先迁 label：AsusControl 时期用的是 dev.asuscontrol.mac.autostart）
         LaunchAtLogin.migrateLegacyLabel()
         LaunchAtLogin.repairIfMoved()
-        // 若「开机自动应用配置」已授权但 App 被移动过，sudoers 里的路径会失效，这里重写
-        SilentApply.repairIfMoved()
+        // 「开机自动应用配置」的规则补装要放后台（下面那段 async 里做）：
+        // 它会弹一次管理员密码框，同步跑在启动流程里会把窗口冻住。
         // 睡眠唤醒后 EC 会把功耗墙 / 风扇曲线重置，重新静默下发一遍
         NotificationCenter.default.addObserver(
             self, selector: #selector(onWake),
@@ -279,10 +279,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // 外观由 ThemeManager 决定（默认深色，可切浅色 / 跟随系统）
         // 开机 / 唤醒自动下发功耗墙 + 风扇：仅正常启动执行，自检模式不动硬件。
-        // 启动初期 kext / SMC 可能还没完全就绪，稍等再发；未授权 / 不支持时内部静默跳过。
+        // 全程在后台线程：规则失效时先补装（必要时弹一次密码框），装好立刻补发一次；
+        // 启动初期 kext / SMC 可能还没完全就绪，稍等再发，失败再重试一轮。
         if ProcessInfo.processInfo.environment["ASUS_SELFTEST"] == nil {
-            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2.0) {
-                SilentApply.applyCurrentConfig()
+            DispatchQueue.global(qos: .utility).async {
+                SilentApply.repairIfNeeded()
+                Thread.sleep(forTimeInterval: 2.0)
+                if !SilentApply.applyCurrentConfig() {
+                    Thread.sleep(forTimeInterval: 6.0)
+                    SilentApply.applyCurrentConfig()
+                }
             }
         }
         guard ProcessInfo.processInfo.environment["ASUS_SELFTEST"] != nil else { return }
