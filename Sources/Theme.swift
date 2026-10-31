@@ -12,6 +12,8 @@ enum ThemeMode: String, CaseIterable, Identifiable, Hashable {
     case dark
     case light
     case system
+    /// 《流浪地球》550W / MOSS 限定主题：白底 + 警示红
+    case moss
 
     var id: String { rawValue }
 
@@ -20,6 +22,7 @@ enum ThemeMode: String, CaseIterable, Identifiable, Hashable {
         case .dark: return "深色"
         case .light: return "浅色"
         case .system: return "系统"
+        case .moss: return "550W"
         }
     }
 
@@ -28,6 +31,8 @@ enum ThemeMode: String, CaseIterable, Identifiable, Hashable {
         case .dark: return "moon.fill"
         case .light: return "sun.max.fill"
         case .system: return "circle.lefthalf.filled"
+        // MOSS 的那只红眼睛
+        case .moss: return "eye.fill"
         }
     }
 
@@ -37,17 +42,39 @@ enum ThemeMode: String, CaseIterable, Identifiable, Hashable {
         case .dark: return .dark
         case .light: return .light
         case .system: return nil
+        // 550W 是白底主题，但内部仍有自己的一套配色（不全靠浅色解析）
+        case .moss: return .light
         }
     }
+
+    var detail: String {
+        switch self {
+        case .dark: return "默认"
+        case .light: return "白底"
+        case .system: return "跟随"
+        case .moss: return "限定"
+        }
+    }
+}
+
+/// 当前是否启用「550W」限定皮肤。
+///
+/// 为什么用进程级全局标记而不是 SwiftUI 环境值：`Palette` 的每个 token 都是静态 `Color`，
+/// 真正决定颜色的是 `NSColor` 的动态 provider —— 它在外观解析时被回调，那里拿不到
+/// SwiftUI 环境，只能读一个全局标记。切主题时 `ThemeManager` 先改标记、再改
+/// `NSApp.appearance`，最后靠根视图的身份变化（`.id(mode)`）强制整棵树重建重新解析。
+enum SkinFlag {
+    nonisolated(unsafe) static var moss = false
 }
 
 // MARK: - 主题管理器
 
 final class ThemeManager: ObservableObject {
-    /// 默认深色；持久化在 Prefs，可用环境变量 ASUS_THEME=dark|light|system 临时覆盖
+    /// 默认深色；持久化在 Prefs，可用环境变量 ASUS_THEME=dark|light|system|moss 临时覆盖
     @Published var mode: ThemeMode {
         didSet {
             Prefs.set(mode.rawValue, for: "appearance")
+            SkinFlag.moss = (mode == .moss)
             applyAppearance()
         }
     }
@@ -56,7 +83,10 @@ final class ThemeManager: ObservableObject {
         let env = ProcessInfo.processInfo.environment["ASUS_THEME"]
             .flatMap(ThemeMode.init(rawValue:))
         let stored = Prefs.string("appearance").flatMap(ThemeMode.init(rawValue:))
-        mode = env ?? stored ?? .dark
+        let resolved = env ?? stored ?? .dark
+        mode = resolved
+        // 首帧绘制前就要把标记摆好，否则颜色会先按深色解析一轮再跳变
+        SkinFlag.moss = (resolved == .moss)
     }
 
     /// SwiftUI 的 preferredColorScheme 负责界面配色，
@@ -65,7 +95,7 @@ final class ThemeManager: ObservableObject {
         guard NSApp != nil else { return }
         switch mode {
         case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
-        case .light: NSApp.appearance = NSAppearance(named: .aqua)
+        case .light, .moss: NSApp.appearance = NSAppearance(named: .aqua)
         case .system: NSApp.appearance = nil
         }
     }
@@ -87,6 +117,21 @@ extension Color {
     static func adaptive(_ light: UInt32, _ dark: UInt32,
                          lightOpacity: Double = 1, darkOpacity: Double = 1) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in
+            let isLight = appearance.bestMatch(from: [.aqua, .darkAqua]) == .aqua
+            return isLight
+                ? NSColor(hex: light, alpha: lightOpacity)
+                : NSColor(hex: dark, alpha: darkOpacity)
+        })
+    }
+
+    /// 三套皮肤一套写法：浅色 / 深色 / 550W。
+    /// 550W 分支不跟外观走 —— 它是白底限定主题，哪怕系统是深色也照白不误，
+    /// 所以这里优先判 `SkinFlag.moss`，命中就完全忽略 appearance。
+    static func skin(_ light: UInt32, _ dark: UInt32, _ moss: UInt32,
+                     lightOpacity: Double = 1, darkOpacity: Double = 1,
+                     mossOpacity: Double = 1) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            if SkinFlag.moss { return NSColor(hex: moss, alpha: mossOpacity) }
             let isLight = appearance.bestMatch(from: [.aqua, .darkAqua]) == .aqua
             return isLight
                 ? NSColor(hex: light, alpha: lightOpacity)

@@ -44,8 +44,17 @@ struct CoreBars: View {
         .frame(height: height)
     }
 
-    /// 每核占用率配色：低 → 高走「绿 → 蓝 → 黄 → 红」，与 CPU 负载的身份色（蓝）同源
+    /// 每核占用率配色：低 → 高走「绿 → 蓝 → 黄 → 红」，与 CPU 负载的身份色（蓝）同源。
+    /// 550W 换成「红的深浅」：占用越高越红，白底上一眼看出哪几个核在满载。
     private func color(for v: Double) -> Color {
+        if Palette.isMoss {
+            switch v {
+            case ..<0.35: return Palette.mLoad.opacity(0.30)
+            case ..<0.7: return Palette.mLoad.opacity(0.60)
+            case ..<0.9: return Palette.accent2
+            default: return Palette.accent
+            }
+        }
         switch v {
         case ..<0.35: return Palette.ok
         case ..<0.7: return Palette.mLoad

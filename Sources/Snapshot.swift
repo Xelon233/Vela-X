@@ -14,7 +14,11 @@ enum Snapshot {
                        page: Page = .overview) -> Bool {
         let app = NSApplication.shared
         app.setActivationPolicy(.prohibited)
-        app.appearance = NSAppearance(named: .darkAqua)
+        // 出图用的皮肤：ASUS_THEME=dark|light|moss（默认深色）
+        let envMode = ProcessInfo.processInfo.environment["ASUS_THEME"]
+            .flatMap(ThemeMode.init(rawValue:)) ?? .dark
+        SkinFlag.moss = (envMode == .moss)
+        app.appearance = NSAppearance(named: (envMode == .light || envMode == .moss) ? .aqua : .darkAqua)
 
         let store = SensorStore.shared
         store.start()                      // 先起引擎（内部会加载静态信息）
@@ -26,6 +30,11 @@ enum Snapshot {
 
         let content = windowView(store: store, page: page)
             .background(Palette.bg)
+            // Settings / About 等页读 @EnvironmentObject theme，离屏渲染也要给一份
+            .environmentObject(ThemeManager())
+            // ImageRenderer 只认 SwiftUI 环境里的 colorScheme，不认 NSApp.appearance，
+            // 动态 NSColor 的解析也会跟着它走 —— 不显式给一遍，深色会渲染成浅色。
+            .environment(\.colorScheme, (envMode == .light || envMode == .moss) ? .light : .dark)
 
         let renderer = ImageRenderer(content: content)
         renderer.scale = 2.0

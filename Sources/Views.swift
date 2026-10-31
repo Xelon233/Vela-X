@@ -123,6 +123,10 @@ struct ContentView: View {
             theme.applyAppearance()
         }
         .preferredColorScheme(theme.mode.colorScheme)
+        // 换主题时整棵子树重建一次：Palette 的每个 token 都是绘制时才解析的动态色，
+        // 深色↔浅色靠 appearance 变化自然会重解析，但「浅色 → 550W」外观没变，
+        // 只有强制换身份才会重新取色。切主题重置滚动位置，可以接受。
+        .id(theme.mode)
     }
 }
 
@@ -135,8 +139,55 @@ struct ContentView: View {
 /// 透过 behindWindow 玻璃折射进来的就是桌面本身的颜色，换壁纸就换氛围。
 struct WorkspaceBackground: View {
     var body: some View {
-        Palette.veil
+        if Palette.isMoss {
+            ZStack {
+                // 550W 不复用桌面：直接铺一块干净的白（工程图纸），
+                // 这样整窗观感与壁纸无关，任何壁纸下都是同一块限定量产面板。
+                Color(hex: 0xF2F3F5)
+                MossGrid()
+            }
             .ignoresSafeArea()
+        } else {
+            Palette.veil
+                .ignoresSafeArea()
+        }
+    }
+}
+
+/// 550W 底纸网格：28pt 一格细线，每 4 格加深一条。
+/// 静态绘制（Canvas 只在尺寸变化时重画），不参与逐帧动画，所以不增加合成负担。
+struct MossGrid: View {
+    var step: CGFloat = 28
+
+    var body: some View {
+        Canvas { ctx, size in
+            var thin = Path()
+            var bold = Path()
+            var i = 1
+            var x = step
+            while x < size.width {
+                if i % 4 == 0 {
+                    bold.move(to: CGPoint(x: x, y: 0)); bold.addLine(to: CGPoint(x: x, y: size.height))
+                } else {
+                    thin.move(to: CGPoint(x: x, y: 0)); thin.addLine(to: CGPoint(x: x, y: size.height))
+                }
+                x += step; i += 1
+            }
+            i = 1
+            var y = step
+            while y < size.height {
+                if i % 4 == 0 {
+                    bold.move(to: CGPoint(x: 0, y: y)); bold.addLine(to: CGPoint(x: size.width, y: y))
+                } else {
+                    thin.move(to: CGPoint(x: 0, y: y)); thin.addLine(to: CGPoint(x: size.width, y: y))
+                }
+                y += step; i += 1
+            }
+            ctx.stroke(thin, with: .color(Color.black.opacity(0.040)), lineWidth: 1)
+            ctx.stroke(bold, with: .color(Color.black.opacity(0.070)), lineWidth: 1)
+        }
+        .drawingGroup()
+        .allowsHitTesting(false)
     }
 }
 
@@ -152,19 +203,27 @@ struct SidebarView: View {
         VStack(alignment: .leading, spacing: 0) {
             // 品牌区
             VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 6) {
-                    Rectangle()
-                        .fill(Palette.accent)
-                        .frame(width: 3, height: 14)
-                        .shadow(color: Palette.accent.opacity(0.9), radius: 6)
-                    Text("VELA")
-                        .font(.system(size: 14, weight: .heavy))
-                        .tracking(2.2)
-                        .foregroundStyle(Palette.text)
-                    Text("X")
-                        .font(.system(size: 14, weight: .heavy))
-                        .tracking(1.2)
-                        .foregroundStyle(Palette.accent)
+                if Palette.isMoss {
+                    // 550W 皮肤下整个品牌区换成机号标 + 电影字幕条
+                    VStack(alignment: .leading, spacing: 5) {
+                        MossLogo(height: 21)
+                        MossCaption(width: 136)
+                    }
+                } else {
+                    HStack(spacing: 6) {
+                        Rectangle()
+                            .fill(Palette.accent)
+                            .frame(width: 3, height: 14)
+                            .shadow(color: Palette.accent.opacity(0.9), radius: 6)
+                        Text("VELA")
+                            .font(.system(size: 14, weight: .heavy))
+                            .tracking(2.2)
+                            .foregroundStyle(Palette.text)
+                        Text("X")
+                            .font(.system(size: 14, weight: .heavy))
+                            .tracking(1.2)
+                            .foregroundStyle(Palette.accent)
+                    }
                 }
                 Text(store.hardware.productName.isEmpty
                      ? (store.hardware.modelCode.isEmpty ? "macOS" : store.hardware.modelCode)
@@ -287,7 +346,27 @@ private struct SelectionGlass: View {
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        // 550W：不用玻璃，改成「红框 + 淡红底 + 左侧红条」的仪表面板选中态，
+        // 轮廓与卡片统一走切角，整页才不会一半圆角一半切角
+        let shape = PanelShape(radius: radius, cut: Palette.isMoss ? 9 : 0)
+        if Palette.isMoss {
+            shape
+                .fill(Palette.accent.opacity(0.09))
+                .overlay(shape.strokeBorder(Palette.accent.opacity(0.42), lineWidth: 1))
+                .overlay(alignment: .leading) {
+                    Rectangle()
+                        .fill(Palette.accent)
+                        .frame(width: 2.5, height: 13)
+                        .padding(.leading, 5)
+                }
+                .drawingGroup(opaque: false, colorMode: .extendedLinear)
+        } else {
+            glass(shape)
+        }
+    }
+
+    @ViewBuilder
+    private func glass(_ shape: PanelShape) -> some View {
         let light = scheme == .light
         // 浅色主题下背景已经接近白色，用「微微压暗的灰玻璃」才有形；
         // 深色主题下反过来用白玻璃提亮。
@@ -692,13 +771,10 @@ struct OverviewView: View {
                                  color: store.load.thermal == .nominal ? Palette.ok : Palette.warn)
                     }
                     // 固定宽度：让 CPU 卡与 GPU 卡的曲线起点落在同一条竖线上
-                    .frame(width: 120, alignment: .leading)
+                    .frame(width: Palette.isMoss ? 138 : 120, alignment: .leading)
                     // 右侧空白用 CPU 负载曲线填充（Sparkline 无网格 / 表格背景）
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("负载曲线")
-                            .font(.system(size: 9.5))
-                            .tracking(0.5)
-                            .foregroundStyle(Palette.textTertiary)
+                        CodeLabel(text: "负载曲线", size: 9.5)
                         Sparkline(values: store.loadHistory.map { $0 * 100 },
                                   color: Palette.mLoad,
                                   lowerBound: 0, upperBound: 100,
@@ -748,12 +824,9 @@ struct OverviewView: View {
     private func statLine(_ label: String, _ value: String,
                           color: Color = Palette.text) -> some View {
         HStack(spacing: 6) {
-            Text(label)
-                .font(.system(size: 9.5))
-                .tracking(0.5)
-                .foregroundStyle(Palette.textTertiary)
-                .lineLimit(1)
-                .frame(width: 40, alignment: .leading)
+            // 550W 皮肤下换成等宽「代码标签」，其余主题与原来一致
+            CodeLabel(text: label, size: 9.5)
+                .frame(width: Palette.isMoss ? 58 : 40, alignment: .leading)
             Text(value)
                 .font(.system(size: 11, weight: .medium).monospacedDigit())
                 .foregroundStyle(color)
@@ -890,13 +963,10 @@ struct OverviewView: View {
                                  color: Palette.mGPU)
                         // 功耗与显存不再在这里列一遍 —— 底部有大数 + 曲线，重复显示只会让卡更挤
                     }
-                    .frame(width: 120, alignment: .leading)
+                    .frame(width: Palette.isMoss ? 138 : 120, alignment: .leading)
                     // 右侧用显卡占用率曲线填充（与 CPU 卡的负载曲线同一位置）
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("占用率曲线")
-                            .font(.system(size: 9.5))
-                            .tracking(0.5)
-                            .foregroundStyle(Palette.textTertiary)
+                        CodeLabel(text: "占用率曲线", size: 9.5)
                         Sparkline(values: store.gpuHistory,
                                   color: Palette.mGPU,
                                   lowerBound: 0, upperBound: 100,
@@ -947,10 +1017,7 @@ struct OverviewView: View {
     private func metricCell(_ title: String, value: String, unit: String,
                             has: Bool, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.system(size: 9.5))
-                .tracking(0.5)
-                .foregroundStyle(Palette.textTertiary)
+            CodeLabel(text: title, size: 9.5)
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(value)
                     .font(.system(size: 17, weight: .semibold).monospacedDigit())

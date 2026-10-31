@@ -33,6 +33,8 @@ struct AboutView: View {
     private var whatsNewCard: some View {
         Card {
             VStack(alignment: .leading, spacing: 9) {
+                whatsNewRow("eye.fill", "新增「550W」限定主题", "《流浪地球》550W / MOSS 风格皮肤：白底 + 警示红，直角切角面板、工程图细网格、标题虚线分栏、标签改等宽代码写法（带 ▸ 前缀），温度环改「灰→红→深红」单色梯度。在「设置 → 外观」里选 550W 即可切换，其余三个主题完全不受影响。")
+                whatsNewRow("textformat", "550W 标识与字幕条", "侧栏与「关于」页换成 550W 机号标（550 深色 + 红色 W）与电影字幕条「智能量子计算机 550W [MOSS] / INTELLIGENT QUANTUM COMPUTER」，素材取自你提供的矢量文件，按白底重新着色后内置进 App。")
                 whatsNewRow("chart.xyaxis.line", "折线改平滑曲线", "概览与监控页所有统计曲线由折线（直线连点）改为过每个采样点的平滑曲线（Catmull-Rom 转三次贝塞尔），控制点夹在画布内，尖峰数据不会甩出边框。")
                 whatsNewRow("menubar.rectangle", "菜单栏开关重排 + 图标区分", "「菜单栏」设置里的指标按 CPU → GPU → 内存 → 网络分组排列，同类挨在一起。GPU 占用率换成板卡形状的小显卡图标（原来是个显示器），GPU 功耗改成「方框里的闪电」，与 CPU 功耗的裸闪电一眼可分。")
                 whatsNewRow("arrow.up.arrow.down", "性能与风扇页顺序调整", "「机型识别」卡片移到「风扇情况」下方，两条机型风险提示（不匹配 / 未能识别）紧随其后，不再夹在自定义曲线和说明之间。")
@@ -90,13 +92,19 @@ struct AboutView: View {
     private var brandCard: some View {
         Card(padding: 20, accent: Palette.accent, glow: true) {
             HStack(alignment: .center, spacing: 22) {
-                // 用程序自身的图标（AppIcon.icns），而不是 ROG 品牌标
-                Image(nsImage: NSApp.applicationIconImage
-                      ?? NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath))
-                    .resizable()
-                    .interpolation(.high)
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 46, height: 46)
+                // 用程序自身的图标（AppIcon.icns），而不是 ROG 品牌标。
+                // 550W 限定皮肤下换成 550W 的机号标，整页跟着换气质。
+                if Palette.isMoss {
+                    MossLogo(height: 34)
+                        .frame(width: 112, alignment: .leading)
+                } else {
+                    Image(nsImage: NSApp.applicationIconImage
+                          ?? NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath))
+                        .resizable()
+                        .interpolation(.high)
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 46, height: 46)
+                }
 
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -105,12 +113,18 @@ struct AboutView: View {
                             .tracking(0.4)
                             .foregroundStyle(LinearGradient(colors: [Palette.text, Palette.text.opacity(0.7)],
                                                             startPoint: .top, endPoint: .bottom))
-                            .shadow(color: Palette.accent.opacity(0.35), radius: 12, y: 2)
+                            .shadow(color: Palette.isMoss ? .clear : Palette.accent.opacity(0.35),
+                                    radius: Palette.isMoss ? 0 : 12, y: Palette.isMoss ? 0 : 2)
                         Pill(text: AppInfo.displayVersion, color: Palette.accent)
                     }
                     Text(AppInfo.tagline)
                         .font(.system(size: 11))
                         .foregroundStyle(Palette.textSecondary)
+                    // 550W 皮肤：把电影里那行字幕放到标语下面
+                    if Palette.isMoss {
+                        MossCaption(width: 300)
+                            .padding(.top, 3)
+                    }
                 }
 
                 Spacer(minLength: 8)

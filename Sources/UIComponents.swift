@@ -9,32 +9,32 @@ import SwiftUI
 
 enum Palette {
     // 底色（深浅自适应，随主题切换自动解析）
-    static let bg = Color.adaptive(0xF1F3F7, 0x05070B)
-    static let bgSoft = Color.adaptive(0xE6EAF1, 0x0A0E15)
+    static let bg = Color.skin(0xF1F3F7, 0x05070B, 0xF2F3F5)
+    static let bgSoft = Color.skin(0xE6EAF1, 0x0A0E15, 0xE7E9EC)
     /// 面板色不再用纯白 / 蓝灰：纯白太"实"，一叠上去就是白纸；
     /// 深色那对 0x161C27 / 0x0D121A 又偏灰蓝，视觉上是一层灰。
     /// 现在浅色走极浅的中性灰、深色压到近黑，配低透明度才是"一整块磨砂玻璃"。
-    static let panelTop = Color.adaptive(0xFAFAFB, 0x0A0E13)
-    static let panelBottom = Color.adaptive(0xF1F2F5, 0x070A0E)
-    static let panelHi = Color.adaptive(0xE9EDF4, 0x1E2634)
+    static let panelTop = Color.skin(0xFAFAFB, 0x0A0E13, 0xFFFFFF)
+    static let panelBottom = Color.skin(0xF1F2F5, 0x070A0E, 0xF6F7F8)
+    static let panelHi = Color.skin(0xE9EDF4, 0x1E2634, 0xECEEF0)
 
     // 品牌色：取 Finder 侧栏选中态用的那支蓝（系统 accent blue）——
     // 浅色 #007AFF、深色 #0A84FF。它比之前的靛蓝更「系统」，和 macOS 自绘控件同色，
     // 灰阶背景上也不会显得发紫。红依旧只留给「错误/危险」语义。
-    static let accent = Color.adaptive(0x007AFF, 0x0A84FF)
+    static let accent = Color.skin(0x007AFF, 0x0A84FF, 0xC8102E)
     /// 次级强调色：系统色板里的 sky blue，和主蓝同族，做数字/标签的渐层
-    static let accent2 = Color.adaptive(0x32ADE6, 0x64D2FF)
-    static let ok = Color.adaptive(0x1DA45F, 0x2FD57C)
-    static let warn = Color.adaptive(0xC77F00, 0xFFB020)
-    static let bad = Color.adaptive(0xD62A3C, 0xFF3B4E)
+    static let accent2 = Color.skin(0x32ADE6, 0x64D2FF, 0xE4572E)
+    static let ok = Color.skin(0x1DA45F, 0x2FD57C, 0x2E7D4F)
+    static let warn = Color.skin(0xC77F00, 0xFFB020, 0xB26A00)
+    static let bad = Color.skin(0xD62A3C, 0xFF3B4E, 0xA4161F)
 
     // 扩展色板：强调色仍是上面那支系统蓝，其余为「分类辅助色」，
     // 用于不同卡片 / 指标做区分，让整体色彩更丰富而不喧宾夺主。
-    static let violet = Color.adaptive(0x7C5CFF, 0xA78BFA)
-    static let teal   = Color.adaptive(0x0FA890, 0x2DD4BF)
-    static let pink   = Color.adaptive(0xE0529C, 0xFF6FB5)
-    static let indigo = Color.adaptive(0x4F46E5, 0x818CF8)
-    static let mint   = Color.adaptive(0x00A884, 0x34E0B4)
+    static let violet = Color.skin(0x7C5CFF, 0xA78BFA, 0x6B4E71)
+    static let teal   = Color.skin(0x0FA890, 0x2DD4BF, 0x2F6F6B)
+    static let pink   = Color.skin(0xE0529C, 0xFF6FB5, 0xA8322D)
+    static let indigo = Color.skin(0x4F46E5, 0x818CF8, 0x4A6FA5)
+    static let mint   = Color.skin(0x00A884, 0x34E0B4, 0x2E7D4F)
 
     // MARK: 指标配色（概览 / 监控 / 菜单栏共用）
     //
@@ -53,47 +53,60 @@ enum Palette {
     //   显卡功耗              → mGPUPow（粉）
     //   显存                  → mVRAM（靛）
     //   网络                  → mNet（天蓝）
-    static let mLoad    = Color.adaptive(0x2F7BEF, 0x5C9DFF)
-    static let mFreq    = Color.adaptive(0x06B6D4, 0x22D3EE)
-    static let mPower   = Color.adaptive(0xD97706, 0xFBBF24)
-    static let mMem     = Color.adaptive(0x65A30D, 0xA3E635)
-    static let mFan     = Color.adaptive(0x14B8A6, 0x2DD4BF)
-    static let mBattery = Color.adaptive(0x22C55E, 0x4ADE80)
-    static let mDisk    = Color.adaptive(0x64748B, 0x94A3B8)
-    static let mGPU     = Color.adaptive(0xA855F7, 0xC084FC)
-    static let mGPUPow  = Color.adaptive(0xEC4899, 0xFF6FB5)
-    static let mVRAM    = Color.adaptive(0x6366F1, 0x8B93FF)
-    static let mNet     = Color.adaptive(0x0EA5E9, 0x38BDF8)
+    static let mLoad    = Color.skin(0x2F7BEF, 0x5C9DFF, 0xC8102E)
+    static let mFreq    = Color.skin(0x06B6D4, 0x22D3EE, 0xE4572E)
+    static let mPower   = Color.skin(0xD97706, 0xFBBF24, 0xB26A00)
+    static let mMem     = Color.skin(0x65A30D, 0xA3E635, 0x5C6B7A)
+    static let mFan     = Color.skin(0x14B8A6, 0x2DD4BF, 0x2F6F6B)
+    static let mBattery = Color.skin(0x22C55E, 0x4ADE80, 0x2E7D4F)
+    static let mDisk    = Color.skin(0x64748B, 0x94A3B8, 0x6E7378)
+    static let mGPU     = Color.skin(0xA855F7, 0xC084FC, 0x8C1C13)
+    static let mGPUPow  = Color.skin(0xEC4899, 0xFF6FB5, 0xA8322D)
+    static let mVRAM    = Color.skin(0x6366F1, 0x8B93FF, 0x6B4E71)
+    static let mNet     = Color.skin(0x0EA5E9, 0x38BDF8, 0x4A6FA5)
 
     // 文字
-    static let text = Color.adaptive(0x1B2331, 0xE9F0FA)
-    static let textSecondary = Color.adaptive(0x52627A, 0xA3B2C6)
-    static let textTertiary = Color.adaptive(0x8B98AB, 0x6C7C92)
+    static let text = Color.skin(0x1B2331, 0xE9F0FA, 0x14161A)
+    static let textSecondary = Color.skin(0x52627A, 0xA3B2C6, 0x4C5259)
+    static let textTertiary = Color.skin(0x8B98AB, 0x6C7C92, 0x878D95)
 
     // 描边 / 填充语义色
     /// 卡片描边：卡片变透明后全靠这道边勾轮廓，比填充透明度低的时候要更明显一点
-    static let cardStroke = Color.adaptive(0x000000, 0xFFFFFF, lightOpacity: 0.11, darkOpacity: 0.09)
-    static let subtle = Color.adaptive(0x000000, 0xFFFFFF, lightOpacity: 0.05, darkOpacity: 0.04)
+    static let cardStroke = Color.skin(0x000000, 0xFFFFFF, 0x000000, lightOpacity: 0.11, darkOpacity: 0.09, mossOpacity: 0.16)
+    static let subtle = Color.skin(0x000000, 0xFFFFFF, 0x000000, lightOpacity: 0.05, darkOpacity: 0.04, mossOpacity: 0.05)
     /// 按钮胶囊等弱填充
-    static let faintFill = Color.adaptive(0x000000, 0xFFFFFF, lightOpacity: 0.07, darkOpacity: 0.07)
+    static let faintFill = Color.skin(0x000000, 0xFFFFFF, 0x000000, lightOpacity: 0.07, darkOpacity: 0.07, mossOpacity: 0.05)
     /// 分隔线、边框
-    static let hairline = Color.adaptive(0x000000, 0xFFFFFF, lightOpacity: 0.10, darkOpacity: 0.08)
+    static let hairline = Color.skin(0x000000, 0xFFFFFF, 0x000000, lightOpacity: 0.10, darkOpacity: 0.08, mossOpacity: 0.13)
     /// 窗口底色薄纱：整窗只压这一层纯色，光晕/色调全部来自壁纸
     /// （深色 = 黑纱压暗、浅色 = 白纱提亮，都保留壁纸原有的色相，
     ///  所以同一套界面在不同壁纸下会呈现不同氛围。透明度别超过 0.3，
     ///  再高就把壁纸盖死，反而变成一块实色板。）
-    static let veil = Color.adaptive(0xFFFFFF, 0x000000, lightOpacity: 0.00, darkOpacity: 0.02)
+    static let veil = Color.skin(0xFFFFFF, 0x000000, 0xFFFFFF, lightOpacity: 0.00, darkOpacity: 0.02, mossOpacity: 0.9)
     /// 温度环底环 / 刻度
-    static let ringBase = Color.adaptive(0x000000, 0xFFFFFF, lightOpacity: 0.08, darkOpacity: 0.06)
-    static let ringTick = Color.adaptive(0x000000, 0xFFFFFF, lightOpacity: 0.18, darkOpacity: 0.16)
+    static let ringBase = Color.skin(0x000000, 0xFFFFFF, 0x000000, lightOpacity: 0.08, darkOpacity: 0.06, mossOpacity: 0.1)
+    static let ringTick = Color.skin(0x000000, 0xFFFFFF, 0x000000, lightOpacity: 0.18, darkOpacity: 0.16, mossOpacity: 0.22)
     /// 滑杆 / 电量条轨道
-    static let trackFill = Color.adaptive(0x000000, 0xFFFFFF, lightOpacity: 0.07, darkOpacity: 0.06)
+    static let trackFill = Color.skin(0x000000, 0xFFFFFF, 0x000000, lightOpacity: 0.07, darkOpacity: 0.06, mossOpacity: 0.06)
 
-    /// 整体统一圆角（macOS 26 Liquid Glass 组件标准，连续圆角），与 Safari 内控件一致
-    static let cornerRadius: CGFloat = 12
+    /// 当前是否为「550W」限定皮肤。样式分支（直角 / 角标 / 网格背景）都读这个。
+    static var isMoss: Bool { SkinFlag.moss }
+
+    /// 整体统一圆角（macOS 26 Liquid Glass 组件标准，连续圆角），与 Safari 内控件一致。
+    /// 550W 是工业仪表盘风格，圆角压到 4 —— 直角 + 细线是这套主题的骨架。
+    static var cornerRadius: CGFloat { isMoss ? 4 : 12 }
 
     static func forTemp(_ t: Double?) -> Color {
         guard let t else { return textSecondary }
+        // 550W：温度只走「灰 → 红 → 深红」，越热越深、越像警报
+        if isMoss {
+            switch t {
+            case ..<55: return textTertiary
+            case ..<72: return accent2
+            case ..<85: return accent
+            default: return bad
+            }
+        }
         switch t {
         case ..<55: return ok
         case ..<72: return accent2
@@ -176,6 +189,14 @@ struct Card<Content: View>: View {
                 .fill(glassFill)
                 .overlay(glassShape.fill(topSheen))
                 .overlay(glassShape.strokeBorder(glassEdge, lineWidth: 1))
+                .overlay {
+                    // 550W：沿着两处大斜边加一段红边，比四角角标更贴合切角轮廓
+                    if Palette.isMoss {
+                        PanelAccents(cut: 13)
+                            .stroke(Palette.accent.opacity(0.9),
+                                    style: StrokeStyle(lineWidth: 2, lineCap: .square))
+                    }
+                }
                 .overlay(alignment: .leading) {
                     if let accent {
                         LinearGradient(colors: [accent, accent.opacity(0)],
@@ -192,19 +213,27 @@ struct Card<Content: View>: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         // 外发光仍是实时阴影（glow 卡才给）；其余卡不发光，靠描边与玻璃分层，观感几乎无差。
-        .shadow(color: glow ? Palette.accent.opacity(scheme == .light ? 0.07 : 0.10) : .clear,
-                radius: glow ? 7 : 0, x: 0, y: glow ? 3 : 0)
+        // 550W 完全不发光：白底上一个光晕只会糊成一团，工业面板靠硬描边立起来。
+        .shadow(color: (glow && !Palette.isMoss) ? Palette.accent.opacity(scheme == .light ? 0.07 : 0.10) : .clear,
+                radius: (glow && !Palette.isMoss) ? 7 : 0, x: 0, y: (glow && !Palette.isMoss) ? 3 : 0)
     }
 
-    private var glassShape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: radius, style: .continuous)
+    private var glassShape: PanelShape {
+        // 550W 走「切角矩形」：四角各切一刀、大小交替，像被裁过的仪表面板；
+        // 其余主题保持 Liquid Glass 的大圆角。
+        PanelShape(radius: radius, cut: Palette.isMoss ? 13 : 0)
     }
     /// 半透明玻璃填充：卡片只是「一层玻璃」，不是实心面板。
     /// 透明度直接决定玻璃观感 —— 太实就退化成一堆磨砂色块，桌面和背景光晕全被压死。
     /// 浅色 0.24/0.17、深色 0.15/0.11：整窗读起来是同一块磨砂玻璃，
     /// 卡片靠描边和一丝明暗差分层，而不是靠"白纸叠在灰纸上"。
+    /// 550W 例外：它就是「白纸叠在浅灰纸上」，用近实心白才有工程图的感觉。
     private var glassFill: LinearGradient {
-        scheme == .light
+        if Palette.isMoss {
+            return LinearGradient(colors: [Color.white.opacity(0.97), Color.white.opacity(0.90)],
+                                  startPoint: .topLeading, endPoint: .bottomTrailing)
+        }
+        return scheme == .light
             ? LinearGradient(colors: [Palette.panelTop.opacity(0.24), Palette.panelBottom.opacity(0.17)],
                              startPoint: .topLeading, endPoint: .bottomTrailing)
             : LinearGradient(colors: [Palette.panelTop.opacity(0.15), Palette.panelBottom.opacity(0.11)],
@@ -214,12 +243,22 @@ struct Card<Content: View>: View {
     /// 这层和上面的填充在 GPU 上不会真的各画一遍：整张卡最后被 drawingGroup
     /// 拍平成一张纹理，分层只是写起来清楚。
     private var topSheen: LinearGradient {
-        LinearGradient(colors: [Color.white.opacity(scheme == .light ? 0.09 : 0.025), .clear],
-                       startPoint: .top, endPoint: .init(x: 0.5, y: 0.30))
+        if Palette.isMoss {
+            // 白底上再打白光等于没打，直接收掉
+            return LinearGradient(colors: [.clear, .clear], startPoint: .top, endPoint: .bottom)
+        }
+        return LinearGradient(colors: [Color.white.opacity(scheme == .light ? 0.09 : 0.025), .clear],
+                              startPoint: .top, endPoint: .init(x: 0.5, y: 0.30))
     }
     /// 玻璃边缘描边：上沿更亮，模拟 Liquid Glass 的折射亮边
     private var glassEdge: LinearGradient {
-        scheme == .light
+        if Palette.isMoss {
+            return LinearGradient(colors: [Color.black.opacity(0.20),
+                                           Color.black.opacity(0.12),
+                                           Color.black.opacity(0.20)],
+                                  startPoint: .top, endPoint: .bottom)
+        }
+        return scheme == .light
             ? LinearGradient(colors: [Color.white.opacity(0.90),
                                       Color.black.opacity(0.07),
                                       Color.black.opacity(0.12)],
@@ -228,6 +267,35 @@ struct Card<Content: View>: View {
                                       Color.white.opacity(0.05),
                                       Color.white.opacity(0.14)],
                              startPoint: .top, endPoint: .bottom)
+    }
+}
+
+/// 550W 限定皮肤的四角角标：只在四个角画 L 形短线，中间留空。
+/// 一个 Shape 走完整圈，比叠 4 个 overlay 便宜，也不会被卡片内容裁掉。
+struct CornerBrackets: Shape {
+    var length: CGFloat = 13
+
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        let l = min(length, min(rect.width, rect.height) / 3)
+        let (minX, minY, maxX, maxY) = (rect.minX, rect.minY, rect.maxX, rect.maxY)
+        // 左上
+        p.move(to: CGPoint(x: minX, y: minY + l))
+        p.addLine(to: CGPoint(x: minX, y: minY))
+        p.addLine(to: CGPoint(x: minX + l, y: minY))
+        // 右上
+        p.move(to: CGPoint(x: maxX - l, y: minY))
+        p.addLine(to: CGPoint(x: maxX, y: minY))
+        p.addLine(to: CGPoint(x: maxX, y: minY + l))
+        // 右下
+        p.move(to: CGPoint(x: maxX, y: maxY - l))
+        p.addLine(to: CGPoint(x: maxX, y: maxY))
+        p.addLine(to: CGPoint(x: maxX - l, y: maxY))
+        // 左下
+        p.move(to: CGPoint(x: minX + l, y: maxY))
+        p.addLine(to: CGPoint(x: minX, y: maxY))
+        p.addLine(to: CGPoint(x: minX, y: maxY - l))
+        return p
     }
 }
 
@@ -241,20 +309,44 @@ struct SectionTitle: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
-            RoundedRectangle(cornerRadius: 1)
-                .fill(LinearGradient(colors: [color, color.opacity(0.15)],
-                                     startPoint: .top, endPoint: .bottom))
-                .frame(width: 2.5, height: 12)
-                .shadow(color: color.opacity(0.45), radius: 3)
+            if Palette.isMoss {
+                // 550W：红色实心小方块 + 一条细横线，像仪表盘上的通道标记
+                Rectangle()
+                    .fill(Palette.accent)
+                    .frame(width: 6, height: 6)
+                Rectangle()
+                    .fill(Palette.accent.opacity(0.35))
+                    .frame(width: 10, height: 1)
+            } else {
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(LinearGradient(colors: [color, color.opacity(0.15)],
+                                         startPoint: .top, endPoint: .bottom))
+                    .frame(width: 2.5, height: 12)
+                    .shadow(color: color.opacity(0.45), radius: 3)
+            }
             Text(text)
-                .font(.system(size: 12.5, weight: .semibold))
-                .tracking(0.6)
-                .foregroundStyle(Palette.text)
-            Spacer()
+                .font(.system(size: 12.5, weight: Palette.isMoss ? .bold : .semibold))
+                .tracking(Palette.isMoss ? 1.6 : 0.6)
+                .foregroundStyle(Palette.isMoss ? color : Palette.text)
+            if Palette.isMoss {
+                // 工程图式虚线分栏：把标题和右侧注释连起来
+                DashedRule()
+                    .stroke(Palette.accent.opacity(0.22),
+                            style: StrokeStyle(lineWidth: 1, dash: [2, 4]))
+                    .frame(height: 1)
+                    .frame(maxWidth: .infinity)
+            } else {
+                Spacer()
+            }
             if let trailing {
-                Text(trailing)
-                    .font(.system(size: 10).monospacedDigit())
+                // 550W：右侧注释改成「// …」的代码注释写法
+                Text(Palette.isMoss ? "// \(trailing)" : trailing)
+                    .font(Palette.isMoss
+                          ? .system(size: 9.5, design: .monospaced)
+                          : .system(size: 10).monospacedDigit())
                     .foregroundStyle(Palette.textTertiary)
+                    .tracking(Palette.isMoss ? 0.3 : 0)
+                    .lineLimit(1)
             }
         }
     }
@@ -372,12 +464,16 @@ struct TempRing: View {
 
     /// 冷→热四段插值（原来是 AngularGradient 的色标）
     static func color(at t: Double) -> Color {
-        let stops: [(Double, Double, Double, Double)] = [
-            (0.00, 0x2A, 0xD4, 0xEE),
-            (0.45, 0x2F, 0xD5, 0x7C),
-            (0.72, 0xFF, 0xB0, 0x20),
-            (1.00, 0xFF, 0x3B, 0x4E)
-        ]
+        // 550W：整环只在红–灰之间走，越热越深，没有青绿，符合「白底红警觉」的设定
+        let stops: [(Double, Double, Double, Double)] = Palette.isMoss
+            ? [(0.00, 0xC9, 0xCD, 0xD2),
+               (0.45, 0xD9, 0x53, 0x4F),
+               (0.72, 0xC8, 0x10, 0x2E),
+               (1.00, 0x7A, 0x0C, 0x16)]
+            : [(0.00, 0x2A, 0xD4, 0xEE),
+               (0.45, 0x2F, 0xD5, 0x7C),
+               (0.72, 0xFF, 0xB0, 0x20),
+               (1.00, 0xFF, 0x3B, 0x4E)]
         let x: Double = min(max(t, 0), 1)
         for i in 0..<(stops.count - 1) {
             let p0 = stops[i].0
@@ -983,4 +1079,184 @@ extension ByteCountFormatter {
         f.zeroPadsFractionDigits = false
         return f
     }()
+}
+
+// MARK: - 550W 限定主题标识
+
+/// 550W 的两份素材（用户提供的 traced 矢量 SVG，已按白底重新着色并栅格化）：
+///   · moss-logo.png    —— 纯英文机号标「550 + 红色 W」
+///   · moss-caption.png —— 电影字幕条「智能量子计算机 550W [MOSS] / INTELLIGENT QUANTUM COMPUTER …」
+/// 只在 550W 皮肤下出现；素材缺失时退回手绘标识，不至于开天窗。
+enum MossAssets {
+    static let logo = ROGLogo.loadImage("moss-logo")
+    static let caption = ROGLogo.loadImage("moss-caption")
+}
+
+/// 550W 机号标
+struct MossLogo: View {
+    var height: CGFloat = 20
+
+    var body: some View {
+        if let img = MossAssets.logo {
+            Image(nsImage: img)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .frame(height: height)
+                .accessibilityLabel("550W")
+        } else {
+            HStack(spacing: height * 0.28) {
+                MossMark(size: height)
+                Text("550W")
+                    .font(.system(size: height * 0.82, weight: .black, design: .monospaced))
+                    .tracking(height * 0.09)
+                    .foregroundStyle(Palette.text)
+            }
+        }
+    }
+}
+
+/// 550W 字幕条：给宽度、按原比例定高
+struct MossCaption: View {
+    var width: CGFloat = 260
+
+    var body: some View {
+        if let img = MossAssets.caption {
+            Image(nsImage: img)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .frame(width: width)
+                .accessibilityLabel("智能量子计算机 550W")
+        }
+    }
+}
+
+/// 手绘兜底标识（素材缺失时才用）：红环 + 四向刻线 + 中央镜头
+struct MossMark: View {
+    var size: CGFloat = 22
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .strokeBorder(Palette.accent, lineWidth: max(1.2, size * 0.075))
+            ForEach(0..<4, id: \.self) { i in
+                Rectangle()
+                    .fill(Palette.accent)
+                    .frame(width: max(1, size * 0.05), height: size * 0.15)
+                    .offset(y: -size / 2 + size * 0.055)
+                    .rotationEffect(.degrees(Double(i) * 90))
+            }
+            Circle()
+                .fill(Palette.accent)
+                .frame(width: size * 0.40, height: size * 0.40)
+            Circle()
+                .fill(Color.white.opacity(0.88))
+                .frame(width: size * 0.11, height: size * 0.11)
+                .offset(x: -size * 0.07, y: -size * 0.07)
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+// MARK: - 550W 代码标签
+
+/// 550W 皮肤下的「代码标签」：等宽小字 + 指令前缀，像终端里的一行 key。
+/// 只替换标签文字，值仍然是正常字体、图标照旧 —— 全改成等宽反而读不动。
+/// 其它主题下与普通小标题完全一致，不影响观感。
+struct CodeLabel: View {
+    let text: String
+    var size: CGFloat = 9.5
+    var color: Color = Palette.textTertiary
+    /// 是否带「▸」指令前缀（卡片里的关键行带，角落的小注不带）
+    var prompt: Bool = true
+
+    var body: some View {
+        if Palette.isMoss {
+            HStack(spacing: 3) {
+                if prompt {
+                    Text("▸")
+                        .font(.system(size: size - 0.5, weight: .bold, design: .monospaced))
+                        .foregroundStyle(Palette.accent.opacity(0.85))
+                }
+                Text(text)
+                    .font(.system(size: size, weight: .medium, design: .monospaced))
+                    .tracking(0.4)
+                    .foregroundStyle(color)
+                    .lineLimit(1)
+            }
+        } else {
+            Text(text)
+                .font(.system(size: size))
+                .tracking(0.5)
+                .foregroundStyle(color)
+                .lineLimit(1)
+        }
+    }
+}
+
+// MARK: - 550W 面板形状
+
+/// 切角矩形：四角各切一刀、两处大、两处小，整体仍是矩形、布局边框不变，
+/// 只是轮廓不规则 —— 550W 的仪表板就是这个味道（对齐靠布局，不靠圆角）。
+struct PanelShape: Shape {
+    var radius: CGFloat = 22
+    /// 0 = 普通圆角矩形；>0 = 切角尺寸
+    var cut: CGFloat = 0
+    /// 描边时向内收的量（InsettableShape 用）
+    var insetAmount: CGFloat = 0
+
+    func path(in rect: CGRect) -> Path {
+        let rect = insetAmount == 0 ? rect
+            : rect.insetBy(dx: insetAmount, dy: insetAmount)
+        guard cut > 0 else {
+            return Path(roundedRect: rect, cornerRadius: radius, style: .continuous)
+        }
+        let big = min(cut, min(rect.width, rect.height) / 2.5)
+        let small = big * 0.44
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX + big, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX - small, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + small))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - big))
+        p.addLine(to: CGPoint(x: rect.maxX - big, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX + small, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - small))
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.minY + big))
+        p.closeSubpath()
+        return p
+    }
+}
+
+extension PanelShape: InsettableShape {
+    func inset(by amount: CGFloat) -> PanelShape {
+        var copy = self
+        copy.insetAmount += amount
+        return copy
+    }
+}
+
+/// 只画两处大斜边（左上、右下），用来给红色强调
+struct PanelAccents: Shape {
+    var cut: CGFloat = 13
+
+    func path(in rect: CGRect) -> Path {
+        let big = min(cut, min(rect.width, rect.height) / 2.5)
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX + big, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.minY + big))
+        p.move(to: CGPoint(x: rect.maxX, y: rect.maxY - big))
+        p.addLine(to: CGPoint(x: rect.maxX - big, y: rect.maxY))
+        return p
+    }
+}
+
+/// 标题里的虚线横规：撑满剩余宽度，像工程图的分栏线
+struct DashedRule: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX, y: rect.midY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        return p
+    }
 }
