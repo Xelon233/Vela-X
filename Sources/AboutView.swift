@@ -33,7 +33,7 @@ struct AboutView: View {
     private var whatsNewCard: some View {
         Card {
             VStack(alignment: .leading, spacing: 9) {
-                whatsNewRow("eye.fill", "新增「550W」限定主题", "《流浪地球》550W / MOSS 风格皮肤，在「设置 → 外观」切换：白底 + 警示红，切角面板与工程图网格；内置 550W 机号标与电影字幕条；概览在该皮肤下改为终端形态（命令行标题、滚动输出、运行时长与扫描线），状态行轮播「火种计划 / 领航员空间站」等设定文案，标题与日志会偶尔出现代码崩坏的故障噪点；侧栏按电影术语改用功能可辨的名字（总控台 / 观测站 / 通信链路 / 动力与冷却…，悬停可看原名）。其余三个主题不受影响。")
+                whatsNewRow("eye.fill", "新增「550W」限定主题", "《流浪地球》550W / MOSS 风格皮肤，在「设置 → 外观」切换：白底 + 警示红，切角面板与工程图网格；内置 550W 机号标与电影字幕条；概览在该皮肤下改为终端形态（命令行标题、滚动输出、运行时长与扫描线），状态行轮播「火种计划 / 领航员空间站」等设定文案，标题与日志会偶尔出现代码崩坏的故障噪点；侧栏按电影术语改用功能可辨的名字（总控台 / 观测站 / 通信链路 / 动力与冷却…，悬停可看原名）；概览的说明标签全部换成大写英文缩写（TEM / FRE / PWR / UTIL），顶部三枚标签改为「逻辑运算单元 / 记忆体 / 加速单元 已连接」；从其它主题切进 550W 时会播放一段「行星发动机网络已连接」的启动过场。其余三个主题不受影响。")
                 Divider().opacity(0.35)
                 whatsNewRow("bolt.shield", "开机静默应用配置", "登录与睡眠唤醒时自动、无密码框地下发当前功耗墙和风扇曲线（首次开启授权一次即可）。同时修复 1.8.5 因 sudoers 规则写法非法导致静默下发完全失效、并每次登录都弹一次密码框的问题。")
                 Divider().opacity(0.35)
@@ -92,7 +92,12 @@ struct AboutView: View {
     /// 读起来像一行播出的台标字幕（原来字幕另起一行，整块偏高）。
     private var mossBrandRow: some View {
         HStack(alignment: .center, spacing: 10) {
-            MossLogo(height: 24)
+            // 关于页只留中文字幕条这一行（英文机号标已按需求去掉，避免和 Vela X 争视觉重心）
+            MossCaption(width: 250)
+            Rectangle()
+                .fill(Palette.hairline)
+                .frame(width: 1, height: 24)
+                .padding(.horizontal, 2)
             Text(AppInfo.name)
                 .font(.system(size: 17, weight: .bold, design: .monospaced))
                 .tracking(0.6)
@@ -103,8 +108,7 @@ struct AboutView: View {
                 .font(.system(size: 9, design: .monospaced))
                 .foregroundStyle(Palette.textSecondary)
                 .lineLimit(1)
-            Spacer(minLength: 8)
-            MossCaption(width: 240)
+            Spacer(minLength: 6)
             copyVersionButton
         }
     }

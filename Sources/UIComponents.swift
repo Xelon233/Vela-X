@@ -312,7 +312,7 @@ struct SectionTitle: View {
                 .frame(maxWidth: .infinity)
                 .layoutPriority(-1)
             if let trailing {
-                Text("// \(trailing)")
+                Text("// \(MossText.codeList(trailing))")
                     .font(.system(size: 9.5, design: .monospaced))
                     .foregroundStyle(Palette.textTertiary)
                     .lineLimit(1)
@@ -358,7 +358,7 @@ struct SectionTitle: View {
             if let trailing {
                 // 550W：右侧注释改成「// …」的代码注释写法
                 Text(Palette.isMoss
-                     ? "// \(code.map { "\($0) · " } ?? "")\(trailing)"
+                     ? "// \(code.map { "\($0) · " } ?? "")\(MossText.codeList(trailing))"
                      : trailing)
                     .font(Palette.isMoss
                           ? .system(size: 9.5, design: .monospaced)
@@ -598,7 +598,7 @@ struct Sparkline: View {
                         .stroke(color,
                                 style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
                 } else {
-                    Text("等待采样…")
+                    Text(Palette.isMoss ? "NO DATA" : "等待采样…")
                         .font(.system(size: 10))
                         .foregroundStyle(Palette.textTertiary)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1122,6 +1122,8 @@ struct MossLogo: View {
                 .interpolation(.high)
                 .scaledToFit()
                 .frame(height: height)
+                // 图片的 ideal width 是原始像素宽，不锁死会被 HStack 压成 0 宽（实测被挤没）
+                .fixedSize()
                 .accessibilityLabel("550W")
         } else {
             HStack(spacing: height * 0.28) {
@@ -1183,17 +1185,53 @@ struct MossMark: View {
 /// 550W 皮肤下的「代码标签」：等宽小字 + 指令前缀，像终端里的一行 key。
 /// 只替换标签文字，值仍然是正常字体、图标照旧 —— 全改成等宽反而读不动。
 /// 其它主题下与普通小标题完全一致，不影响观感。
+/// 550W 的标签词典：概览卡里那些中文小标签统一换成大写英文缩写
+/// （TEM / FRE / PWR …）。未收录的词**原样返回**，所以「最近 240 秒」「ROG」这类动态文案不会被误改。
+enum MossText {
+    private static let map: [String: String] = [
+        // CPU / GPU 卡的说明词
+        "温度": "TEM", "频率": "FRE", "功耗": "PWR", "显存": "VRAM",
+        "占用": "UTIL", "占用率": "UTIL", "状态": "STAT",
+        "最低": "MIN", "最高": "MAX", "热压力": "THERM",
+        // 曲线与指标
+        "负载曲线": "LOAD", "占用率曲线": "UTIL",
+        "内存": "MEM", "风扇": "FAN", "磁盘": "DSK", "电池": "BAT",
+        "采样": "SMP", "实时": "LIVE", "不可用": "N/A",
+        // 状态值也跟着翻，否则会出现「STAT 偏高」这种中英混排
+        "凉爽": "COOL", "正常": "NOMINAL", "偏高": "HIGH", "高温": "HOT",
+        "过热": "CRIT", "偏热": "FAIR", "临界": "CRIT", "无数据": "NODATA", "未知": "N/A",
+        // 档位 / 风扇曲线
+        "静音": "SILENT", "平衡": "BALANCED", "性能": "PERF", "自定义": "CUSTOM",
+        "自定义曲线": "CUSTOM", "未记录": "NO REC", 
+        "温度曲线": "TEMP.CURVE", "内核计数器": "KERNEL",
+    ]
+
+    /// 单个词翻译
+    static func code(_ text: String) -> String {
+        map[text.trimmingCharacters(in: .whitespaces)] ?? text
+    }
+
+    /// 「温度 · 频率 · 功耗」这类用「·」分隔的说明，逐词翻译后拼回去
+    static func codeList(_ text: String) -> String {
+        guard text.contains("·") else { return code(text) }
+        return text.split(separator: "·")
+            .map { code($0.trimmingCharacters(in: .whitespaces)) }
+            .joined(separator: " · ")
+    }
+}
+
 struct CodeLabel: View {
     let text: String
     var size: CGFloat = 9.5
 
     var body: some View {
         if Palette.isMoss {
+            // 550W：中文标签一律换成大写英文缩写（TEM / FRE / PWR…），读起来是机器输出的字段名
             HStack(spacing: 3) {
                 Text("▸")
                     .font(.system(size: size - 0.5, weight: .bold, design: .monospaced))
                     .foregroundStyle(Palette.accent.opacity(0.85))
-                Text(text)
+                Text(MossText.code(text))
                     .font(.system(size: size, weight: .medium, design: .monospaced))
                     .tracking(0.4)
                     .foregroundStyle(Palette.textTertiary)

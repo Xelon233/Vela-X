@@ -28,6 +28,19 @@ enum Snapshot {
         // 给静态信息（机型/驱动/能力）留出加载时间；顺便积累几个采样点
         RunLoop.main.run(until: Date().addingTimeInterval(3.4))
 
+        // ASUS_BOOT=<0..5> 直接出「550W 启动过场」的静态帧（开发期验证用）
+        if let raw = ProcessInfo.processInfo.environment["ASUS_BOOT"], let previewStep = Int(raw) {
+            let boot = MossBootOverlay(initialStep: previewStep, onFinish: {})
+                .frame(width: size.width, height: size.height)
+            let renderer = ImageRenderer(content: boot)
+            renderer.scale = 2.0
+            guard let image = renderer.nsImage,
+                  let tiff = image.tiffRepresentation,
+                  let rep = NSBitmapImageRep(data: tiff),
+                  let png = rep.representation(using: .png, properties: [:]) else { return false }
+            return (try? png.write(to: URL(fileURLWithPath: path))) != nil
+        }
+
         let content = windowView(store: store, page: page)
             .background(Palette.bg)
             // Settings / About 等页读 @EnvironmentObject theme，离屏渲染也要给一份

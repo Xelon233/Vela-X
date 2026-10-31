@@ -415,7 +415,8 @@ struct ModeStatusCard: View {
     var body: some View {
         Card(padding: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                SectionTitle(text: "当前模式", trailing: "功耗 / 风扇", color: Palette.warn, code: "MISSION", command: "mission --profile")
+                SectionTitle(text: "当前模式", trailing: Palette.isMoss ? "PWR / FAN" : "功耗 / 风扇",
+                             color: Palette.warn, code: "MISSION", command: "mission --profile")
                 HStack(spacing: 0) {
                     modeColumn("功耗墙",
                                powerLabel,
@@ -450,7 +451,7 @@ struct ModeStatusCard: View {
                     .font(.system(size: 9.5))
                     .foregroundStyle(Palette.textTertiary)
             }
-            Text(value)
+            Text(Palette.isMoss ? MossText.code(value) : value)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(color)
                 .lineLimit(1)
@@ -469,8 +470,11 @@ struct ModeStatusCard: View {
     }
 
     private var powerSub: String {
-        guard power.kextSupported else { return "kext 不支持" }
-        return power.appliedWatts.map { "已限 \($0)W" } ?? "未限制"
+        guard power.kextSupported else { return Palette.isMoss ? "KEXT N/A" : "kext 不支持" }
+        if let w = power.appliedWatts {
+            return Palette.isMoss ? "CAP \(w) W" : "已限 \(w)W"
+        }
+        return Palette.isMoss ? "NO LIMIT" : "未限制"
     }
 
     private var fanLabel: String {
@@ -480,6 +484,7 @@ struct ModeStatusCard: View {
     }
 
     private var fanSub: String {
-        fan.kextLoaded ? "kext 已加载" : "kext 未加载"
+        if Palette.isMoss { return fan.kextLoaded ? "KEXT ONLINE" : "KEXT OFFLINE" }
+        return fan.kextLoaded ? "kext 已加载" : "kext 未加载"
     }
 }

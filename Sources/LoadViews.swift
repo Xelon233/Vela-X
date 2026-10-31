@@ -80,13 +80,14 @@ struct LoadCard: View {
                         Text("%")
                             .font(.system(size: 11))
                             .foregroundStyle(Palette.textSecondary)
-                        Text("\(store.load.perCore.count) 线程")
+                        Text(Palette.isMoss ? "\(store.load.perCore.count) THREADS"
+                                            : "\(store.load.perCore.count) 线程")
                             .font(.system(size: 10))
                             .foregroundStyle(Palette.textTertiary)
                             .padding(.leading, 4)
                     }
                     Text(Palette.isMoss
-                         ? "// MACH.KERNEL · 无需 kext"
+                         ? "// MACH.KERNEL · NO KEXT"
                          : "Mach 内核计数器 · 无需 kext")
                         .font(Palette.isMoss
                               ? .system(size: 9.5, design: .monospaced)
@@ -134,7 +135,7 @@ struct LoadCard: View {
                     .foregroundStyle(Palette.textTertiary)
             }
             Spacer(minLength: 0)
-            Text(value)
+            Text(Palette.isMoss ? MossText.code(value) : value)
                 .font(.system(size: 10.5).monospacedDigit())
                 .foregroundStyle(color)
         }

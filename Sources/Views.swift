@@ -97,8 +97,38 @@ struct ContentView: View {
     @EnvironmentObject var store: SensorStore
     @EnvironmentObject var theme: ThemeManager
     @StateObject private var router = PageRouter.shared
+    /// 切进 550W 时的「系统启动」过场
+    @State private var showBoot = false
 
     var body: some View {
+        ZStack {
+            // 换主题时整棵子树重建一次：Palette 的每个 token 都是绘制时才解析的动态色，
+            // 深色↔浅色靠 appearance 变化自然会重解析，但「浅色 → 550W」外观没变，
+            // 只有强制换身份才会重新取色。切主题重置滚动位置，可以接受。
+            mainContent
+                .id(theme.mode)
+
+            if showBoot {
+                MossBootOverlay {
+                    withAnimation(.easeOut(duration: 0.28)) { showBoot = false }
+                }
+                .transition(.opacity)
+                .zIndex(10)
+            }
+        }
+        .onAppear {
+            store.start()
+            theme.applyAppearance()
+        }
+        .preferredColorScheme(theme.mode.colorScheme)
+        // 只在「切进 550W」时播过场；启动时本来就在 550W 不放（那是常态，不该每次开窗都演一遍）
+        .onChange(of: theme.mode) { newMode in
+            guard newMode == .moss else { return }
+            withAnimation(.easeIn(duration: 0.15)) { showBoot = true }
+        }
+    }
+
+    private var mainContent: some View {
         HStack(spacing: 0) {
             SidebarView(page: $router.page)
             ScrollView {
@@ -136,15 +166,6 @@ struct ContentView: View {
             .ignoresSafeArea()
         }
         .overlay(WindowAccessor())
-        .onAppear {
-            store.start()
-            theme.applyAppearance()
-        }
-        .preferredColorScheme(theme.mode.colorScheme)
-        // 换主题时整棵子树重建一次：Palette 的每个 token 都是绘制时才解析的动态色，
-        // 深色↔浅色靠 appearance 变化自然会重解析，但「浅色 → 550W」外观没变，
-        // 只有强制换身份才会重新取色。切主题重置滚动位置，可以接受。
-        .id(theme.mode)
     }
 }
 
@@ -796,10 +817,15 @@ struct OverviewView: View {
         // 只保留三枚硬件标签 —— CPU / 内存 / 显卡，正好是它调度的东西。
         if Palette.isMoss {
             HStack(spacing: 6) {
-                Pill(text: store.hardware.cpuShort)
-                Pill(text: String(format: "%.0f GB", store.hardware.ramGB), color: Palette.textSecondary)
+                // 550W 不报型号，只报「谁在线」—— 型号退到悬停提示里
+                Pill(text: "逻辑运算单元已连接", color: Palette.mLoad)
+                    .help(store.hardware.cpuShort)
+                Pill(text: String(format: "记忆体 %.0f GB 已连接", store.hardware.ramGB),
+                     color: Palette.textSecondary)
                 ForEach(store.hardware.gpus) { gpu in
-                    Pill(text: gpu.name, color: gpu.accelerated ? Palette.ok : Palette.warn)
+                    Pill(text: "加速单元已连接",
+                         color: gpu.accelerated ? Palette.ok : Palette.warn)
+                        .help(gpu.name)
                 }
                 Spacer(minLength: 8)
                 editModeButton
@@ -813,7 +839,8 @@ struct OverviewView: View {
         Button {
             windowState.isEditMode.toggle()
         } label: {
-            Text(windowState.isEditMode ? "完成" : "编辑")
+            Text(Palette.isMoss ? (windowState.isEditMode ? "DONE" : "EDIT")
+                                : (windowState.isEditMode ? "完成" : "编辑"))
                 .font(Palette.isMoss
                       ? .system(size: 9.5, weight: .semibold, design: .monospaced)
                       : .system(size: 9.5, weight: .medium))
@@ -973,7 +1000,7 @@ struct OverviewView: View {
             // 550W 皮肤下换成等宽「代码标签」，其余主题与原来一致
             CodeLabel(text: label, size: 9.5)
                 .frame(width: Palette.isMoss ? 58 : 40, alignment: .leading)
-            Text(value)
+            Text(Palette.isMoss ? MossText.code(value) : value)
                 .font(.system(size: 11, weight: .medium).monospacedDigit())
                 .foregroundStyle(color)
                 .lineLimit(1)
@@ -1109,7 +1136,8 @@ struct OverviewView: View {
                 BatteryBar(percent: store.battery.charge)
                 if Palette.isMoss {
                     CodeRow(key: "CELL",
-                            value: String(format: "健康 %.0f%% · %d cyc",
+                            value: String(format: "%@ %.0f%% · %d cyc",
+                                          Palette.isMoss ? "HLTH" : "健康",
                                           store.battery.healthPercent, store.battery.cycleCount),
                             size: 10)
                 } else {
