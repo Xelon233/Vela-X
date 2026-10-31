@@ -74,8 +74,6 @@ final class FanControl: ObservableObject {
     @Published private(set) var lastApplied: String?
 
     private let presetKey = "fan.preset"
-    /// 给 SilentApply 这类模块读「上次应用的档位」用的公开名字（值就是 "fan.preset"）
-    var presetKeyName: String { presetKey }
     private var refreshing = false
 
     /// 交付包里的命令行工具把档位记录在 /tmp/fanmode.state（它们不回读 EC），

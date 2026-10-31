@@ -68,49 +68,68 @@ enum SilentApply {
 
     // MARK: 自动下发
 
+    /// 已知预设档位（与 FanControl.order 同源；这里本地存一份，避免触碰 @MainActor 控制器）。
+    private static let knownPresets = ["silent", "balanced", "performance"]
+
     /// 应用当前持久化的功耗墙 + 风扇配置（静默，无密码框）。
     /// 在启动和唤醒时调用；未启用 / 未授权 / kext 不支持时直接跳过，不报错、不弹框。
+    ///
+    /// 注意并发：本函数跑在后台线程。读状态只读 Prefs / SMCClient（二者都不是 @MainActor），
+    /// 不下发时绝不碰控制器；下发成功后才用 `DispatchQueue.main.async { @MainActor in ... }`
+    /// 在主线程更新控制器 UI —— 这样 sudo 这种会阻塞 ~1.5s 的动作不卡 UI。
     static func applyCurrentConfig() {
         guard isEnabled, isAuthorized else { return }
-        applyPower()
-        applyFan()
-    }
 
-    private static func applyPower() {
-        // 功耗墙通道：AFsw 键存在才算 kext 支持
-        guard (try? SMCClient.shared.keyInfo(PowerLimitSpec.keyWatts)) != nil else { return }
-        let profileRaw = Prefs.string(PowerLimitSpec.prefsProfile) ?? "balanced"
-        guard let profile = PowerProfile(rawValue: profileRaw) else { return }
-        let w: Int
-        if profile == .custom {
-            // 自定义档仍受高级功能解锁门约束（与手动下发一致）
-            guard Prefs.bool(PowerLimitSpec.prefsUnlocked) else { return }
-            let cw = Int(Prefs.string(PowerLimitSpec.prefsCustom) ?? "") ?? 30
-            w = min(max(cw, PowerLimitSpec.minW), PowerLimitSpec.maxW)
-        } else {
-            w = profile.watts ?? 30
+        // 功耗墙：kext 不支持（AFsw 不存在）则跳过；档位与自定义值都从持久化偏好读
+        var powerArgs: [String]?
+        if (try? SMCClient.shared.keyInfo(PowerLimitSpec.keyWatts)) != nil {
+            let profileRaw = Prefs.string(PowerLimitSpec.prefsProfile) ?? "balanced"
+            if let profile = PowerProfile(rawValue: profileRaw) {
+                if profile == .custom {
+                    // 自定义档仍受高级功能解锁门约束（与手动下发一致）
+                    if Prefs.bool(PowerLimitSpec.prefsUnlocked),
+                       let cw = Int(Prefs.string(PowerLimitSpec.prefsCustom) ?? "") {
+                        let w = min(max(cw, PowerLimitSpec.minW), PowerLimitSpec.maxW)
+                        powerArgs = ["fan", "power-limit", String(w)]
+                    }
+                } else if let watts = profile.watts {
+                    powerArgs = ["fan", "power-limit", String(watts)]
+                }
+            }
         }
-        let r = Admin.runSilent(["fan", "power-limit", String(w)])
-        if r.ok {
-            // 回读 SMC 更新 UI 上的「已限 NW」（打开功耗墙页时也会再刷一次）
-            DispatchQueue.main.async { PowerLimitController.shared.refreshApplied() }
-        }
-    }
 
-    private static func applyFan() {
-        let last = Prefs.string(FanControl.shared.presetKeyName) ?? "balanced"
+        // 风扇：上次应用的档位持久化在 "fan.preset"；custom 用 fan.customCurve
+        var fanArgs: [String]?
+        var fanIsCustom = false
+        let last = Prefs.string("fan.preset") ?? "balanced"
         if last == "custom" {
-            guard let json = Prefs.string("fan.customCurve"),
-                  let data = json.data(using: .utf8) else { return }
-            let path = "/tmp/vela_custom_curve.json"
-            do { try data.write(to: URL(fileURLWithPath: path), options: .atomic) } catch { return }
-            let r = Admin.runSilent(["fan", "apply-custom", path])
-            if r.ok { DispatchQueue.main.async { FanControl.shared.noteCustomApplied() } }
-        } else {
-            // 自定义解锁门只约束「自定义」档；预设档随时可用，但必须是已知档位
-            guard FanControl.order.contains(last) else { return }
-            let r = Admin.runSilent(["fan", "set", last])
-            if r.ok { DispatchQueue.main.async { FanControl.shared.notePresetApplied(last) } }
+            if let json = Prefs.string("fan.customCurve"),
+               let data = json.data(using: .utf8) {
+                let path = "/tmp/vela_custom_curve.json"
+                try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
+                fanArgs = ["fan", "apply-custom", path]
+                fanIsCustom = true
+            }
+        } else if knownPresets.contains(last) {
+            fanArgs = ["fan", "set", last]
+        }
+
+        if let args = powerArgs {
+            let r = Admin.runSilent(args)
+            if r.ok {
+                DispatchQueue.main.async { @MainActor in
+                    PowerLimitController.shared.refreshApplied()
+                }
+            }
+        }
+        if let args = fanArgs {
+            let r = Admin.runSilent(args)
+            if r.ok {
+                DispatchQueue.main.async { @MainActor in
+                    if fanIsCustom { FanControl.shared.noteCustomApplied() }
+                    else { FanControl.shared.notePresetApplied(last) }
+                }
+            }
         }
     }
 
