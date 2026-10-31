@@ -585,8 +585,6 @@ struct OverviewView: View {
         switch card {
         case .cpuTemp:    cpuCard
         case .gpu:        gpuCard
-        case .gpuPower:   gpuPowerCard
-        case .gpuVRAM:    vramCard
         case .fan:        fanCard
         case .battery:    batteryCard
         case .disk:       diskCard
@@ -886,106 +884,103 @@ struct OverviewView: View {
     }
 
     private var gpuCard: some View {
+        // 显卡合并卡：结构与 CPU 卡一致 —— 温度环（仪表盘）+ 状态/占用率/功耗/显存，
+        // 右侧占用率曲线，下方功耗与显存各一行（大数 + 折线图）。
+        // 功耗与显存原先是两张独立的窄卡，按「温度 · 功耗 · 显存」并到这里。
         Card(padding: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                SectionTitle(text: "显卡", trailing: GPUProbe.displayName, color: Palette.pink)
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(store.gpuUsage.map { String(format: "%.0f", $0) } ?? "—")
-                            .font(.system(size: 25, weight: .semibold).monospacedDigit())
-                            .foregroundStyle(store.gpuUsage != nil ? Palette.pink : Palette.textSecondary)
-                        Text("%")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Palette.textSecondary)
-                    Spacer()
-                    if let t = store.gpuTemp {
-                        HStack(alignment: .firstTextBaseline, spacing: 2) {
-                            Image(systemName: "thermometer")
-                                .font(.system(size: 12))
-                            Text(String(format: "%.0f°", t))
-                                .font(.system(size: 25, weight: .semibold).monospacedDigit())
-                        }
-                        .foregroundStyle(Palette.pink)
+            VStack(alignment: .leading, spacing: 0) {
+                SectionTitle(text: "显卡", trailing: "温度 · 功耗 · 显存", color: Palette.pink)
+                Spacer(minLength: 8)
+                HStack(alignment: .center, spacing: 18) {
+                    TempRing(value: store.gpuTemp, size: 116)
+                    VStack(alignment: .leading, spacing: 6) {
+                        statLine("状态", gpuTempStatusText,
+                                 color: Palette.forTemp(store.gpuTemp))
+                        statLine("占用率", store.gpuUsage.map { String(format: "%.0f %%", $0) } ?? "—",
+                                 color: Palette.pink)
+                        statLine("功耗", store.gpuPowerWatts.map { String(format: "%.1f W", $0) } ?? "—")
+                        statLine("显存", vramShortText)
                     }
+                    // 右侧用显卡占用率曲线填充（与 CPU 卡的负载曲线同一位置）
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("占用率曲线")
+                            .font(.system(size: 10))
+                            .tracking(0.5)
+                            .foregroundStyle(Palette.textTertiary)
+                        Sparkline(values: store.gpuHistory,
+                                  color: Palette.pink,
+                                  lowerBound: 0, upperBound: 100,
+                                  filled: false)
+                            .frame(maxWidth: .infinity, minHeight: 84, maxHeight: 84)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
-                // 占用率折线放到下方；用粉色，避免与其它卡片的曲线撞色
-                Sparkline(values: store.gpuHistory,
-                          color: Palette.pink,
-                          lowerBound: 0, upperBound: 100,
-                          filled: false)
-                    .frame(maxWidth: .infinity, minHeight: 22, maxHeight: 22)
+                Spacer(minLength: 10)
+                // 功耗：大数 + 面积折线（上限取自驱动上报的强制功耗墙）
+                HStack(alignment: .center, spacing: 14) {
+                    gpuMetricBlock("功耗",
+                                   value: store.gpuPowerWatts.map { String(format: "%.1f", $0) } ?? "—",
+                                   unit: "W",
+                                   has: store.gpuPowerWatts != nil)
+                    Sparkline(values: store.gpuPowerHistory,
+                              color: Palette.pink,
+                              lowerBound: 0,
+                              upperBound: max(30, store.gpuPowerLimitWatts ?? 120),
+                              filled: true)
+                        .frame(maxWidth: .infinity, minHeight: 58, maxHeight: 58)
+                }
+                Spacer(minLength: 8)
+                // 显存：大数 + 面积折线（纵轴按显存总量，看得出占用涨落）
+                HStack(alignment: .center, spacing: 14) {
+                    gpuMetricBlock("显存",
+                                   value: store.vramUsedMB.map { String(format: "%.1f", $0 / 1024) } ?? "—",
+                                   unit: "GB",
+                                   has: store.vramUsedMB != nil)
+                    Sparkline(values: store.vramHistory,
+                              color: Palette.pink,
+                              lowerBound: 0,
+                              upperBound: max(1, store.vramTotalMB ?? 1),
+                              filled: true)
+                        .frame(maxWidth: .infinity, minHeight: 58, maxHeight: 58)
+                }
             }
-            .frame(maxHeight: .infinity, alignment: .top)
         }
-        .frame(height: smallCardHeight)
     }
 
-    /// 显卡功耗：macOS 没有 NVML，驱动也不往 PerformanceStatistics 里写功耗，
-    /// 唯一能拿到真实功耗的通道是 SMCNvidiaGPU（RUSD 共享内存）。没装驱动时显示「—」。
-    private var gpuPowerCard: some View {
-        Card(padding: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                SectionTitle(text: "显卡功耗",
-                             trailing: NvidiaRUSD.powerAvailable ? "RUSD" : "需驱动",
-                             color: Palette.pink)
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(store.gpuPowerWatts.map { String(format: "%.1f", $0) } ?? "—")
-                        .font(.system(size: 25, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(store.gpuPowerWatts != nil ? Palette.pink : Palette.textSecondary)
-                    Text("W")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Palette.textSecondary)
-                    Spacer()
-                    if let lim = store.gpuPowerLimitWatts {
-                        Text(String(format: "上限 %.0f W", lim))
-                            .font(.system(size: 10).monospacedDigit())
-                            .foregroundStyle(Palette.textTertiary)
-                    }
-                }
-                Sparkline(values: store.gpuPowerHistory,
-                          color: Palette.pink,
-                          lowerBound: 0,
-                          upperBound: max(30, store.gpuPowerLimitWatts ?? 120),
-                          filled: false)
-                    .frame(maxWidth: .infinity, minHeight: 22, maxHeight: 22)
+    /// 显卡卡里「大数 + 单位」那一小列（与 CPU 卡的频率 / 功耗行同宽同排版）
+    private func gpuMetricBlock(_ title: String, value: String, unit: String, has: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 10))
+                .tracking(0.5)
+                .foregroundStyle(Palette.textTertiary)
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(value)
+                    .font(.system(size: 19, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(has ? Palette.pink : Palette.textSecondary)
+                Text(unit)
+                    .font(.system(size: 10))
+                    .foregroundStyle(Palette.textSecondary)
             }
-            .frame(maxHeight: .infinity, alignment: .top)
         }
-        .frame(height: smallCardHeight)
+        .frame(width: 78, alignment: .leading)
     }
 
-    /// 显存占用：已用 / 总量，同一驱动提供
-    private var vramCard: some View {
-        let used = store.vramUsedMB
-        let total = store.vramTotalMB
-        return Card(padding: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                SectionTitle(text: "显存占用",
-                             trailing: NvidiaRUSD.vramAvailable ? "VRAM" : "需驱动",
-                             color: Palette.pink)
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(used.map { String(format: "%.1f", $0 / 1024) } ?? "—")
-                        .font(.system(size: 25, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(used != nil ? Palette.pink : Palette.textSecondary)
-                    Text("GB")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Palette.textSecondary)
-                    Spacer()
-                    if let used, let total, total > 0 {
-                        Text(String(format: "%.0f%% · 共 %.0f GB", used / total * 100, total / 1024))
-                            .font(.system(size: 10).monospacedDigit())
-                            .foregroundStyle(Palette.textTertiary)
-                    }
-                }
-                Sparkline(values: store.vramHistory,
-                          color: Palette.pink,
-                          lowerBound: 0,
-                          upperBound: max(1, total ?? 1),
-                          filled: false)
-                    .frame(maxWidth: .infinity, minHeight: 22, maxHeight: 22)
-            }
-            .frame(maxHeight: .infinity, alignment: .top)
+    /// 与 CPU 的状态文案同一套阈值，只换数据源
+    private var gpuTempStatusText: String {
+        guard let t = store.gpuTemp else { return "无数据" }
+        switch t {
+        case ..<55: return "凉爽"
+        case ..<70: return "正常"
+        case ..<85: return "偏高"
+        case ..<95: return "高温"
+        default: return "过热"
         }
-        .frame(height: smallCardHeight)
+    }
+
+    private var vramShortText: String {
+        guard let used = store.vramUsedMB, let total = store.vramTotalMB, total > 0 else { return "—" }
+        return String(format: "%.1f / %.1f GB", used / 1024, total / 1024)
     }
 
     private var capabilitySummary: some View {

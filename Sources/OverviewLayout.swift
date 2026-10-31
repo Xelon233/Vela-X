@@ -12,9 +12,7 @@ import SwiftUI
 /// 概览页可选的一张卡片
 enum OverviewCard: String, CaseIterable, Identifiable {
     case cpuTemp     // CPU（温度环 + 状态/极值/热压力/功耗/采样 + 频率与心电图，已合并功耗）
-    case gpu         // 显卡（占用率 + 温度）
-    case gpuPower    // 显卡功耗（W），来自 SMCNvidiaGPU-PowerVRAM
-    case gpuVRAM     // 显存占用（已用 / 总量 MB）
+    case gpu         // 显卡（温度环 + 状态/占用率/功耗/显存 + 占用率曲线，已合并功耗与显存）
     case fan         // 风扇
     case battery     // 电池
     case disk        // 磁盘（启动宗卷容量 / 已用）
@@ -28,8 +26,6 @@ enum OverviewCard: String, CaseIterable, Identifiable {
         switch self {
         case .cpuTemp:    return "CPU"
         case .gpu:        return "显卡"
-        case .gpuPower:   return "显卡功耗"
-        case .gpuVRAM:    return "显存占用"
         case .fan:        return "风扇"
         case .battery:    return "电池"
         case .disk:       return "磁盘"
@@ -43,8 +39,6 @@ enum OverviewCard: String, CaseIterable, Identifiable {
         switch self {
         case .cpuTemp:    return "cpu"
         case .gpu:        return "display"
-        case .gpuPower:   return "bolt.fill"
-        case .gpuVRAM:    return "memorychip"
         case .fan:        return "fanblades"
         case .battery:    return "battery.75"
         case .disk:       return "internaldrive"
@@ -57,7 +51,7 @@ enum OverviewCard: String, CaseIterable, Identifiable {
     /// 是否占满整行（两列网格里占 2 列），窄卡只占 1 列两两并排
     var isWide: Bool {
         switch self {
-        case .cpuTemp, .load, .capability: return true
+        case .cpuTemp, .gpu, .load, .capability: return true
         default: return false
         }
     }
