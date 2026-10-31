@@ -308,8 +308,46 @@ struct SectionTitle: View {
     var color: Color = Palette.accent
     /// 550W 皮肤下的子系统代号，会以 `// CODE · 说明` 的形式出现在右侧
     var code: String?
+    /// 550W 皮肤下把标题渲染成终端命令行（如 `➜ cpu --stat`）
+    var command: String?
 
+    @ViewBuilder
     var body: some View {
+        if Palette.isMoss, let command {
+            terminalTitle(command)
+        } else {
+            classicTitle
+        }
+    }
+
+    /// 550W：`➜ cmd` + 虚线 + `// 注释`，卡片读起来像一次命令的调用与输出
+    private func terminalTitle(_ command: String) -> some View {
+        HStack(spacing: 6) {
+            Text("➜")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundStyle(color)
+            Text(command)
+                .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
+                .tracking(0.2)
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+            DashedRule()
+                .stroke(Palette.accent.opacity(0.22),
+                        style: StrokeStyle(lineWidth: 1, dash: [2, 4]))
+                .frame(height: 1)
+                .frame(maxWidth: .infinity)
+                .layoutPriority(-1)
+            if let trailing {
+                Text("// \(trailing)")
+                    .font(.system(size: 9.5, design: .monospaced))
+                    .foregroundStyle(Palette.textTertiary)
+                    .lineLimit(1)
+            }
+        }
+    }
+
+    private var classicTitle: some View {
         HStack(alignment: .center, spacing: 8) {
             if Palette.isMoss {
                 // 550W：红色实心小方块 + 一条细横线，像仪表盘上的通道标记

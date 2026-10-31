@@ -415,7 +415,7 @@ struct ModeStatusCard: View {
     var body: some View {
         Card(padding: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                SectionTitle(text: "当前模式", trailing: "功耗 / 风扇", color: Palette.warn, code: "MISSION")
+                SectionTitle(text: "当前模式", trailing: "功耗 / 风扇", color: Palette.warn, code: "MISSION", command: "mission --profile")
                 HStack(spacing: 0) {
                     modeColumn("功耗墙",
                                powerLabel,

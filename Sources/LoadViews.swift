@@ -73,7 +73,7 @@ struct LoadCard: View {
             HStack(alignment: .top, spacing: 18) {
                 VStack(alignment: .leading, spacing: 5) {
                     SectionTitle(text: "系统负载", trailing: store.samplingRate.label,
-                                 color: Palette.mLoad, code: "COMPUTE")
+                                 color: Palette.mLoad, code: "COMPUTE", command: "compute --load")
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
                         Text(String(format: "%.0f", store.load.total * 100))
                             .font(.system(size: 24, weight: .semibold).monospacedDigit())

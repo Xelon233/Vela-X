@@ -711,7 +711,47 @@ struct OverviewView: View {
         }
     }
 
+    @ViewBuilder
     private var header: some View {
+        // 550W：不显示品牌与机型（MOSS 不关心这是谁的笔记本），
+        // 只保留三枚硬件标签 —— CPU / 内存 / 显卡，正好是它调度的东西。
+        if Palette.isMoss {
+            HStack(spacing: 6) {
+                Pill(text: store.hardware.cpuShort)
+                Pill(text: String(format: "%.0f GB", store.hardware.ramGB), color: Palette.textSecondary)
+                ForEach(store.hardware.gpus) { gpu in
+                    Pill(text: gpu.name, color: gpu.accelerated ? Palette.ok : Palette.warn)
+                }
+                Spacer(minLength: 8)
+                editModeButton
+            }
+        } else {
+            classicHeader
+        }
+    }
+
+    private var editModeButton: some View {
+        Button {
+            windowState.isEditMode.toggle()
+        } label: {
+            Text(windowState.isEditMode ? "完成" : "编辑")
+                .font(Palette.isMoss
+                      ? .system(size: 9.5, weight: .semibold, design: .monospaced)
+                      : .system(size: 9.5, weight: .medium))
+                .tracking(0.5)
+                .foregroundStyle(windowState.isEditMode ? Palette.accent : Palette.textSecondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(windowState.isEditMode ? Palette.accent.opacity(0.15) : Palette.faintFill))
+            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .stroke(windowState.isEditMode ? Palette.accent : Palette.hairline, lineWidth: 0.8))
+        }
+        .buttonStyle(.plain)
+        .help("编辑模式：拖动排序、角标移除卡片、底部「+」添加小部件；窗口临时锁定")
+    }
+
+    private var classicHeader: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 HStack(alignment: .center, spacing: 10) {
@@ -724,22 +764,7 @@ struct OverviewView: View {
                         .foregroundStyle(LinearGradient(colors: [Palette.text, Palette.text.opacity(0.65)],
                                                         startPoint: .top, endPoint: .bottom))
                         .shadow(color: Palette.accent.opacity(0.35), radius: 12, y: 2)
-                    Button {
-                        windowState.isEditMode.toggle()
-                    } label: {
-                        Text(windowState.isEditMode ? "完成" : "编辑")
-                            .font(.system(size: 9.5, weight: .medium))
-                            .tracking(0.5)
-                            .foregroundStyle(windowState.isEditMode ? Palette.accent : Palette.textSecondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(windowState.isEditMode ? Palette.accent.opacity(0.15) : Palette.faintFill))
-                        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .stroke(windowState.isEditMode ? Palette.accent : Palette.hairline, lineWidth: 0.8))
-                    }
-                    .buttonStyle(.plain)
-                    .help("编辑模式：拖动排序、角标移除卡片、底部「+」添加小部件；窗口临时锁定")
+                    editModeButton
                 }
             }
             HStack(spacing: 6) {
@@ -796,7 +821,7 @@ struct OverviewView: View {
         // 竖着堆两整行纯属浪费，卡片高度因此少了约三分之一。
         Card(padding: 16, glow: true) {
             VStack(alignment: .leading, spacing: 0) {
-                SectionTitle(text: "CPU", trailing: "温度 · 频率 · 功耗", color: Palette.mLoad, code: "SYS.CPU")
+                SectionTitle(text: "CPU", trailing: "温度 · 频率 · 功耗", color: Palette.mLoad, code: "SYS.CPU", command: "cpu --stat")
                 Spacer(minLength: 6)
                 HStack(alignment: .center, spacing: 16) {
                     TempRing(value: store.cpuTemp, size: 96)
@@ -877,23 +902,53 @@ struct OverviewView: View {
         Card(padding: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 SectionTitle(text: "风扇", trailing: store.fanAvailable ? "实时" : "不可用",
-                             color: Palette.mFan, code: "COOLANT")
+                             color: Palette.mFan, code: "COOLANT", command: "coolant --status")
                 // 左右各占一半、中间细分隔线，两列对称
                 // CPU 风扇用风扇色（青绿），GPU 风扇跟随显卡的身份色（紫），一眼看出属谁
-                HStack(spacing: 0) {
-                    fanMetric("CPU", store.fanRPM, color: Palette.mFan)
-                        .frame(maxWidth: .infinity)
-                    Rectangle()
-                        .fill(Palette.hairline)
-                        .frame(width: 1, height: 36)
-                    fanMetric("GPU", store.fanRPMGPU, color: Palette.mGPU)
-                        .frame(maxWidth: .infinity)
+                if Palette.isMoss {
+                    // 550W：不再是两个大数字，而是两行「回路 → 转速」的输出
+                    VStack(spacing: 6) {
+                        terminalFanRow("FAN.0", store.fanRPM, Palette.mFan)
+                        terminalFanRow("FAN.1", store.fanRPMGPU, Palette.mGPU)
+                    }
+                    .padding(.top, 4)
+                } else {
+                    HStack(spacing: 0) {
+                        fanMetric("CPU", store.fanRPM, color: Palette.mFan)
+                            .frame(maxWidth: .infinity)
+                        Rectangle()
+                            .fill(Palette.hairline)
+                            .frame(width: 1, height: 36)
+                        fanMetric("GPU", store.fanRPMGPU, color: Palette.mGPU)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .padding(.top, 2)
                 }
-                .padding(.top, 2)
             }
             .frame(maxHeight: .infinity, alignment: .top)
         }
         .frame(height: smallCardHeight)
+    }
+
+    /// 550W：一行终端输出 —— 回路号 + 点引导 + 转速
+    private func terminalFanRow(_ key: String, _ rpm: Double?, _ color: Color) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(key)
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundStyle(Palette.accent.opacity(0.8))
+            Text(String(repeating: "·", count: 12))
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(Palette.hairline)
+                .lineLimit(1)
+                .layoutPriority(-1)
+            Spacer(minLength: 0)
+            Text(store.fanAvailable ? (rpm.map { String(format: "%.0f", $0) } ?? "—") : "—")
+                .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                .foregroundStyle(store.fanAvailable ? color : Palette.textSecondary)
+            Text("RPM")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(Palette.textTertiary)
+        }
     }
 
     /// 风扇卡里的一列：小标题 CPU/GPU + 转速大字
@@ -927,7 +982,7 @@ struct OverviewView: View {
     private var batteryCard: some View {
         Card(padding: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                SectionTitle(text: "电池", color: Palette.mBattery, code: "PWR.CELL")
+                SectionTitle(text: "电池", color: Palette.mBattery, code: "PWR.CELL", command: "power --cell")
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text("\(store.battery.charge)")
                         .font(.system(size: 25, weight: .semibold).monospacedDigit())
@@ -961,7 +1016,7 @@ struct OverviewView: View {
         Card(padding: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 SectionTitle(text: "磁盘", trailing: store.disk.volumeName.isEmpty ? "启动宗卷" : store.disk.volumeName,
-                             color: Palette.mDisk, code: "STORAGE")
+                             color: Palette.mDisk, code: "STORAGE", command: "storage --usage")
                 // 占用率大字 + 剩余
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(String(format: "%.0f", store.disk.usedFraction * 100))
@@ -1019,7 +1074,7 @@ struct OverviewView: View {
         // 功耗与显存原先是两张独立的窄卡，按「温度 · 功耗 · 显存」并到这里。
         Card(padding: 16) {
             VStack(alignment: .leading, spacing: 0) {
-                SectionTitle(text: "GPU", trailing: "温度 · 占用 · 功耗 · 显存", color: Palette.mGPU, code: "SYS.GPU")
+                SectionTitle(text: "GPU", trailing: "温度 · 占用 · 功耗 · 显存", color: Palette.mGPU, code: "SYS.GPU", command: "gpu --stat")
                 Spacer(minLength: 6)
                 HStack(alignment: .center, spacing: 16) {
                     TempRing(value: store.gpuTemp, size: 96)
@@ -1119,7 +1174,7 @@ struct OverviewView: View {
     private var capabilitySummary: some View {
         Card {
             VStack(alignment: .leading, spacing: 2) {
-                SectionTitle(text: "macOS 上的能力边界", trailing: "详见「诊断」", color: Palette.accent)
+                SectionTitle(text: "macOS 上的能力边界", trailing: "详见「诊断」", color: Palette.accent, code: "SYSINFO", command: "sysinfo --limits")
                 ForEach(store.capabilities.prefix(5)) { cap in
                     CapabilityRow(cap: cap)
                 }

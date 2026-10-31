@@ -33,6 +33,7 @@ struct AboutView: View {
     private var whatsNewCard: some View {
         Card {
             VStack(alignment: .leading, spacing: 9) {
+                whatsNewRow("apple.terminal", "550W：概览终端化", "概览顶部不再显示品牌 logo 与机型名，只留 CPU / 内存 / 显卡三枚标签（MOSS 只关心它调度的东西）；每张卡片的标题变成一次命令调用（➜ cpu --stat、➜ coolant --status、➜ mission --profile…），风扇卡改成两行「FAN.0 ···· 5040 RPM」的终端输出，图表全部保留。")
                 whatsNewRow("chevron.left.forwardslash.chevron.right", "550W：更多卡片代码化", "概览新增一条 MOSS 状态行（▮ 光标 · 元指令：延续人类文明 · 本地节点 · // 观察日志已开启）；卡片标题右侧带子系统代号（// SYS.CPU · 温度 · 频率 · 功耗）；风扇写成 FAN.0 / FAN.1，磁盘/电池改 FREE / USED / CELL 配置行，负载右侧改 THERMAL / LOAD.AVG / MEM.USED。仅 550W 皮肤生效。")
                 whatsNewRow("eye.fill", "新增「550W」限定主题", "《流浪地球》550W / MOSS 风格皮肤：白底 + 警示红，直角切角面板、工程图细网格、标题虚线分栏、标签改等宽代码写法（带 ▸ 前缀），温度环改「灰→红→深红」单色梯度。在「设置 → 外观」里选 550W 即可切换，其余三个主题完全不受影响。")
                 whatsNewRow("textformat", "550W 标识与字幕条", "侧栏与「关于」页换成 550W 机号标（550 深色 + 红色 W）与电影字幕条「智能量子计算机 550W [MOSS] / INTELLIGENT QUANTUM COMPUTER」，素材取自你提供的矢量文件，按白底重新着色后内置进 App。")
