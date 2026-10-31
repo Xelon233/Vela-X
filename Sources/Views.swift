@@ -50,6 +50,24 @@ enum Page: String, CaseIterable, Identifiable {
         case .about: return "关于"
         }
     }
+    /// 550W 皮肤下的叫法：用电影里的术语，但每个词本身仍指向功能
+    /// （总控台 = 概览、观测站 = 监控、通信链路 = 网络…），悬停还会显示原名。
+    var mossTitle: String {
+        switch self {
+        case .overview:    return "总控台"
+        case .monitor:     return "观测站"
+        case .network:     return "通信链路"
+        case .menubar:     return "顶栏指示"
+        case .keyboard:    return "舱内照明"
+        case .performance: return "动力与冷却"
+        case .nvidia:      return "加速单元"
+        case .advanced:    return "高级授权"
+        case .diagnostics: return "系统自检"
+        case .settings:    return "系统配置"
+        case .about:       return "系统档案"
+        }
+    }
+
     var icon: String {
         switch self {
         case .overview: return "square.grid.2x2"
@@ -199,6 +217,13 @@ struct SidebarView: View {
     /// 液态玻璃的滑动节奏：偏软、带一点回弹，像液体被推过去而不是硬切
     static let selectionSpring = Animation.spring(response: 0.36, dampingFraction: 0.68)
 
+    /// 550W 下的「本地节点」行：优先机型代号，取不到就退回产品名
+    private var mossNodeLine: String {
+        let code = store.hardware.modelCode
+        if !code.isEmpty { return "本地节点 \(code)" }
+        return store.hardware.productName.isEmpty ? "本地节点 LOCAL" : "本地节点 \(store.hardware.productName)"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // 品牌区
@@ -225,11 +250,13 @@ struct SidebarView: View {
                             .foregroundStyle(Palette.accent)
                     }
                 }
-                Text(store.hardware.productName.isEmpty
-                     ? (store.hardware.modelCode.isEmpty ? "macOS" : store.hardware.modelCode)
-                     : store.hardware.productName)
-                    .font(.system(size: 9.5))
-                    .tracking(0.4)
+                Text(Palette.isMoss ? mossNodeLine
+                     : (store.hardware.productName.isEmpty
+                        ? (store.hardware.modelCode.isEmpty ? "macOS" : store.hardware.modelCode)
+                        : store.hardware.productName))
+                    .font(Palette.isMoss ? .system(size: 9, design: .monospaced)
+                                         : .system(size: 9.5))
+                    .tracking(Palette.isMoss ? 0.5 : 0.4)
                     .foregroundStyle(Palette.textTertiary)
             }
             .padding(.horizontal, 16)
@@ -253,9 +280,14 @@ struct SidebarView: View {
                                 .font(.system(size: 12, weight: page == p ? .semibold : .regular))
                                 .frame(width: 15)
                                 .foregroundStyle(page == p ? Palette.accent : Palette.textSecondary)
-                            Text(p.title)
-                                .font(.system(size: 12, weight: page == p ? .semibold : .regular))
-                                .tracking(0.4)
+                            Text(Palette.isMoss ? p.mossTitle : p.title)
+                                .font(Palette.isMoss
+                                      ? .system(size: 11.5, weight: page == p ? .semibold : .regular,
+                                                design: .monospaced)
+                                      : .system(size: 12, weight: page == p ? .semibold : .regular))
+                                .tracking(Palette.isMoss ? 0.5 : 0.4)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
                                 .foregroundStyle(page == p ? Palette.text : Palette.textSecondary)
                             Spacer(minLength: 0)
                         }
@@ -273,6 +305,7 @@ struct SidebarView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .help(Palette.isMoss ? "\(p.mossTitle) · \(p.title)" : p.title)
                     .padding(.horizontal, 8)
                 }
             }
@@ -286,8 +319,11 @@ struct SidebarView: View {
                         .fill(store.smcReady ? Palette.ok : Palette.bad)
                         .frame(width: 5, height: 5)
                         .shadow(color: (store.smcReady ? Palette.ok : Palette.bad).opacity(0.9), radius: 4)
-                    Text(store.smcReady ? "AppleSMC 已连接" : "SMC 不可用")
-                        .font(.system(size: 9.5))
+                    Text(Palette.isMoss
+                         ? (store.smcReady ? "SMC 链路正常" : "SMC 链路中断")
+                         : (store.smcReady ? "AppleSMC 已连接" : "SMC 不可用"))
+                        .font(Palette.isMoss ? .system(size: 9, design: .monospaced)
+                                             : .system(size: 9.5))
                         .foregroundStyle(Palette.textSecondary)
                 }
                 Text(Palette.isMoss
@@ -310,8 +346,10 @@ struct SidebarView: View {
                         Image(systemName: "gearshape")
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(Palette.textSecondary)
-                        Text("设置")
-                            .font(.system(size: 11))
+                        Text(Palette.isMoss ? Page.settings.mossTitle : "设置")
+                            .font(Palette.isMoss
+                                  ? .system(size: 10.5, design: .monospaced)
+                                  : .system(size: 11))
                             .foregroundStyle(Palette.text)
                         Spacer(minLength: 0)
                         Image(systemName: "chevron.right")
@@ -324,7 +362,7 @@ struct SidebarView: View {
                         .fill(Palette.faintFill))
                 }
                 .buttonStyle(.plain)
-                .help("开机自启、外观、采样间隔")
+                .help(Palette.isMoss ? "系统配置 · 开机自启、外观、采样间隔" : "开机自启、外观、采样间隔")
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 16)
