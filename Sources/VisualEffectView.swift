@@ -93,11 +93,11 @@ enum WindowChrome {
             window.isMovableByWindowBackground = true
         }
 
-        // 实时缩放（拖窗口边角 / 点缩放按钮）时不再每帧重排整棵 SwiftUI 子树，
-        // 而是把上一帧直接缩放、松手才一次性重排。透明窗 + 玻璃 + 阴影在每帧重排时
-        // 非常吃 WindowServer 的合成（GPU 占用率不高却窗口动画掉帧的根因之一），
-        // 这个开关让缩放动画丝滑、松手即清晰 —— 纯视觉欺骗，零行为变化。
-        window.allowsOnDemandContentResizing = true
+        // 注：理想的「实时缩放期间只缩放上一帧、松手才重排」开关 NSWindow.allowsOnDemandContentResizing
+        // 在本机 SDK（macOS 26.5 的 AppKit）里并未导出，故不可用。缩放 / 最小化动画的顺滑改由
+        // 降低每帧合成负载实现：每张玻璃卡用 drawingGroup 把装饰层拍平成单张 Metal 纹理
+        // （见 UIComponents.swift 的 Card），窗口级 behindWindow 玻璃只需要合成这一层纹理而非
+        // 多层矢量 + 实时阴影，WindowServer 在缩放 / 最小化时重排的成本显著下降。
 
         // 编辑模式联动：开启时窗口固定（只留卡片可拖动），关闭时窗口可拖动。
         // 这一步是「拖卡片整窗被带跑」的终极解法 —— 不再靠探测鼠标落点，
