@@ -33,7 +33,7 @@ struct AboutView: View {
     private var whatsNewCard: some View {
         Card {
             VStack(alignment: .leading, spacing: 9) {
-                whatsNewRow("eye.fill", "新增「550W」限定主题", "《流浪地球》550W / MOSS 风格皮肤，在「设置 → 外观」切换：白底 + 警示红，切角面板与工程图网格；内置 550W 机号标与电影字幕条；概览在该皮肤下改为终端形态（命令行标题、滚动输出、运行时长与扫描线）。其余三个主题不受影响。")
+                whatsNewRow("eye.fill", "新增「550W」限定主题", "《流浪地球》550W / MOSS 风格皮肤，在「设置 → 外观」切换：白底 + 警示红，切角面板与工程图网格；内置 550W 机号标与电影字幕条；概览在该皮肤下改为终端形态（命令行标题、滚动输出、运行时长与扫描线），状态行轮播「火种计划 / 领航员空间站」等设定文案，标题与日志会偶尔出现代码崩坏的故障噪点。其余三个主题不受影响。")
                 Divider().opacity(0.35)
                 whatsNewRow("bolt.shield", "开机静默应用配置", "登录与睡眠唤醒时自动、无密码框地下发当前功耗墙和风扇曲线（首次开启授权一次即可）。同时修复 1.8.5 因 sudoers 规则写法非法导致静默下发完全失效、并每次登录都弹一次密码框的问题。")
                 Divider().opacity(0.35)
@@ -244,6 +244,23 @@ struct AboutView: View {
     private var disclaimerCard: some View {
         Card {
             VStack(alignment: .leading, spacing: 8) {
+                // 550W 皮肤下先来一句 MOSS 的原话（放在卡里，和免责声明同一块面板）
+                if Palette.isMoss {
+                    HStack(spacing: 6) {
+                        Text("▮")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(Palette.accent)
+                        Text("「文明的命运取决于人类的选择。」")
+                            .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                            .foregroundStyle(Palette.text)
+                        Text("— MOSS")
+                            .font(.system(size: 9.5, design: .monospaced))
+                            .foregroundStyle(Palette.textTertiary)
+                    }
+                    .padding(.bottom, 2)
+                    Divider().opacity(0.3)
+                }
+
                 Text("本程序与 ASUSTeK 无关，也不是官方软件。所有硬件访问都走 macOS 已有的通道：AppleSMC（VirtualSMC + AsusSMC）、IORegistry、IOHID、libproc，不注入任何内核代码。")
                     .font(.system(size: 10.5))
                     .foregroundStyle(Palette.textSecondary)

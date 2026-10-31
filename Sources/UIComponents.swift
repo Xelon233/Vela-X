@@ -1326,10 +1326,13 @@ struct MossLogLine: View {
             let count = max(lines.count, 1)
             let idx = (tick / max(ticksPerLine, 1)) % count
             let cursorOn = tick % 2 == 0
+            // 偶尔掉几个字节：日志行每 23 秒崩一次，持续 1 秒
+            let raw = lines.isEmpty ? "" : lines[idx]
+            let broken = MossGlitch.isBroken(tick: tick, period: 47, burst: 2)
             HStack(spacing: 3) {
                 Text("›")
                     .foregroundStyle(Palette.accent.opacity(0.9))
-                Text(lines.isEmpty ? "" : lines[idx])
+                Text(broken ? MossGlitch.corrupt(raw, seed: tick, ratio: 16) : raw)
                     .foregroundStyle(Palette.textTertiary)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -1366,6 +1369,59 @@ struct MossAccentPulse: View {
             PanelAccents(cut: cut)
                 .stroke(Palette.accent.opacity(bright ? 0.95 : 0.55),
                         style: StrokeStyle(lineWidth: bright ? 2.4 : 2, lineCap: .square))
+        }
+    }
+}
+
+// MARK: - 550W 故障特效
+
+/// 代码崩坏：把文字按块字符打碎。
+/// 用时间取模决定「什么时候坏」，不存随机状态、不额外挂计时器；
+/// 只在极短的 burst 里出几帧，之后自动复原 —— 读起来像信号掉了几个字节。
+enum MossGlitch {
+    private static let marks = Array("▓▒░#@%&*¦")
+
+    /// seed 决定这一帧打碎哪些字符，同一次 tick 内结果稳定（不会每帧乱跳）
+    static func corrupt(_ text: String, seed: Int, ratio: Int = 24) -> String {
+        var rng = seed &* 2_654_435_761 &+ 1
+        var out = ""
+        for ch in text {
+            rng = rng &* 1_103_515_245 &+ 12_345
+            let r = abs(rng) % 100
+            if ch != " ", r < ratio {
+                out.append(marks[abs(rng >> 7) % marks.count])
+            } else {
+                out.append(ch)
+            }
+        }
+        return out
+    }
+
+    /// 这一 tick 是否该出故障：每 period 个 tick 坏 burst 个
+    static func isBroken(tick: Int, period: Int, burst: Int) -> Bool {
+        guard period > burst else { return false }
+        return tick % period < burst
+    }
+}
+
+/// 会偶尔崩坏的等宽文本
+struct MossGlitchText: View {
+    let text: String
+    /// tick 间隔（秒）
+    var tick: Double = 0.25
+    /// 每多少个 tick 崩一次
+    var period: Int = 60
+    /// 崩几个 tick
+    var burst: Int = 3
+    /// 打碎比例（%）
+    var ratio: Int = 24
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: tick)) { ctx in
+            let t = Int(ctx.date.timeIntervalSince1970 / tick)
+            Text(MossGlitch.isBroken(tick: t, period: period, burst: burst)
+                 ? MossGlitch.corrupt(text, seed: t, ratio: ratio)
+                 : text)
         }
     }
 }

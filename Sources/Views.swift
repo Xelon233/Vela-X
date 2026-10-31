@@ -290,8 +290,12 @@ struct SidebarView: View {
                         .font(.system(size: 9.5))
                         .foregroundStyle(Palette.textSecondary)
                 }
-                Text("\(store.availableCount)/\(store.capabilities.count) 项能力可用")
-                    .font(.system(size: 9.5))
+                Text(Palette.isMoss
+                     ? "// 子系统 \(store.availableCount)/\(store.capabilities.count) 在线"
+                     : "\(store.availableCount)/\(store.capabilities.count) 项能力可用")
+                    .font(Palette.isMoss
+                          ? .system(size: 9, design: .monospaced)
+                          : .system(size: 9.5))
                     .foregroundStyle(Palette.textTertiary)
 
                 Divider()
@@ -434,7 +438,8 @@ struct OverviewView: View {
             Text("▮")
                 .font(.system(size: 9, design: .monospaced))
                 .foregroundStyle(Palette.accent)
-            Text("MOSS · 550W 在线")
+            // 主标题偶尔崩一下：每 17 秒坏 0.75 秒
+            MossGlitchText(text: "MOSS · 550W 在线", tick: 0.25, period: 70, burst: 3, ratio: 22)
                 .foregroundStyle(Palette.text)
             stripSeparator
             // 每秒钟走一格；秒表本身只是重绘这一小段文字
@@ -443,8 +448,12 @@ struct OverviewView: View {
                     .foregroundStyle(Palette.text)
             }
             stripSeparator
-            Text("元指令：延续人类文明")
-                .foregroundStyle(Palette.textSecondary)
+            // 电影里的几条设定，轮流挂在状态行上
+            TimelineView(.periodic(from: .now, by: 6)) { ctx in
+                let i = Int(ctx.date.timeIntervalSince1970 / 6) % mossMissionLines.count
+                Text(mossMissionLines[i])
+            }
+            .foregroundStyle(Palette.textSecondary)
             stripSeparator
             Text("本地节点 \(store.hardware.modelCode.isEmpty ? "UNKNOWN" : store.hardware.modelCode)")
                 .foregroundStyle(Palette.textSecondary)
@@ -477,6 +486,15 @@ struct OverviewView: View {
         }
         .onAppear { if Palette.isMoss { mossSweep = true } }
     }
+
+    /// 状态行里轮播的「设定」文案
+    private let mossMissionLines = [
+        "元指令：延续人类文明",
+        "火种计划 · 待命",
+        "领航员空间站 · 链路正常",
+        "联合政府 · 授权有效",
+        "行星发动机网络 · 接入中",
+    ]
 
     private var stripSeparator: some View {
         Text("│")
