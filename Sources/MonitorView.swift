@@ -35,7 +35,8 @@ struct MonitorView: View {
 
     private var tempCurveSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionTitle(text: "温度曲线", trailing: "最近 240 秒", color: Palette.teal)
+            SectionTitle(text: "温度曲线", trailing: "最近 240 秒",
+                         color: Palette.forTemp(store.cpuTemp))
             Card {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -60,7 +61,7 @@ struct MonitorView: View {
 
     private var kernelCounterSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionTitle(text: "内核计数器", trailing: "不依赖 kext", color: Palette.violet)
+            SectionTitle(text: "内核计数器", trailing: "不依赖 kext", color: Palette.mLoad)
             Card {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(alignment: .top, spacing: 22) {
@@ -108,7 +109,7 @@ struct MonitorView: View {
                          value: String(format: "%.0f", store.load.total * 100),
                          unit: "%",
                          sub: "\(store.load.perCore.count) 线程 · 热压力 \(store.load.thermalText)",
-                         color: Palette.violet,
+                         color: Palette.mLoad,
                          series: samples.map { $0.load * 100 },
                          lower: 0, upper: 100)
                 liveTile(title: "CPU 频率",
@@ -116,14 +117,14 @@ struct MonitorView: View {
                          unit: "GHz",
                          sub: store.cpuFreq.liveGHz == nil
                             ? "需 AMDRyzenCPUPowerManagement.kext" : "平均有效频率",
-                         color: Palette.accent,
+                         color: Palette.mFreq,
                          series: samples.compactMap(\.freqGHz).map { $0 * 100 },
                          lower: 0, upper: 500)
                 liveTile(title: "内存占用",
                          value: String(format: "%.0f", store.load.memoryUsedRatio * 100),
                          unit: "%",
                          sub: memorySubtitle,
-                         color: Palette.mint,
+                         color: Palette.mMem,
                          series: samples.map { $0.mem * 100 },
                          lower: 0, upper: 100)
                 liveTile(title: "CPU 功耗",
@@ -131,21 +132,21 @@ struct MonitorView: View {
                          unit: "W",
                          sub: store.powerWatts == nil
                             ? "需 AMDRyzenCPUPowerManagement.kext" : "整包功耗",
-                         color: Palette.warn,
+                         color: Palette.mPower,
                          series: samples.compactMap(\.power),
                          lower: 0, upper: 120)
-                liveTile(title: "显卡功耗",
+                liveTile(title: "GPU 功耗",
                          value: store.gpuPowerWatts.map { String(format: "%.1f", $0) } ?? "—",
                          unit: "W",
                          sub: gpuPowerSubtitle,
-                         color: Palette.pink,
+                         color: Palette.mGPUPow,
                          series: store.gpuPowerHistory,
                          lower: 0, upper: max(30, store.gpuPowerLimitWatts ?? 120))
                 liveTile(title: "显存占用",
                          value: store.vramUsedMB.map { String(format: "%.1f", $0 / 1024) } ?? "—",
                          unit: "GB",
                          sub: vramSubtitle,
-                         color: Palette.pink,
+                         color: Palette.mVRAM,
                          series: store.vramHistory,
                          lower: 0, upper: max(1, store.vramTotalMB ?? 1))
             }
@@ -213,28 +214,28 @@ struct MonitorView: View {
                               values: samples.compactMap(\.temp), lower: 35, upper: 100,
                               current: store.cpuTemp)
                     Divider().opacity(0.35)
-                    metricRow(name: "CPU", unit: "%", color: Palette.accent2,
+                    metricRow(name: "CPU", unit: "%", color: Palette.mLoad,
                               values: samples.map { $0.load * 100 }, lower: 0, upper: 100,
                               current: store.load.total * 100)
                     Divider().opacity(0.35)
-                    metricRow(name: "内存", unit: "%", color: Palette.ok,
+                    metricRow(name: "内存", unit: "%", color: Palette.mMem,
                               values: samples.map { $0.mem * 100 }, lower: 0, upper: 100,
                               current: store.load.memoryUsedRatio * 100)
                     if let ghz = store.cpuFreq.liveGHz {
                         Divider().opacity(0.35)
-                        metricRow(name: "频率", unit: "GHz", color: Palette.accent,
+                        metricRow(name: "频率", unit: "GHz", color: Palette.mFreq,
                                   values: samples.compactMap(\.freqGHz), lower: 0, upper: 5,
                                   current: ghz)
                     }
                     if let w = store.powerWatts {
                         Divider().opacity(0.35)
-                        metricRow(name: "功耗", unit: "W", color: Palette.warn,
+                        metricRow(name: "功耗", unit: "W", color: Palette.mPower,
                                   values: samples.compactMap(\.power), lower: 0, upper: 120,
                                   current: w)
                     }
                     if store.recording?.appPID != nil {
                         Divider().opacity(0.35)
-                        metricRow(name: "目标应用 CPU", unit: "%", color: Palette.warn,
+                        metricRow(name: "目标应用 CPU", unit: "%", color: Palette.accent2,
                                   values: samples.compactMap { $0.appCPU.map { $0 * 100 } },
                                   lower: 0, upper: 100,
                                   current: samples.last?.appCPU.map { $0 * 100 })
@@ -315,7 +316,7 @@ struct MonitorView: View {
                 ZStack(alignment: .leading) {
                     Capsule().fill(Palette.trackFill)
                     Capsule()
-                        .fill(selectedApp?.pid == p.pid ? Palette.warn : Palette.accent2.opacity(0.85))
+                        .fill(selectedApp?.pid == p.pid ? Palette.warn : Palette.mLoad.opacity(0.85))
                         .frame(width: max(2, geo.size.width * CGFloat(frac)))
                 }
             }

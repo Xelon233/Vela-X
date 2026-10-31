@@ -81,7 +81,7 @@ final class SensorStore: ObservableObject {
     // 网速每帧都采（getifaddrs 很便宜）；显卡占用要遍历 IORegistry，降到每 5 帧一次；
     // 功耗读 SMC 键很便宜，但只在探测到有这个键时才读。
     private(set) var netSpeed = NetSpeedSnapshot()
-    /// 本次启动累计的上传 / 下载字节数（对速率按采样间隔积分）
+    /// 上传 / 下载累计字节数 = 内核计数器的值 − 基线（见 `NetTotals`）
     private(set) var netTotalDown: Double = 0
     private(set) var netTotalUp: Double = 0
     private(set) var netTotalsSince = Date()
@@ -218,9 +218,72 @@ final class SensorStore: ObservableObject {
 
     /// 清零网络累计（「网络」页的「重置统计」）
     func resetNetTotals() {
+        // 不是把内存里的数归零（那样重启 App 又会涨回内核计数器的值），
+        // 而是把「基线」推进到计数器此刻的值 —— 之后总量 = 系统计数 − 基线，从现在重新算。
+        netBase.down = netSpeed.totalDown
+        netBase.up = netSpeed.totalUp
+        netBase.boot = netSpeed.bootTime
+        netSince = Date().timeIntervalSince1970
         netTotalDown = 0
         netTotalUp = 0
-        netTotalsSince = Date()
+        netTotalsSince = Date(timeIntervalSince1970: netSince)
+        netBase.save(since: netSince)
+    }
+
+    // MARK: - 网络总量（跟随系统计数器）
+
+    /// 网络累计的持久化基线。
+    ///
+    /// 以前总量是拿「瞬时速率 × 采样间隔」积分出来的：App 一退就没了，重启又从 0 开始，
+    /// 和系统的统计对不上。现在直接读内核的 64 位网卡计数器（自开机累计），
+    /// 只在 Prefs 里存一个「从哪儿开始算」的基线：
+    ///   总量 = 系统计数 − 基线
+    /// 基线持久保存，所以重启 App 不会重新计算；只有重启系统（计数器归零）
+    /// 或用户点「重置统计」才会换基线。
+    private struct NetTotals {
+        var down: UInt64 = 0
+        var up: UInt64 = 0
+        /// 存基线时那次开机的时刻，用来发现「系统已经重启过 → 计数器归零 → 基线作废」
+        var boot: TimeInterval = 0
+
+        private static let downKey = "net.base.down"
+        private static let upKey = "net.base.up"
+        private static let bootKey = "net.base.boot"
+        private static let sinceKey = "net.since"
+
+        static func load() -> NetTotals {
+            NetTotals(down: UInt64(Prefs.string(downKey) ?? "") ?? 0,
+                      up: UInt64(Prefs.string(upKey) ?? "") ?? 0,
+                      boot: Double(Prefs.string(bootKey) ?? "") ?? 0)
+        }
+
+        func save(since: TimeInterval) {
+            Prefs.set(String(down), for: downKey)
+            Prefs.set(String(up), for: upKey)
+            Prefs.set(String(Int64(boot)), for: bootKey)
+            Prefs.set(String(Int64(since)), for: sinceKey)
+        }
+
+        static func savedSince() -> TimeInterval {
+            Double(Prefs.string(sinceKey) ?? "") ?? 0
+        }
+    }
+
+    private var netBase = NetTotals.load()
+    private var netSince: TimeInterval = NetTotals.savedSince()
+
+    /// 每个采样点用内核计数器刷新总量；系统重启过就自动重新起算
+    private func updateNetTotals(_ snap: NetSpeedSnapshot) {
+        let boot = snap.bootTime
+        if boot > 0, abs(boot - netBase.boot) > 2 {
+            // 系统重启过（或首次运行）：计数器已归零，基线作废，从这次开机重新累计
+            netBase = NetTotals(down: 0, up: 0, boot: boot)
+            netSince = boot
+            netBase.save(since: netSince)
+        }
+        netTotalDown = Double(snap.totalDown >= netBase.down ? snap.totalDown - netBase.down : 0)
+        netTotalUp = Double(snap.totalUp >= netBase.up ? snap.totalUp - netBase.up : 0)
+        if netSince > 0 { netTotalsSince = Date(timeIntervalSince1970: netSince) }
     }
 
     private func loadStaticInfo() {
@@ -419,12 +482,8 @@ final class SensorStore: ObservableObject {
         }
 
         load = frame.load
-        if frame.net.sampled {
-            let dt = TimeInterval(samplingRate.rawValue)
-            netTotalDown += frame.net.down * dt
-            netTotalUp += frame.net.up * dt
-        }
         netSpeed = frame.net
+        updateNetTotals(frame.net)
         if let g = frame.gpuUsage {
             gpuUsage = g
             gpuHistory.append(g)
@@ -789,6 +848,27 @@ final class SensorStore: ObservableObject {
             }
             return MenuMetricValue(text: String(format: "%.0f °C", t), available: true)
 
+        case .gpuPower:
+            guard let w = gpuPowerWatts else {
+                return MenuMetricValue(text: "不可用", available: false,
+                                       reason: "需要 SMCNvidiaGPU-PowerVRAM.kext（zzzyy678/SMCNvidiaGPU 的二改驱动）："
+                                       + "它在内核侧读 GSP 的 RUSD 共享内存并挂成 sysctl kern.nvgpupower；"
+                                       + "没有它时 macOS 下拿不到显卡功耗（PerformanceStatistics 里没有功耗键，也没有 NVML）")
+            }
+            return MenuMetricValue(text: String(format: "%.1f W", w), available: true)
+
+        case .gpuVRAM:
+            guard let used = vramUsedMB else {
+                return MenuMetricValue(text: "不可用", available: false,
+                                       reason: "需要 SMCNvidiaGPU-PowerVRAM.kext（zzzyy678/SMCNvidiaGPU 的二改驱动）："
+                                       + "它把显存用量挂成 sysctl kern.nvgvramused / kern.nvgvramtotal")
+            }
+            if let total = vramTotalMB, total > 0 {
+                return MenuMetricValue(text: String(format: "%.1f / %.1f GB", used / 1024, total / 1024),
+                                       available: true)
+            }
+            return MenuMetricValue(text: String(format: "%.1f GB", used / 1024), available: true)
+
         case .power:
             guard let w = powerWatts else {
                 return MenuMetricValue(text: "不可用", available: false,
@@ -809,6 +889,10 @@ final class SensorStore: ObservableObject {
         case .netSpeed: return true
         case .gpuLoad:  return gpuUsage != nil
         case .gpuTemp:  return gpuTemp != nil
+        // 这两项取决于驱动在不在，与「此刻有没有读到值」无关，直接用通道探测结果，
+        // 免得采样间隙里开关来回闪
+        case .gpuPower: return NvidiaRUSD.powerAvailable
+        case .gpuVRAM:  return NvidiaRUSD.vramAvailable
         case .power:    return powerWatts != nil
         }
     }
@@ -846,6 +930,12 @@ final class SensorStore: ObservableObject {
         case .gpuTemp:
             guard let t = gpuTemp else { return nil }
             return String(format: "%.0f°", t)
+        case .gpuPower:
+            guard let w = gpuPowerWatts else { return nil }
+            return String(format: "%.0fW", w)
+        case .gpuVRAM:
+            guard let used = vramUsedMB else { return nil }
+            return String(format: "%.1fG", used / 1024)
         case .power:
             guard let w = powerWatts else { return nil }
             return String(format: "%.0fW", w)

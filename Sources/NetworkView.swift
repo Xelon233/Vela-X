@@ -10,16 +10,16 @@ struct NetworkView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SectionTitle(text: "网络流量", trailing: "自本次启动累计", color: Palette.teal)
+            SectionTitle(text: "网络流量", trailing: totalsTrailing, color: Palette.mNet)
 
             Card {
                 VStack(alignment: .leading, spacing: 14) {
                     HStack(spacing: 18) {
                         totalStat("下载总量", store.netTotalDown,
-                                  icon: "arrow.down.circle.fill", color: Palette.accent2)
+                                  icon: "arrow.down.circle.fill", color: Palette.mNet)
                         Rectangle().fill(Palette.hairline).frame(width: 1, height: 46)
                         totalStat("上传总量", store.netTotalUp,
-                                  icon: "arrow.up.circle.fill", color: Palette.violet)
+                                  icon: "arrow.up.circle.fill", color: Palette.mVRAM)
                     }
 
                     Divider().opacity(0.35)
@@ -34,7 +34,7 @@ struct NetworkView: View {
                     }
 
                     HStack(spacing: 10) {
-                        Text("统计自 \(store.netTotalsSince.formatted(date: .omitted, time: .shortened)) · 每 \(store.samplingRate.rawValue) 秒累加一次")
+                        Text(totalsFootnote)
                             .font(.system(size: 10))
                             .foregroundStyle(Palette.textTertiary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -48,17 +48,36 @@ struct NetworkView: View {
             SectionTitle(text: "说明")
             Card {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("总量由各采样点的瞬时速率 × 采样间隔累加得到，采样间隔越大数字越粗；程序休眠或采样暂停时不计入。")
+                    Text("总量直接读内核的 64 位网卡字节计数器（sysctl net.link.generic.ifdata），与系统统计同源；基线存在本地，所以退出或重启本程序后接着算，只有重启系统或点「重置统计」才会归零。")
                         .font(.system(size: 11))
                         .foregroundStyle(Palette.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text("实时速率取自各网卡字节计数器（getifaddrs），已排除回环接口。")
+                    Text("实时速率由相邻两次采样的计数器差值除以间隔得到，已排除回环接口。")
                         .font(.system(size: 11))
                         .foregroundStyle(Palette.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
+    }
+
+    // MARK: - 文案
+
+    /// 基线停在开机时刻 → 就是「自系统启动累计」；被「重置统计」推过 → 显示起点时间
+    private var totalsSinceBoot: Bool {
+        let boot = store.netSpeed.bootTime
+        return boot > 0 && abs(store.netTotalsSince.timeIntervalSince1970 - boot) < 60
+    }
+
+    private var totalsTrailing: String {
+        totalsSinceBoot ? "自系统启动累计"
+                        : "自 \(store.netTotalsSince.formatted(date: .omitted, time: .shortened)) 起累计"
+    }
+
+    private var totalsFootnote: String {
+        (totalsSinceBoot ? "系统开机起算 · 跟随系统计数器，重启本程序不重置"
+                         : "统计自 \(store.netTotalsSince.formatted(date: .omitted, time: .shortened)) · 重启本程序不重置")
+            + " · 每 \(store.samplingRate.rawValue) 秒刷新一次"
     }
 
     private func totalStat(_ label: String, _ bytes: Double,

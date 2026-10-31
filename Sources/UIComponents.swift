@@ -36,6 +36,35 @@ enum Palette {
     static let indigo = Color.adaptive(0x4F46E5, 0x818CF8)
     static let mint   = Color.adaptive(0x00A884, 0x34E0B4)
 
+    // MARK: 指标配色（概览 / 监控 / 菜单栏共用）
+    //
+    // 一色一义：同一个指标在任何页面都是同一个颜色，靠色相而不是靠所在位置来区分。
+    // 温度是唯一的例外 —— 它沿用 `forTemp` 的冷→热梯度，因为「红了就是烫」这件事
+    // 比「这一栏是橙色的」更有信息量。其余指标各占一个色相，两两之间至少差 30° 色相角。
+    //
+    //   CPU 负载 / 内核计数器 → mLoad（蓝）
+    //   CPU 频率              → mFreq（青）
+    //   CPU 功耗              → mPower（琥珀）
+    //   内存                  → mMem（黄绿）
+    //   风扇                  → mFan（青绿）；GPU 那列跟随显卡用 mGPU
+    //   电池                  → mBattery（绿）
+    //   磁盘                  → mDisk（石板）
+    //   显卡温度 / 占用率      → mGPU（紫）
+    //   显卡功耗              → mGPUPow（粉）
+    //   显存                  → mVRAM（靛）
+    //   网络                  → mNet（天蓝）
+    static let mLoad    = Color.adaptive(0x2F7BEF, 0x5C9DFF)
+    static let mFreq    = Color.adaptive(0x06B6D4, 0x22D3EE)
+    static let mPower   = Color.adaptive(0xD97706, 0xFBBF24)
+    static let mMem     = Color.adaptive(0x65A30D, 0xA3E635)
+    static let mFan     = Color.adaptive(0x14B8A6, 0x2DD4BF)
+    static let mBattery = Color.adaptive(0x22C55E, 0x4ADE80)
+    static let mDisk    = Color.adaptive(0x64748B, 0x94A3B8)
+    static let mGPU     = Color.adaptive(0xA855F7, 0xC084FC)
+    static let mGPUPow  = Color.adaptive(0xEC4899, 0xFF6FB5)
+    static let mVRAM    = Color.adaptive(0x6366F1, 0x8B93FF)
+    static let mNet     = Color.adaptive(0x0EA5E9, 0x38BDF8)
+
     // 文字
     static let text = Color.adaptive(0x1B2331, 0xE9F0FA)
     static let textSecondary = Color.adaptive(0x52627A, 0xA3B2C6)
@@ -81,12 +110,12 @@ enum Palette {
         }
     }
 
-    /// 磁盘占用率配色：靛 → 紫 → 黄 → 红（不用绿色，避免和「健康/够用」混淆）
+    /// 磁盘占用率配色：石板 → 黄 → 红（不用绿色，避免和「健康/够用」混淆；
+    /// 也不用靛/紫，那两支已经给显存和显卡了）
     static func forDisk(_ f: Double) -> Color {
         switch f {
-        case ..<0.6: return indigo
-        case ..<0.8: return violet
-        case ..<0.92: return warn
+        case ..<0.7: return mDisk
+        case ..<0.9: return warn
         default: return bad
         }
     }

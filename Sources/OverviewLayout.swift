@@ -12,7 +12,7 @@ import SwiftUI
 /// 概览页可选的一张卡片
 enum OverviewCard: String, CaseIterable, Identifiable {
     case cpuTemp     // CPU（温度环 + 状态/极值/热压力/功耗/采样 + 频率与心电图，已合并功耗）
-    case gpu         // 显卡（温度环 + 状态/占用率/功耗/显存 + 占用率曲线，已合并功耗与显存）
+    case gpu         // GPU（温度环 + 状态/占用率/功耗/显存 + 占用率曲线，已合并功耗与显存）
     case fan         // 风扇
     case battery     // 电池
     case disk        // 磁盘（启动宗卷容量 / 已用）
@@ -25,7 +25,7 @@ enum OverviewCard: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .cpuTemp:    return "CPU"
-        case .gpu:        return "显卡"
+        case .gpu:        return "GPU"
         case .fan:        return "风扇"
         case .battery:    return "电池"
         case .disk:       return "磁盘"

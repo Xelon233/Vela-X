@@ -677,7 +677,7 @@ struct OverviewView: View {
         // 下方频率（大数 + 心电波形）与功耗（大数 + 折线图）。功耗原独立卡片已并入此处。
         Card(padding: 16, glow: true) {
             VStack(alignment: .leading, spacing: 0) {
-                SectionTitle(text: "CPU", trailing: "温度 · 频率 · 功耗")
+                SectionTitle(text: "CPU", trailing: "温度 · 频率 · 功耗", color: Palette.mLoad)
                 Spacer(minLength: 8)
                 HStack(alignment: .center, spacing: 18) {
                     // 仪表盘过大，缩小到 116 更协调
@@ -697,7 +697,7 @@ struct OverviewView: View {
                             .tracking(0.5)
                             .foregroundStyle(Palette.textTertiary)
                         Sparkline(values: store.loadHistory.map { $0 * 100 },
-                                  color: Palette.accent2,
+                                  color: Palette.mLoad,
                                   lowerBound: 0, upperBound: 100,
                                   filled: false)
                             .frame(maxWidth: .infinity, minHeight: 84, maxHeight: 84)
@@ -723,7 +723,7 @@ struct OverviewView: View {
                     }
                     .frame(width: 78, alignment: .leading)
                     FreqECG(values: store.freqHistory,
-                            color: Palette.ok,
+                            color: Palette.mFreq,
                             lower: 0, upper: 5.5, height: 58)
                         .frame(maxWidth: .infinity)
                 }
@@ -746,7 +746,7 @@ struct OverviewView: View {
                     }
                     .frame(width: 78, alignment: .leading)
                     Sparkline(values: store.powerHistory,
-                              color: Palette.accent2,
+                              color: Palette.mPower,
                               lowerBound: 0, upperBound: 100,
                               filled: true)
                         .frame(maxWidth: .infinity, minHeight: 58, maxHeight: 58)
@@ -777,15 +777,16 @@ struct OverviewView: View {
         Card(padding: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 SectionTitle(text: "风扇", trailing: store.fanAvailable ? "实时" : "不可用",
-                             color: Palette.teal)
+                             color: Palette.mFan)
                 // 左右各占一半、中间细分隔线，两列对称
+                // CPU 风扇用风扇色（青绿），GPU 风扇跟随显卡的身份色（紫），一眼看出属谁
                 HStack(spacing: 0) {
-                    fanMetric("CPU", store.fanRPM, color: Palette.teal)
+                    fanMetric("CPU", store.fanRPM, color: Palette.mFan)
                         .frame(maxWidth: .infinity)
                     Rectangle()
                         .fill(Palette.hairline)
                         .frame(width: 1, height: 36)
-                    fanMetric("GPU", store.fanRPMGPU, color: Palette.violet)
+                    fanMetric("GPU", store.fanRPMGPU, color: Palette.mGPU)
                         .frame(maxWidth: .infinity)
                 }
                 .padding(.top, 2)
@@ -816,7 +817,7 @@ struct OverviewView: View {
     private var batteryCard: some View {
         Card(padding: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                SectionTitle(text: "电池", color: Palette.mint)
+                SectionTitle(text: "电池", color: Palette.mBattery)
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text("\(store.battery.charge)")
                         .font(.system(size: 25, weight: .semibold).monospacedDigit())
@@ -843,7 +844,7 @@ struct OverviewView: View {
         Card(padding: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 SectionTitle(text: "磁盘", trailing: store.disk.volumeName.isEmpty ? "启动宗卷" : store.disk.volumeName,
-                             color: Palette.indigo)
+                             color: Palette.mDisk)
                 // 占用率大字 + 剩余
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(String(format: "%.0f", store.disk.usedFraction * 100))
@@ -889,7 +890,7 @@ struct OverviewView: View {
         // 功耗与显存原先是两张独立的窄卡，按「温度 · 功耗 · 显存」并到这里。
         Card(padding: 16) {
             VStack(alignment: .leading, spacing: 0) {
-                SectionTitle(text: "显卡", trailing: "温度 · 功耗 · 显存", color: Palette.pink)
+                SectionTitle(text: "GPU", trailing: "温度 · 占用 · 功耗 · 显存", color: Palette.mGPU)
                 Spacer(minLength: 8)
                 HStack(alignment: .center, spacing: 18) {
                     TempRing(value: store.gpuTemp, size: 116)
@@ -897,9 +898,10 @@ struct OverviewView: View {
                         statLine("状态", gpuTempStatusText,
                                  color: Palette.forTemp(store.gpuTemp))
                         statLine("占用率", store.gpuUsage.map { String(format: "%.0f %%", $0) } ?? "—",
-                                 color: Palette.pink)
-                        statLine("功耗", store.gpuPowerWatts.map { String(format: "%.1f W", $0) } ?? "—")
-                        statLine("显存", vramShortText)
+                                 color: Palette.mGPU)
+                        statLine("功耗", store.gpuPowerWatts.map { String(format: "%.1f W", $0) } ?? "—",
+                                 color: Palette.mGPUPow)
+                        statLine("显存", vramShortText, color: Palette.mVRAM)
                     }
                     // 右侧用显卡占用率曲线填充（与 CPU 卡的负载曲线同一位置）
                     VStack(alignment: .leading, spacing: 4) {
@@ -908,7 +910,7 @@ struct OverviewView: View {
                             .tracking(0.5)
                             .foregroundStyle(Palette.textTertiary)
                         Sparkline(values: store.gpuHistory,
-                                  color: Palette.pink,
+                                  color: Palette.mGPU,
                                   lowerBound: 0, upperBound: 100,
                                   filled: false)
                             .frame(maxWidth: .infinity, minHeight: 84, maxHeight: 84)
@@ -921,9 +923,10 @@ struct OverviewView: View {
                     gpuMetricBlock("功耗",
                                    value: store.gpuPowerWatts.map { String(format: "%.1f", $0) } ?? "—",
                                    unit: "W",
-                                   has: store.gpuPowerWatts != nil)
+                                   has: store.gpuPowerWatts != nil,
+                                   color: Palette.mGPUPow)
                     Sparkline(values: store.gpuPowerHistory,
-                              color: Palette.pink,
+                              color: Palette.mGPUPow,
                               lowerBound: 0,
                               upperBound: max(30, store.gpuPowerLimitWatts ?? 120),
                               filled: true)
@@ -935,9 +938,10 @@ struct OverviewView: View {
                     gpuMetricBlock("显存",
                                    value: store.vramUsedMB.map { String(format: "%.1f", $0 / 1024) } ?? "—",
                                    unit: "GB",
-                                   has: store.vramUsedMB != nil)
+                                   has: store.vramUsedMB != nil,
+                                   color: Palette.mVRAM)
                     Sparkline(values: store.vramHistory,
-                              color: Palette.pink,
+                              color: Palette.mVRAM,
                               lowerBound: 0,
                               upperBound: max(1, store.vramTotalMB ?? 1),
                               filled: true)
@@ -948,7 +952,8 @@ struct OverviewView: View {
     }
 
     /// 显卡卡里「大数 + 单位」那一小列（与 CPU 卡的频率 / 功耗行同宽同排版）
-    private func gpuMetricBlock(_ title: String, value: String, unit: String, has: Bool) -> some View {
+    private func gpuMetricBlock(_ title: String, value: String, unit: String,
+                                has: Bool, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.system(size: 10))
@@ -957,7 +962,7 @@ struct OverviewView: View {
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(value)
                     .font(.system(size: 19, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(has ? Palette.pink : Palette.textSecondary)
+                    .foregroundStyle(has ? color : Palette.textSecondary)
                 Text(unit)
                     .font(.system(size: 10))
                     .foregroundStyle(Palette.textSecondary)
@@ -986,7 +991,7 @@ struct OverviewView: View {
     private var capabilitySummary: some View {
         Card {
             VStack(alignment: .leading, spacing: 2) {
-                SectionTitle(text: "macOS 上的能力边界", trailing: "详见「诊断」", color: Palette.pink)
+                SectionTitle(text: "macOS 上的能力边界", trailing: "详见「诊断」", color: Palette.accent)
                 ForEach(store.capabilities.prefix(5)) { cap in
                     CapabilityRow(cap: cap)
                 }

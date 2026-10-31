@@ -33,6 +33,9 @@ struct AboutView: View {
     private var whatsNewCard: some View {
         Card {
             VStack(alignment: .leading, spacing: 9) {
+                whatsNewRow("network", "网络统计跟随系统", "总量改读内核 64 位网卡字节计数器（sysctl net.link.generic.ifdata，与系统统计同源，也不会像旧的 32 位计数那样超过 4 GiB 就回绕），基线存在本地 —— 退出或重启本程序后接着算，只有重启系统或点「重置统计」才归零。")
+                whatsNewRow("paintpalette", "概览与监控页重新配色", "两项指标配一色：负载蓝、频率青、功耗橙、内存黄绿、风扇青绿、电池绿、磁盘灰蓝、GPU 紫、GPU 功耗粉、显存靛、网络天蓝。同一指标在概览与监控页同色，一眼对得上。概览「显卡」卡改名「GPU」。")
+                whatsNewRow("menubar.rectangle", "菜单栏新增 GPU 功耗 / 显存占用", "「菜单栏」设置页多了两个可勾选指标，与温度、占用率一样可排序、可选上下行合并显示；未装 SMCNvidiaGPU 驱动时标为不可用并说明原因。")
                 whatsNewRow("display", "显卡卡与 CPU 卡同构", "概览的显卡卡按 CPU 卡重做：温度改用仪表盘呈现，功耗与显存并入同一张卡（状态／占用率／功耗／显存 + 占用率、功耗、显存三条曲线）；监控页「实时」区另保留功耗与显存两张卡。macOS 没有 NVML、驱动也不上报功耗，这两项取自 SMCNvidiaGPU（zzzyy678）的二改驱动——它在内核侧读 GSP 的 RUSD 共享内存并挂成 sysctl，本程序只读不改。没装驱动时显示「—」。")
                 whatsNewRow("bolt.shield", "开机静默应用配置", "「设置」新增「开机自动应用配置」：开启后，登录与睡眠唤醒时自动、无密码框地静默下发当前功耗墙和风扇曲线（首次开启需输入一次管理员密码，用于授权本程序的 CLI 免密以 root 运行；EC 在重启 / 唤醒后会重置配置，故两个时机都会重发）。")
                 Divider().opacity(0.35)

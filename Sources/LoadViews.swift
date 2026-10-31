@@ -44,10 +44,11 @@ struct CoreBars: View {
         .frame(height: height)
     }
 
+    /// 每核占用率配色：低 → 高走「绿 → 蓝 → 黄 → 红」，与 CPU 负载的身份色（蓝）同源
     private func color(for v: Double) -> Color {
         switch v {
         case ..<0.35: return Palette.ok
-        case ..<0.7: return Palette.accent2
+        case ..<0.7: return Palette.mLoad
         case ..<0.9: return Palette.warn
         default: return Palette.bad
         }
@@ -62,7 +63,8 @@ struct LoadCard: View {
         Card {
             HStack(alignment: .top, spacing: 18) {
                 VStack(alignment: .leading, spacing: 5) {
-                    SectionTitle(text: "系统负载", trailing: store.samplingRate.label)
+                    SectionTitle(text: "系统负载", trailing: store.samplingRate.label,
+                                 color: Palette.mLoad)
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
                         Text(String(format: "%.0f", store.load.total * 100))
                             .font(.system(size: 24, weight: .semibold).monospacedDigit())

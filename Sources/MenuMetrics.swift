@@ -10,14 +10,16 @@
 //    · CPU 温度    可用（SMC TC0P）
 //    · CPU 占用率  可用（host_processor_info）
 //    · 内存占用率  可用（host_statistics64）
-//    · 实时网速    可用（getifaddrs 字节计数做差）
+//    · 实时网速    可用（sysctl net.link.generic.ifdata 的 64 位网卡计数做差）
 //    · CPU 频率    可用 —— 由 AMDRyzenCPUPowerManagement.kext 用户客户端读每核有效频率
 //                  （selector 4，APERF/MPERF 增量），不需要 root；
 //                  sysctl hw.cpufrequency 的 min/max 相等只是固件标称值，仅作兜底显示
 //    · 显卡占用率  可用 —— NullMoth 新驱动（NVAccel / NVMTLDriver）在 PerformanceStatistics
 //                  里上报「Device Utilization %」「GPU Core Utilization %」等键
 //    · 显卡温度    可用 —— 同上，「Temperature(C)」键
-//    · 显卡功耗    不可用 —— PerformanceStatistics 里没有功耗键，macOS 下也没有 NVML 的等价接口
+//    · 显卡功耗    可用 —— 由 SMCNvidiaGPU-PowerVRAM（zzzyy678/SMCNvidiaGPU 的二改驱动）
+//                  读 GSP 的 RUSD 共享内存并挂成 sysctl kern.nvgpupower，不需要 root
+//    · 显存占用    可用 —— 同上，sysctl kern.nvgvramused / kern.nvgvramtotal
 //    · 实时功耗    可用 —— 同上，AMDRyzenCPUPowerManagement.kext selector 4 的整包功耗（Watt）
 //                  （powermetrics 必须 root、SMC 也没有 PSTR/PCPC 这类键，那条路在黑苹果上走不通）
 //
@@ -25,13 +27,36 @@
 import Foundation
 import IOKit
 
-// MARK: - 网速
+// MARK: - 网速与流量
 
 struct NetSpeedSnapshot {
     var down: Double = 0        // B/s
     var up: Double = 0          // B/s
     var sampled = false         // 至少要两次采样才能算出速率
     var interfaceName = ""
+    /// 自系统启动以来所有网卡收 / 发的累计字节数（内核 64 位计数器）
+    var totalDown: UInt64 = 0
+    var totalUp: UInt64 = 0
+    /// 内核记录的开机时刻（Unix 秒）。计数器每次开机归零，用它判断「系统是不是重启过」
+    var bootTime: TimeInterval = 0
+}
+
+/// `sysctl net.link.generic.ifdata.<n>.general` 返回的结构，系统头文件里叫 `struct ifmibdata`，
+/// Swift 没有直接导入，这里按同样的字段顺序自己摆一份。
+///
+/// 为什么不用 getifaddrs：它的 `ifa_data` 落到的是 `struct if_data`（实测 96 字节），
+/// 字节计数是 **32 位**，累计超过 4 GiB 就回绕 —— 拿它做「自开机累计」这种长期统计，
+/// 下载一部电影就能让总量倒退。ifmib 这份是 `if_data64`，计数为 64 位，不会回绕。
+private struct IFMIBData {
+    var name: (CChar, CChar, CChar, CChar, CChar, CChar, CChar, CChar,
+               CChar, CChar, CChar, CChar, CChar, CChar, CChar, CChar)
+    var pcount: UInt32
+    var flags: UInt32
+    var sndLen: UInt32
+    var sndMaxLen: UInt32
+    var sndDrops: UInt32
+    var filler: (UInt32, UInt32, UInt32, UInt32)
+    var data: if_data64
 }
 
 enum NetSpeed {
@@ -41,38 +66,56 @@ enum NetSpeed {
     private static var lastAt: TimeInterval = 0
     private static var seeded = false
 
+    /// 开机时刻（Unix 秒）。开机后不变，但要拿它判断计数器是否被系统重启清零，所以每次现读。
+    static var bootTime: TimeInterval {
+        var tv = timeval()
+        var size = MemoryLayout<timeval>.size
+        guard sysctlbyname("kern.boottime", &tv, &size, nil, 0) == 0 else { return 0 }
+        return TimeInterval(tv.tv_sec) + TimeInterval(tv.tv_usec) / 1_000_000
+    }
+
     static func sample() -> NetSpeedSnapshot {
         var snap = NetSpeedSnapshot()
+        snap.bootTime = bootTime
 
-        var addrs: UnsafeMutablePointer<ifaddrs>?
-        guard getifaddrs(&addrs) == 0, let first = addrs else { return snap }
-        defer { freeifaddrs(addrs) }
+        var count: Int32 = 0
+        var csize = MemoryLayout<Int32>.size
+        guard sysctlbyname("net.link.generic.system.ifcount", &count, &csize, nil, 0) == 0,
+              count > 0 else { return snap }
+
+        let size = MemoryLayout<IFMIBData>.size
+        let raw = UnsafeMutableRawPointer.allocate(byteCount: size, alignment: 16)
+        raw.initializeMemory(as: UInt8.self, repeating: 0, count: size)
+        defer { raw.deallocate() }
+        let buf = raw.bindMemory(to: IFMIBData.self, capacity: 1)
+        var mib: [Int32] = [CTL_NET, PF_LINK, NETLINK_GENERIC, IFMIB_IFDATA, 0, IFDATA_GENERAL]
 
         var down: UInt64 = 0
         var up: UInt64 = 0
         var bestName = ""
         var bestBytes: UInt64 = 0
 
-        var cursor: UnsafeMutablePointer<ifaddrs>? = first
-        while let p = cursor {
-            let flags = Int32(p.pointee.ifa_flags)
-            let isUp = (flags & IFF_UP) != 0
-            let isLoopback = (flags & IFF_LOOPBACK) != 0
-            if isUp, !isLoopback, let data = p.pointee.ifa_data {
-                let net = data.assumingMemoryBound(to: if_data.self)
-                let ib = UInt64(net.pointee.ifi_ibytes)
-                let ob = UInt64(net.pointee.ifi_obytes)
-                down += ib
-                up += ob
-                if ib + ob > bestBytes {
-                    bestBytes = ib + ob
-                    bestName = String(cString: p.pointee.ifa_name)
-                }
+        for i in 0..<Int(count) {
+            mib[4] = Int32(i)
+            var outSize = size
+            // 索引不连续时会返回 ENOENT，跳过即可（比如已经拔掉的接口）
+            guard sysctl(&mib, 6, buf, &outSize, nil, 0) == 0 else { continue }
+            let d = buf.pointee
+            let flags = Int32(bitPattern: d.flags)
+            guard (flags & IFF_UP) != 0, (flags & IFF_LOOPBACK) == 0 else { continue }
+            let ib = d.data.ifi_ibytes
+            let ob = d.data.ifi_obytes
+            down += ib
+            up += ob
+            if ib + ob > bestBytes {
+                bestBytes = ib + ob
+                bestName = Self.name(of: d)
             }
-            cursor = p.pointee.ifa_next
         }
 
         snap.interfaceName = bestName
+        snap.totalDown = down
+        snap.totalUp = up
         let now = Date().timeIntervalSince1970
 
         guard seeded else {
@@ -86,25 +129,30 @@ enum NetSpeed {
 
         let dt = now - lastAt
         // 必须先拿旧基准算出增量，再更新基准，否则增量恒为 0
-        let dDown = delta(prev: lastDown, now: down)
-        let dUp = delta(prev: lastUp, now: up)
+        let dDown = down >= lastDown ? down - lastDown : 0
+        let dUp = up >= lastUp ? up - lastUp : 0
         lastDown = down
         lastUp = up
         lastAt = now
 
-        // 接口计数字段是 UInt32，累计超过 4 GiB 会回绕；
-        // 遇到回绕就丢掉这一帧重新起基准，不要拿一个错得离谱的速率去显示
-        guard dt > 0.2, let dDown, let dUp else { return snap }
+        guard dt > 0.2 else { return snap }
 
-        snap.down = dDown / dt
-        snap.up = dUp / dt
+        snap.down = Double(dDown) / dt
+        snap.up = Double(dUp) / dt
         snap.sampled = true
         return snap
     }
 
-    private static func delta(prev: UInt64, now: UInt64) -> Double? {
-        guard now >= prev else { return nil }
-        return Double(now - prev)
+    private static func name(of d: IFMIBData) -> String {
+        var chars: [CChar] = []
+        withUnsafeBytes(of: d.name) { raw in
+            for b in raw {
+                if b == 0 { break }
+                chars.append(CChar(bitPattern: b))
+            }
+        }
+        chars.append(0)
+        return String(cString: chars)
     }
 }
 
@@ -276,6 +324,8 @@ enum MenuMetric: String, CaseIterable, Identifiable, Hashable {
     case netSpeed
     case gpuLoad
     case gpuTemp
+    case gpuPower
+    case gpuVRAM
     case power
 
     var id: String { rawValue }
@@ -287,8 +337,10 @@ enum MenuMetric: String, CaseIterable, Identifiable, Hashable {
         case .cpuFreq:  return "CPU 频率"
         case .memUsage: return "内存占用率"
         case .netSpeed: return "实时网速"
-        case .gpuLoad:  return "显卡占用率"
-        case .gpuTemp:  return "显卡温度"
+        case .gpuLoad:  return "GPU 占用率"
+        case .gpuTemp:  return "GPU 温度"
+        case .gpuPower: return "GPU 功耗"
+        case .gpuVRAM:  return "显存占用"
         case .power:    return "CPU 功耗"
         }
     }
@@ -302,6 +354,8 @@ enum MenuMetric: String, CaseIterable, Identifiable, Hashable {
         case .netSpeed: return "arrow.up.arrow.down"
         case .gpuLoad:  return "display"
         case .gpuTemp:  return "thermometer.sun"
+        case .gpuPower: return "bolt.fill"
+        case .gpuVRAM:  return "memorychip.fill"
         case .power:    return "bolt.fill"
         }
     }
@@ -316,6 +370,8 @@ enum MenuMetric: String, CaseIterable, Identifiable, Hashable {
         case .netSpeed: return "网速"
         case .gpuLoad:  return "GPU"
         case .gpuTemp:  return "GPU"
+        case .gpuPower: return "GPU"
+        case .gpuVRAM:  return "显存"
         case .power:    return "功耗"
         }
     }
@@ -327,9 +383,11 @@ enum MenuMetric: String, CaseIterable, Identifiable, Hashable {
         case .cpuLoad:  return "Mach host_processor_info"
         case .cpuFreq:  return "AMDRyzenCPUPowerManagement.kext → 用户客户端 selector 4（APERF/MPERF）"
         case .memUsage: return "Mach host_statistics64"
-        case .netSpeed: return "getifaddrs 接口字节计数"
+        case .netSpeed: return "sysctl net.link.generic.ifdata（内核 64 位网卡字节计数）"
         case .gpuLoad:  return "IORegistry IOAccelerator PerformanceStatistics（Device Utilization %）"
         case .gpuTemp:  return "IORegistry IOAccelerator PerformanceStatistics（Temperature(C)）"
+        case .gpuPower: return "SMCNvidiaGPU-PowerVRAM.kext → sysctl kern.nvgpupower（GSP RUSD 共享内存）"
+        case .gpuVRAM:  return "SMCNvidiaGPU-PowerVRAM.kext → sysctl kern.nvgvramused / kern.nvgvramtotal"
         case .power:    return "AMDRyzenCPUPowerManagement.kext → 用户客户端 selector 4（整包功耗）"
         }
     }
