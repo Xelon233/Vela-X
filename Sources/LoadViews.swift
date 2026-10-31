@@ -93,6 +93,14 @@ struct LoadCard: View {
                               : .system(size: 10))
                         .foregroundStyle(Palette.textTertiary)
                         .padding(.top, 2)
+
+                    if Palette.isMoss {
+                        MossLogLine(lines: [
+                            "loadavg \(String(format: "%.2f", store.load.load1)) · ok",
+                            "cores \(store.load.perCore.count) · busy \(store.load.perCore.filter { $0 > 0.5 }.count)",
+                        ], size: 8.5)
+                            .padding(.top, 2)
+                    }
                 }
                 .frame(width: Palette.isMoss ? 212 : 200, alignment: .leading)
 

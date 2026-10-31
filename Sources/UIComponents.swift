@@ -192,9 +192,8 @@ struct Card<Content: View>: View {
                 .overlay {
                     // 550W：沿着两处大斜边加一段红边，比四角角标更贴合切角轮廓
                     if Palette.isMoss {
-                        PanelAccents(cut: 13)
-                            .stroke(Palette.accent.opacity(0.9),
-                                    style: StrokeStyle(lineWidth: 2, lineCap: .square))
+                        // 斜边红条缓慢呼吸：整个 550W 界面唯一的「活」的装饰
+                        MossAccentPulse(cut: 13)
                     }
                 }
                 .overlay(alignment: .leading) {
@@ -1326,6 +1325,81 @@ struct CodeRow: View {
                 .foregroundStyle(valueColor)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
+        }
+    }
+}
+
+// MARK: - 550W 动态终端
+
+/// 方块光标：0.55s 一闪。
+/// 用 `TimelineView` 做**离散跳变**（不做插值动画）—— 只有它自己那一小块文字重绘，
+/// 比 `repeatForever` 的动画链便宜得多，长时间挂着也不会把 GPU 拖起来。
+struct MossCursor: View {
+    var size: CGFloat = 9
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.55)) { ctx in
+            let on = Int(ctx.date.timeIntervalSince1970 / 0.55) % 2 == 0
+            Text("▮")
+                .font(.system(size: size, weight: .bold, design: .monospaced))
+                .foregroundStyle(Palette.accent.opacity(on ? 0.95 : 0.18))
+        }
+    }
+}
+
+/// 终端里「正在算」的一行输出：轮播几条日志，末尾带闪烁光标。
+/// 同一次 0.5s 跳变里同时推进「换行」和「闪光标」，一张卡只挂一个时钟。
+struct MossLogLine: View {
+    let lines: [String]
+    var size: CGFloat = 9
+    /// 每条停留几个 tick（0.5s/tick）
+    var ticksPerLine: Int = 3
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.5)) { ctx in
+            let tick = Int(ctx.date.timeIntervalSince1970 / 0.5)
+            let count = max(lines.count, 1)
+            let idx = (tick / max(ticksPerLine, 1)) % count
+            let cursorOn = tick % 2 == 0
+            HStack(spacing: 3) {
+                Text("›")
+                    .foregroundStyle(Palette.accent.opacity(0.9))
+                Text(lines.isEmpty ? "" : lines[idx])
+                    .foregroundStyle(Palette.textTertiary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Text("▮")
+                    .fontWeight(.bold)
+                    .foregroundStyle(Palette.accent.opacity(cursorOn ? 0.9 : 0.15))
+            }
+            .font(.system(size: size, weight: .medium, design: .monospaced))
+        }
+    }
+}
+
+/// 已运行时长（MOSS 的启动秒表）
+enum MossUptime {
+    static func text() -> String {
+        let total = Int(ProcessInfo.processInfo.systemUptime)
+        let d = total / 86_400
+        let h = (total % 86_400) / 3_600
+        let m = (total % 3_600) / 60
+        let s = total % 60
+        return d > 0
+            ? String(format: "%dd %02d:%02d:%02d", d, h, m, s)
+            : String(format: "%02d:%02d:%02d", h, m, s)
+    }
+}
+
+/// 卡片斜边红条的「呼吸」：2.2s 换一次亮度，离散、无插值
+struct MossAccentPulse: View {
+    var cut: CGFloat = 13
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 2.2)) { ctx in
+            let tick = Int(ctx.date.timeIntervalSince1970 / 2.2)
+            let bright = tick % 3 == 0
+            PanelAccents(cut: cut)
+                .stroke(Palette.accent.opacity(bright ? 0.95 : 0.55),
+                        style: StrokeStyle(lineWidth: bright ? 2.4 : 2, lineCap: .square))
         }
     }
 }

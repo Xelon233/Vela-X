@@ -419,6 +419,8 @@ struct OverviewView: View {
     @State private var dragFrames: [OverviewCard: CGRect] = [:]
     /// 编辑模式（iOS 小组件式）：开 = 窗口固定、卡片可拖/可增删；关 = 窗口可拖、卡片固定。
     @ObservedObject private var windowState = WindowState.shared
+    /// 550W 状态行底部那条扫描线（整页唯一的连续动画，只有 1px 高）
+    @State private var mossSweep = false
 
     /// 窄卡（功耗/频率/显卡/风扇/电池）统一高度，保证两两并排时对齐
     private let smallCardHeight: CGFloat = 108
@@ -435,6 +437,12 @@ struct OverviewView: View {
             Text("MOSS · 550W 在线")
                 .foregroundStyle(Palette.text)
             stripSeparator
+            // 每秒钟走一格；秒表本身只是重绘这一小段文字
+            TimelineView(.periodic(from: .now, by: 1)) { _ in
+                Text("已运行 \(MossUptime.text())")
+                    .foregroundStyle(Palette.text)
+            }
+            stripSeparator
             Text("元指令：延续人类文明")
                 .foregroundStyle(Palette.textSecondary)
             stripSeparator
@@ -443,6 +451,7 @@ struct OverviewView: View {
             Spacer(minLength: 8)
             Text("// 观察日志已开启")
                 .foregroundStyle(Palette.textTertiary)
+            MossCursor(size: 9)
         }
         .font(.system(size: 10, weight: .medium, design: .monospaced))
         .tracking(0.3)
@@ -453,6 +462,20 @@ struct OverviewView: View {
         .overlay(alignment: .leading) {
             Rectangle().fill(Palette.accent).frame(width: 2)
         }
+        // 沿底边扫过的一道红线：整页唯一的连续动画，1px 高、单层渐变，开销可忽略
+        .overlay(alignment: .bottomLeading) {
+            GeometryReader { geo in
+                Rectangle()
+                    .fill(LinearGradient(colors: [.clear, Palette.accent.opacity(0.8), .clear],
+                                         startPoint: .leading, endPoint: .trailing))
+                    .frame(width: 130, height: 1)
+                    .offset(x: mossSweep ? geo.size.width : -130)
+                    .animation(.linear(duration: 6).repeatForever(autoreverses: false),
+                               value: mossSweep)
+            }
+            .frame(height: 1)
+        }
+        .onAppear { if Palette.isMoss { mossSweep = true } }
     }
 
     private var stripSeparator: some View {
@@ -822,6 +845,10 @@ struct OverviewView: View {
         Card(padding: 16, glow: true) {
             VStack(alignment: .leading, spacing: 0) {
                 SectionTitle(text: "CPU", trailing: "温度 · 频率 · 功耗", color: Palette.mLoad, code: "SYS.CPU", command: "cpu --stat")
+                if Palette.isMoss {
+                    MossLogLine(lines: cpuLogLines, size: 9)
+                        .padding(.top, 4)
+                }
                 Spacer(minLength: 6)
                 HStack(alignment: .center, spacing: 16) {
                     TempRing(value: store.cpuTemp, size: 96)
@@ -907,11 +934,13 @@ struct OverviewView: View {
                 // CPU 风扇用风扇色（青绿），GPU 风扇跟随显卡的身份色（紫），一眼看出属谁
                 if Palette.isMoss {
                     // 550W：不再是两个大数字，而是两行「回路 → 转速」的输出
-                    VStack(spacing: 6) {
+                    VStack(alignment: .leading, spacing: 5) {
                         terminalFanRow("FAN.0", store.fanRPM, Palette.mFan)
                         terminalFanRow("FAN.1", store.fanRPMGPU, Palette.mGPU)
+                        MossLogLine(lines: fanLogLines, size: 8.5)
+                            .padding(.top, 1)
                     }
-                    .padding(.top, 4)
+                    .padding(.top, 2)
                 } else {
                     HStack(spacing: 0) {
                         fanMetric("CPU", store.fanRPM, color: Palette.mFan)
@@ -928,6 +957,33 @@ struct OverviewView: View {
             .frame(maxHeight: .infinity, alignment: .top)
         }
         .frame(height: smallCardHeight)
+    }
+
+    // MARK: 550W 动态日志（内容取自实时数据，读起来才像真的在算）
+
+    private var cpuLogLines: [String] {
+        let freq = store.cpuFreq.liveGHz.map { String(format: "%.2f", $0) } ?? "—"
+        let temp = store.cpuTemp.map { String(format: "%.1f", $0) } ?? "—"
+        let power = store.powerWatts.map { String(format: "%.1f", $0) } ?? "—"
+        return ["poll cpu.temp → \(temp) °C · ok",
+                "freq \(freq) GHz · pkg \(power) W",
+                "sample \(store.load.perCore.count) cores · done"]
+    }
+
+    private var gpuLogLines: [String] {
+        let use = store.gpuUsage.map { String(format: "%.0f", $0) } ?? "—"
+        let watts = store.gpuPowerWatts.map { String(format: "%.1f", $0) } ?? "—"
+        let used = store.vramUsedMB.map { String(format: "%.1f", $0 / 1024) } ?? "—"
+        let total = store.vramTotalMB.map { String(format: "%.1f", $0 / 1024) } ?? "—"
+        return ["poll gpu.util → \(use) % · ok",
+                "vram \(used) / \(total) GB",
+                "pwr \(watts) W · link ok"]
+    }
+
+    private var fanLogLines: [String] {
+        let a = store.fanRPM.map { String(format: "%.0f", $0) } ?? "—"
+        let b = store.fanRPMGPU.map { String(format: "%.0f", $0) } ?? "—"
+        return ["tach \(a) / \(b) rpm · ok", "ec link ok · duty auto"]
     }
 
     /// 550W：一行终端输出 —— 回路号 + 点引导 + 转速
@@ -1075,6 +1131,10 @@ struct OverviewView: View {
         Card(padding: 16) {
             VStack(alignment: .leading, spacing: 0) {
                 SectionTitle(text: "GPU", trailing: "温度 · 占用 · 功耗 · 显存", color: Palette.mGPU, code: "SYS.GPU", command: "gpu --stat")
+                if Palette.isMoss {
+                    MossLogLine(lines: gpuLogLines, size: 9)
+                        .padding(.top, 4)
+                }
                 Spacer(minLength: 6)
                 HStack(alignment: .center, spacing: 16) {
                     TempRing(value: store.gpuTemp, size: 96)
