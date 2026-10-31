@@ -195,7 +195,8 @@ struct SettingsView: View {
             .foregroundStyle(Color.white)
             .padding(.horizontal, 18)
             .padding(.vertical, 2.5)
-            .background(Palette.accent)
+            // 缎带描述的是「550W 限定」，所以固定用 550W 的红，不跟随当前主题强调色
+            .background(Color(hex: 0xC8102E))
             .rotationEffect(.degrees(45))
             // 缎带中心压在角上：斜条两端被卡片的 clipShape 裁掉，只剩中间一段 + 文字
             .offset(x: -15, y: 15)
