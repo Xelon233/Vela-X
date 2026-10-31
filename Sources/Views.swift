@@ -673,16 +673,17 @@ struct OverviewView: View {
     }
 
     private var cpuCard: some View {
-        // CPU 合并卡：温度环（缩小）+ 状态/最低/最高/热压力/采样，
-        // 下方频率（大数 + 心电波形）与功耗（大数 + 折线图）。功耗原独立卡片已并入此处。
+        // CPU 合并卡：左侧温度环 + 状态四行，右侧负载曲线；底部「频率 / 功耗」左右并排、各带一条波形。
+        // 压缩思路：环 116→96、曲线 84/58→68/46、字号 19→17，
+        // 并把原本上下两行的频率与功耗改成左右各半 —— 宽卡横向本来就有余量，
+        // 竖着堆两整行纯属浪费，卡片高度因此少了约三分之一。
         Card(padding: 16, glow: true) {
             VStack(alignment: .leading, spacing: 0) {
                 SectionTitle(text: "CPU", trailing: "温度 · 频率 · 功耗", color: Palette.mLoad)
-                Spacer(minLength: 8)
-                HStack(alignment: .center, spacing: 18) {
-                    // 仪表盘过大，缩小到 116 更协调
-                    TempRing(value: store.cpuTemp, size: 116)
-                    VStack(alignment: .leading, spacing: 6) {
+                Spacer(minLength: 6)
+                HStack(alignment: .center, spacing: 16) {
+                    TempRing(value: store.cpuTemp, size: 96)
+                    VStack(alignment: .leading, spacing: 4) {
                         statLine("状态", store.tempStatusText,
                                  color: Palette.forTemp(store.cpuTemp))
                         statLine("最低", String(format: "%.1f °C", tempMin))
@@ -693,63 +694,47 @@ struct OverviewView: View {
                     // 右侧空白用 CPU 负载曲线填充（Sparkline 无网格 / 表格背景）
                     VStack(alignment: .leading, spacing: 4) {
                         Text("负载曲线")
-                            .font(.system(size: 10))
+                            .font(.system(size: 9.5))
                             .tracking(0.5)
                             .foregroundStyle(Palette.textTertiary)
                         Sparkline(values: store.loadHistory.map { $0 * 100 },
                                   color: Palette.mLoad,
                                   lowerBound: 0, upperBound: 100,
                                   filled: false)
-                            .frame(maxWidth: .infinity, minHeight: 84, maxHeight: 84)
+                            .frame(maxWidth: .infinity, minHeight: 68, maxHeight: 68)
                     }
                     .frame(maxWidth: .infinity)
                 }
-                Spacer(minLength: 10)
-                // 频率：大数 + 心电监护仪风格波形（表征 CPU 频率随时间起伏）
-                HStack(alignment: .center, spacing: 14) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("频率")
-                            .font(.system(size: 10))
-                            .tracking(0.5)
-                            .foregroundStyle(Palette.textTertiary)
-                        HStack(alignment: .firstTextBaseline, spacing: 2) {
-                            Text(store.cpuFreq.liveGHz.map { String(format: "%.2f", $0) } ?? "—")
-                                .font(.system(size: 19, weight: .semibold).monospacedDigit())
-                                .foregroundStyle(store.cpuFreq.liveGHz != nil ? Color.primary : Palette.textSecondary)
-                            Text("GHz")
-                                .font(.system(size: 10))
-                                .foregroundStyle(Palette.textSecondary)
-                        }
-                    }
-                    .frame(width: 78, alignment: .leading)
-                    FreqECG(values: store.freqHistory,
-                            color: Palette.mFreq,
-                            lower: 0, upper: 5.5, height: 58)
-                        .frame(maxWidth: .infinity)
-                }
                 Spacer(minLength: 8)
-                // 功耗：大数 + 折线图（表征 CPU 整包功耗随时间起伏）
-                HStack(alignment: .center, spacing: 14) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("功耗")
-                            .font(.system(size: 10))
-                            .tracking(0.5)
-                            .foregroundStyle(Palette.textTertiary)
-                        HStack(alignment: .firstTextBaseline, spacing: 2) {
-                            Text(store.powerWatts.map { String(format: "%.1f", $0) } ?? "—")
-                                .font(.system(size: 19, weight: .semibold).monospacedDigit())
-                                .foregroundStyle(store.powerWatts != nil ? Color.primary : Palette.textSecondary)
-                            Text("W")
-                                .font(.system(size: 10))
-                                .foregroundStyle(Palette.textSecondary)
-                        }
+                // 频率 / 功耗并排
+                HStack(alignment: .center, spacing: 20) {
+                    HStack(alignment: .center, spacing: 10) {
+                        metricCell("频率",
+                                   value: store.cpuFreq.liveGHz.map { String(format: "%.2f", $0) } ?? "—",
+                                   unit: "GHz",
+                                   has: store.cpuFreq.liveGHz != nil,
+                                   color: Palette.mFreq)
+                        FreqECG(values: store.freqHistory,
+                                color: Palette.mFreq,
+                                lower: 0, upper: 5.5, height: 46)
+                            .frame(maxWidth: .infinity)
                     }
-                    .frame(width: 78, alignment: .leading)
-                    Sparkline(values: store.powerHistory,
-                              color: Palette.mPower,
-                              lowerBound: 0, upperBound: 100,
-                              filled: true)
-                        .frame(maxWidth: .infinity, minHeight: 58, maxHeight: 58)
+                    .frame(maxWidth: .infinity)
+
+                    // 功耗：大数 + 折线图（表征 CPU 整包功耗随时间起伏）
+                    HStack(alignment: .center, spacing: 10) {
+                        metricCell("功耗",
+                                   value: store.powerWatts.map { String(format: "%.1f", $0) } ?? "—",
+                                   unit: "W",
+                                   has: store.powerWatts != nil,
+                                   color: Palette.mPower)
+                        Sparkline(values: store.powerHistory,
+                                  color: Palette.mPower,
+                                  lowerBound: 0, upperBound: 100,
+                                  filled: true)
+                            .frame(maxWidth: .infinity, minHeight: 46, maxHeight: 46)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
             }
         }
@@ -760,16 +745,18 @@ struct OverviewView: View {
 
     private func statLine(_ label: String, _ value: String,
                           color: Color = Palette.text) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             Text(label)
-                .font(.system(size: 10))
+                .font(.system(size: 9.5))
                 .tracking(0.5)
                 .foregroundStyle(Palette.textTertiary)
                 .lineLimit(1)
-                .frame(width: 42, alignment: .leading)
+                .frame(width: 40, alignment: .leading)
             Text(value)
-                .font(.system(size: 11.5, weight: .medium).monospacedDigit())
+                .font(.system(size: 11, weight: .medium).monospacedDigit())
                 .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
         }
     }
 
@@ -885,16 +872,16 @@ struct OverviewView: View {
     }
 
     private var gpuCard: some View {
-        // 显卡合并卡：结构与 CPU 卡一致 —— 温度环（仪表盘）+ 状态/占用率/功耗/显存，
-        // 右侧占用率曲线，下方功耗与显存各一行（大数 + 折线图）。
+        // 显卡合并卡：与 CPU 卡完全同构 —— 温度环 + 状态/占用率/功耗/显存四行 + 占用率曲线，
+        // 底部「功耗 / 显存」左右并排、各带面积折线（与 CPU 卡的频率/功耗行同尺寸）。
         // 功耗与显存原先是两张独立的窄卡，按「温度 · 功耗 · 显存」并到这里。
         Card(padding: 16) {
             VStack(alignment: .leading, spacing: 0) {
                 SectionTitle(text: "GPU", trailing: "温度 · 占用 · 功耗 · 显存", color: Palette.mGPU)
-                Spacer(minLength: 8)
-                HStack(alignment: .center, spacing: 18) {
-                    TempRing(value: store.gpuTemp, size: 116)
-                    VStack(alignment: .leading, spacing: 6) {
+                Spacer(minLength: 6)
+                HStack(alignment: .center, spacing: 16) {
+                    TempRing(value: store.gpuTemp, size: 96)
+                    VStack(alignment: .leading, spacing: 4) {
                         statLine("状态", gpuTempStatusText,
                                  color: Palette.forTemp(store.gpuTemp))
                         statLine("占用率", store.gpuUsage.map { String(format: "%.0f %%", $0) } ?? "—",
@@ -906,69 +893,75 @@ struct OverviewView: View {
                     // 右侧用显卡占用率曲线填充（与 CPU 卡的负载曲线同一位置）
                     VStack(alignment: .leading, spacing: 4) {
                         Text("占用率曲线")
-                            .font(.system(size: 10))
+                            .font(.system(size: 9.5))
                             .tracking(0.5)
                             .foregroundStyle(Palette.textTertiary)
                         Sparkline(values: store.gpuHistory,
                                   color: Palette.mGPU,
                                   lowerBound: 0, upperBound: 100,
                                   filled: false)
-                            .frame(maxWidth: .infinity, minHeight: 84, maxHeight: 84)
+                            .frame(maxWidth: .infinity, minHeight: 68, maxHeight: 68)
                     }
                     .frame(maxWidth: .infinity)
                 }
-                Spacer(minLength: 10)
-                // 功耗：大数 + 面积折线（上限取自驱动上报的强制功耗墙）
-                HStack(alignment: .center, spacing: 14) {
-                    gpuMetricBlock("功耗",
+                Spacer(minLength: 8)
+                // 功耗 / 显存并排（上限取自驱动上报的强制功耗墙 / 显存总量）
+                HStack(alignment: .center, spacing: 20) {
+                    HStack(alignment: .center, spacing: 10) {
+                        metricCell("功耗",
                                    value: store.gpuPowerWatts.map { String(format: "%.1f", $0) } ?? "—",
                                    unit: "W",
                                    has: store.gpuPowerWatts != nil,
                                    color: Palette.mGPUPow)
-                    Sparkline(values: store.gpuPowerHistory,
-                              color: Palette.mGPUPow,
-                              lowerBound: 0,
-                              upperBound: max(30, store.gpuPowerLimitWatts ?? 120),
-                              filled: true)
-                        .frame(maxWidth: .infinity, minHeight: 58, maxHeight: 58)
-                }
-                Spacer(minLength: 8)
-                // 显存：大数 + 面积折线（纵轴按显存总量，看得出占用涨落）
-                HStack(alignment: .center, spacing: 14) {
-                    gpuMetricBlock("显存",
+                        Sparkline(values: store.gpuPowerHistory,
+                                  color: Palette.mGPUPow,
+                                  lowerBound: 0,
+                                  upperBound: max(30, store.gpuPowerLimitWatts ?? 120),
+                                  filled: true)
+                            .frame(maxWidth: .infinity, minHeight: 46, maxHeight: 46)
+                    }
+                    .frame(maxWidth: .infinity)
+
+                    HStack(alignment: .center, spacing: 10) {
+                        metricCell("显存",
                                    value: store.vramUsedMB.map { String(format: "%.1f", $0 / 1024) } ?? "—",
                                    unit: "GB",
                                    has: store.vramUsedMB != nil,
                                    color: Palette.mVRAM)
-                    Sparkline(values: store.vramHistory,
-                              color: Palette.mVRAM,
-                              lowerBound: 0,
-                              upperBound: max(1, store.vramTotalMB ?? 1),
-                              filled: true)
-                        .frame(maxWidth: .infinity, minHeight: 58, maxHeight: 58)
+                        Sparkline(values: store.vramHistory,
+                                  color: Palette.mVRAM,
+                                  lowerBound: 0,
+                                  upperBound: max(1, store.vramTotalMB ?? 1),
+                                  filled: true)
+                            .frame(maxWidth: .infinity, minHeight: 46, maxHeight: 46)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
             }
         }
     }
 
-    /// 显卡卡里「大数 + 单位」那一小列（与 CPU 卡的频率 / 功耗行同宽同排版）
-    private func gpuMetricBlock(_ title: String, value: String, unit: String,
-                                has: Bool, color: Color) -> some View {
+    /// 宽卡底部「小标题 + 大数 + 单位」那一小格（CPU 的频率/功耗、GPU 的功耗/显存共用）。
+    /// 1.8.10 起两格并排，宽度收窄到 62、字号 19→17，横向留给波形。
+    private func metricCell(_ title: String, value: String, unit: String,
+                            has: Bool, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
-                .font(.system(size: 10))
+                .font(.system(size: 9.5))
                 .tracking(0.5)
                 .foregroundStyle(Palette.textTertiary)
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(value)
-                    .font(.system(size: 19, weight: .semibold).monospacedDigit())
+                    .font(.system(size: 17, weight: .semibold).monospacedDigit())
                     .foregroundStyle(has ? color : Palette.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 Text(unit)
-                    .font(.system(size: 10))
+                    .font(.system(size: 9.5))
                     .foregroundStyle(Palette.textSecondary)
             }
         }
-        .frame(width: 78, alignment: .leading)
+        .frame(width: 62, alignment: .leading)
     }
 
     /// 与 CPU 的状态文案同一套阈值，只换数据源
