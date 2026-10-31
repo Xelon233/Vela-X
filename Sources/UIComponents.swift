@@ -269,35 +269,6 @@ struct Card<Content: View>: View {
     }
 }
 
-/// 550W 限定皮肤的四角角标：只在四个角画 L 形短线，中间留空。
-/// 一个 Shape 走完整圈，比叠 4 个 overlay 便宜，也不会被卡片内容裁掉。
-struct CornerBrackets: Shape {
-    var length: CGFloat = 13
-
-    func path(in rect: CGRect) -> Path {
-        var p = Path()
-        let l = min(length, min(rect.width, rect.height) / 3)
-        let (minX, minY, maxX, maxY) = (rect.minX, rect.minY, rect.maxX, rect.maxY)
-        // 左上
-        p.move(to: CGPoint(x: minX, y: minY + l))
-        p.addLine(to: CGPoint(x: minX, y: minY))
-        p.addLine(to: CGPoint(x: minX + l, y: minY))
-        // 右上
-        p.move(to: CGPoint(x: maxX - l, y: minY))
-        p.addLine(to: CGPoint(x: maxX, y: minY))
-        p.addLine(to: CGPoint(x: maxX, y: minY + l))
-        // 右下
-        p.move(to: CGPoint(x: maxX, y: maxY - l))
-        p.addLine(to: CGPoint(x: maxX, y: maxY))
-        p.addLine(to: CGPoint(x: maxX - l, y: maxY))
-        // 左下
-        p.move(to: CGPoint(x: minX + l, y: maxY))
-        p.addLine(to: CGPoint(x: minX, y: maxY))
-        p.addLine(to: CGPoint(x: minX, y: maxY - l))
-        return p
-    }
-}
-
 // MARK: - 标题
 
 struct SectionTitle: View {
@@ -1212,29 +1183,24 @@ struct MossMark: View {
 struct CodeLabel: View {
     let text: String
     var size: CGFloat = 9.5
-    var color: Color = Palette.textTertiary
-    /// 是否带「▸」指令前缀（卡片里的关键行带，角落的小注不带）
-    var prompt: Bool = true
 
     var body: some View {
         if Palette.isMoss {
             HStack(spacing: 3) {
-                if prompt {
-                    Text("▸")
-                        .font(.system(size: size - 0.5, weight: .bold, design: .monospaced))
-                        .foregroundStyle(Palette.accent.opacity(0.85))
-                }
+                Text("▸")
+                    .font(.system(size: size - 0.5, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Palette.accent.opacity(0.85))
                 Text(text)
                     .font(.system(size: size, weight: .medium, design: .monospaced))
                     .tracking(0.4)
-                    .foregroundStyle(color)
+                    .foregroundStyle(Palette.textTertiary)
                     .lineLimit(1)
             }
         } else {
             Text(text)
                 .font(.system(size: size))
                 .tracking(0.5)
-                .foregroundStyle(color)
+                .foregroundStyle(Palette.textTertiary)
                 .lineLimit(1)
         }
     }

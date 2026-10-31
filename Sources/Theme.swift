@@ -47,14 +47,6 @@ enum ThemeMode: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
-    var detail: String {
-        switch self {
-        case .dark: return "默认"
-        case .light: return "白底"
-        case .system: return "跟随"
-        case .moss: return "限定"
-        }
-    }
 }
 
 /// 当前是否启用「550W」限定皮肤。

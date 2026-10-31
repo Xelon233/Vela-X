@@ -14,7 +14,7 @@ struct AboutView: View {
         VStack(alignment: .leading, spacing: 14) {
             brandCard
 
-            SectionTitle(text: "本次更新")
+            SectionTitle(text: "更新日志")
             whatsNewCard
 
             SectionTitle(text: "信息")
@@ -28,44 +28,28 @@ struct AboutView: View {
         }
     }
 
-    // MARK: - 本次更新
+    // MARK: - 更新日志
 
     private var whatsNewCard: some View {
         Card {
             VStack(alignment: .leading, spacing: 9) {
-                whatsNewRow("waveform.path.ecg", "550W：动起来的终端", "状态行新增「MOSS 已运行 hh:mm:ss」实时秒表与闪烁方块光标，底边有一道 6 秒扫过的红线；CPU / GPU / 风扇 / 负载卡各多一行滚动输出（› poll cpu.temp → 87.1 °C · ok ▮），内容取自实时数据；卡片斜边红条缓慢呼吸。全部用离散跳变实现，只有扫光一条连续动画，不会把渲染开销加回去。")
-                whatsNewRow("apple.terminal", "550W：概览终端化", "概览顶部不再显示品牌 logo 与机型名，只留 CPU / 内存 / 显卡三枚标签（MOSS 只关心它调度的东西）；每张卡片的标题变成一次命令调用（➜ cpu --stat、➜ coolant --status、➜ mission --profile…），风扇卡改成两行「FAN.0 ···· 5040 RPM」的终端输出，图表全部保留。")
-                whatsNewRow("chevron.left.forwardslash.chevron.right", "550W：更多卡片代码化", "概览新增一条 MOSS 状态行（▮ 光标 · 元指令：延续人类文明 · 本地节点 · // 观察日志已开启）；卡片标题右侧带子系统代号（// SYS.CPU · 温度 · 频率 · 功耗）；风扇写成 FAN.0 / FAN.1，磁盘/电池改 FREE / USED / CELL 配置行，负载右侧改 THERMAL / LOAD.AVG / MEM.USED。仅 550W 皮肤生效。")
-                whatsNewRow("eye.fill", "新增「550W」限定主题", "《流浪地球》550W / MOSS 风格皮肤：白底 + 警示红，直角切角面板、工程图细网格、标题虚线分栏、标签改等宽代码写法（带 ▸ 前缀），温度环改「灰→红→深红」单色梯度。在「设置 → 外观」里选 550W 即可切换，其余三个主题完全不受影响。")
-                whatsNewRow("textformat", "550W 标识与字幕条", "侧栏与「关于」页换成 550W 机号标（550 深色 + 红色 W）与电影字幕条「智能量子计算机 550W [MOSS] / INTELLIGENT QUANTUM COMPUTER」，素材取自你提供的矢量文件，按白底重新着色后内置进 App。")
-                whatsNewRow("chart.xyaxis.line", "折线改平滑曲线", "概览与监控页所有统计曲线由折线（直线连点）改为过每个采样点的平滑曲线（Catmull-Rom 转三次贝塞尔），控制点夹在画布内，尖峰数据不会甩出边框。")
-                whatsNewRow("menubar.rectangle", "菜单栏开关重排 + 图标区分", "「菜单栏」设置里的指标按 CPU → GPU → 内存 → 网络分组排列，同类挨在一起。GPU 占用率换成板卡形状的小显卡图标（原来是个显示器），GPU 功耗改成「方框里的闪电」，与 CPU 功耗的裸闪电一眼可分。")
-                whatsNewRow("arrow.up.arrow.down", "性能与风扇页顺序调整", "「机型识别」卡片移到「风扇情况」下方，两条机型风险提示（不匹配 / 未能识别）紧随其后，不再夹在自定义曲线和说明之间。")
-                whatsNewRow("rectangle.compress.vertical", "CPU / GPU 卡压缩 + 曲线加坐标轴", "两张宽卡内部重新排布：温度环 116→96、曲线 84/58→68/46、大数 19→17，并把原本上下两行的「频率/功耗」「功耗/显存」改成左右并排 —— 宽卡横向本来就有余量，竖着堆两整行是浪费，卡片高度少了约三分之一。所有曲线背景补上坐标轴：左竖轴 + 底横轴 + 虚线网格（网格密度随图形高度自动增减）。GPU 卡里重复显示的功耗/显存小字行已去掉。")
-                whatsNewRow("bolt.shield", "修「开机静默下发无效」", "1.8.5 写的 sudoers 规则用双引号包了带空格的路径，sudo 判为非法、整份规则被拒读，所以开机后无论风扇还是功耗都没真正下发。现在改用反斜杠转义，并在落盘前用 visudo 校验（不通过就不写，避免连带影响其他 sudo）。同时：规则只在 App 移动 / 被清理 / 格式升级时才重装（以前每次登录都弹一次密码框），授权完成后立刻补发一次，设置页也会显示「上次自动下发」的结果。")
-                whatsNewRow("network", "网络统计跟随系统", "总量改读内核 64 位网卡字节计数器（sysctl net.link.generic.ifdata，与系统统计同源，也不会像旧的 32 位计数那样超过 4 GiB 就回绕），基线存在本地 —— 退出或重启本程序后接着算，只有重启系统或点「重置统计」才归零。")
-                whatsNewRow("paintpalette", "概览与监控页重新配色", "两项指标配一色：负载蓝、频率青、功耗橙、内存黄绿、风扇青绿、电池绿、磁盘灰蓝、GPU 紫、GPU 功耗粉、显存靛、网络天蓝。同一指标在概览与监控页同色，一眼对得上。概览「显卡」卡改名「GPU」。")
-                whatsNewRow("menubar.rectangle", "菜单栏新增 GPU 功耗 / 显存占用", "「菜单栏」设置页多了两个可勾选指标，与温度、占用率一样可排序、可选上下行合并显示；未装 SMCNvidiaGPU 驱动时标为不可用并说明原因。")
-                whatsNewRow("display", "显卡卡与 CPU 卡同构", "概览的显卡卡按 CPU 卡重做：温度改用仪表盘呈现，功耗与显存并入同一张卡（状态／占用率／功耗／显存 + 占用率、功耗、显存三条曲线）；监控页「实时」区另保留功耗与显存两张卡。macOS 没有 NVML、驱动也不上报功耗，这两项取自 SMCNvidiaGPU（zzzyy678）的二改驱动——它在内核侧读 GSP 的 RUSD 共享内存并挂成 sysctl，本程序只读不改。没装驱动时显示「—」。")
-                whatsNewRow("bolt.shield", "开机静默应用配置", "「设置」新增「开机自动应用配置」：开启后，登录与睡眠唤醒时自动、无密码框地静默下发当前功耗墙和风扇曲线（首次开启需输入一次管理员密码，用于授权本程序的 CLI 免密以 root 运行；EC 在重启 / 唤醒后会重置配置，故两个时机都会重发）。")
+                whatsNewRow("eye.fill", "新增「550W」限定主题", "《流浪地球》550W / MOSS 风格皮肤，在「设置 → 外观」切换：白底 + 警示红，切角面板与工程图网格；内置 550W 机号标与电影字幕条；概览在该皮肤下改为终端形态（命令行标题、滚动输出、运行时长与扫描线）。其余三个主题不受影响。")
                 Divider().opacity(0.35)
-                whatsNewRow("sparkles", "渲染与缩放缓动优化", "窗口缩放 / 最小化动画改为按需重排（松手才刷新，拖拽时直接缩放上一帧），卡顿消失；每张玻璃卡把装饰层拍平成单张纹理，滚动与悬停时复用，GPU 占用率不升却更跟手。")
+                whatsNewRow("bolt.shield", "开机静默应用配置", "登录与睡眠唤醒时自动、无密码框地下发当前功耗墙和风扇曲线（首次开启授权一次即可）。同时修复 1.8.5 因 sudoers 规则写法非法导致静默下发完全失效、并每次登录都弹一次密码框的问题。")
                 Divider().opacity(0.35)
-                whatsNewRow("bolt.fill", "新增「功耗墙」档位", "替代原先不可用的「性能模式」：静音 25W / 平衡 30W / 性能 35W 随时可切，自定义 15–50W 默认上锁，需在「高级功能」确认风险后解锁；支持一键恢复默认。")
+                whatsNewRow("network", "网络统计", "新增「网络」页，显示实时速率与累计流量。总量改读内核 64 位网卡计数器，基线存在本地 —— 退出或重启程序后接着算，只有重启系统或手动重置才归零。")
                 Divider().opacity(0.35)
-                whatsNewRow("slider.horizontal.3", "概览新增「当前模式」卡", "一张卡同时显示当前功耗墙档位与风扇档位，可在概览布局里隐藏或调序。")
+                whatsNewRow("menubar.rectangle", "菜单栏新增 GPU 功耗 / 显存占用", "两个可勾选的菜单栏指标，与温度、占用率一样可排序、可选合并显示；未装 SMCNvidiaGPU 驱动时标为不可用并说明原因。")
                 Divider().opacity(0.35)
-                whatsNewRow("network", "新增「网络」页", "累计统计本次启动的上传 / 下载总量，显示实时速率与网卡接口，可一键重置。")
+                whatsNewRow("sparkles", "渲染与缩放性能优化", "每张卡片的装饰层拍平成单张纹理，滚动与缩放时复用，窗口动画不再掉帧。")
+                Divider().opacity(0.35)
+                whatsNewRow("bolt.fill", "新增「功耗墙」档位", "替代原先不可用的「性能模式」：静音 25W / 平衡 30W / 性能 35W 随时可切，自定义 15–50W 默认上锁，需在「高级功能」确认风险后解锁。")
                 Divider().opacity(0.35)
                 whatsNewRow("display", "新增「高级功能」页", "一键开启 / 还原 HiDPI：写入显示器 Override，只改用户数据区、不动系统卷。")
                 Divider().opacity(0.35)
                 whatsNewRow("fanblades", "自定义风扇曲线", "可拖拽 8 点曲线，CPU / GPU 分别编辑与下发；默认关闭，需在「高级功能」确认风险后解锁。")
                 Divider().opacity(0.35)
-                whatsNewRow("slider.horizontal.3", "诊断能力判断修正", "风扇曲线 / Aura RGB / 性能模式（功耗墙）改按实际通道判断，不再写死「不可用」；移除显卡模式、充电上限、环境光三项。")
-                Divider().opacity(0.35)
-                whatsNewRow("waveform.path.ecg", "监控页整合", "原「传感器」页的温度曲线、内核计数器并入监控页，侧栏少一项。")
-                Divider().opacity(0.35)
-                whatsNewRow("cpu", "概览数据增强", "风扇卡显示 CPU / GPU 双转速；CPU 卡右侧改为负载曲线，可直接看负载起伏。")
+                whatsNewRow("slider.horizontal.3", "诊断能力判断修正", "风扇曲线 / Aura RGB / 性能模式（功耗墙）改按实际通道判断，不再写死「不可用」。")
             }
         }
     }

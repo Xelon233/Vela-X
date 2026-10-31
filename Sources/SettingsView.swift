@@ -151,6 +151,11 @@ struct SettingsView: View {
                                 RoundedRectangle(cornerRadius: Palette.cornerRadius, style: .continuous)
                                     .strokeBorder(theme.mode == m ? Palette.accent.opacity(0.55) : .clear, lineWidth: 0.8)
                             )
+                            // 550W 是限定皮肤：角上挂一条「限定」斜带
+                            .overlay(alignment: .topTrailing) {
+                                if m == .moss { limitedRibbon }
+                            }
+                            .clipShape(RoundedRectangle(cornerRadius: Palette.cornerRadius, style: .continuous))
                             .foregroundStyle(theme.mode == m ? Palette.accent : Palette.textSecondary)
                             .contentShape(Rectangle())
                         }
@@ -182,4 +187,20 @@ struct SettingsView: View {
         }
         .onAppear { launchAtLogin = LaunchAtLogin.isEnabled; silentApply = SilentApply.isEnabled }
     }
+    /// 「限定」斜带：贴右上角斜挂，超出部分由卡片的 clipShape 裁掉，形成缎带效果
+    private var limitedRibbon: some View {
+        Text("限定")
+            .font(.system(size: 7, weight: .heavy))
+            .tracking(0.8)
+            .foregroundStyle(Color.white)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 2.5)
+            .background(Palette.accent)
+            .rotationEffect(.degrees(45))
+            // 缎带中心压在角上：斜条两端被卡片的 clipShape 裁掉，只剩中间一段 + 文字
+            .offset(x: -15, y: 15)
+            .allowsHitTesting(false)
+    }
+
+
 }
