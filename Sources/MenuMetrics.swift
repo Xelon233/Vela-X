@@ -317,16 +317,18 @@ final class MetricProbe {
 // MARK: - 指标定义
 
 enum MenuMetric: String, CaseIterable, Identifiable, Hashable {
+    // 顺序即「菜单栏」设置页里的排列顺序（allCases 跟随声明顺序）：
+    // CPU 组 → GPU 组 → 内存 → 网络，同类指标挨在一起，找起来不用上下乱扫。
     case cpuTemp
     case cpuLoad
     case cpuFreq
-    case memUsage
-    case netSpeed
-    case gpuLoad
+    case power
     case gpuTemp
+    case gpuLoad
     case gpuPower
     case gpuVRAM
-    case power
+    case memUsage
+    case netSpeed
 
     var id: String { rawValue }
 
@@ -352,9 +354,12 @@ enum MenuMetric: String, CaseIterable, Identifiable, Hashable {
         case .cpuFreq:  return "cpu"
         case .memUsage: return "memorychip"
         case .netSpeed: return "arrow.up.arrow.down"
-        case .gpuLoad:  return "display"
+        // 显卡用「板卡 + 芯片方块」的信用卡形（SF Symbols 没有真正的显卡符号，
+        // 这个长条卡+方块的轮廓在 12pt 下最接近一块小显卡，且与 cpu.fill 一眼可分）
+        case .gpuLoad:  return "creditcard"
         case .gpuTemp:  return "thermometer.sun"
-        case .gpuPower: return "bolt.fill"
+        // CPU 功耗是裸闪电；GPU 功耗用「方框里的闪电」——形状差别大，12pt 也能分开
+        case .gpuPower: return "bolt.square.fill"
         case .gpuVRAM:  return "memorychip.fill"
         case .power:    return "bolt.fill"
         }

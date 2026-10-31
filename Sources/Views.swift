@@ -1313,6 +1313,51 @@ struct PerformanceView: View {
             SectionTitle(text: "风扇曲线",
                          trailing: fan.kextLoaded ? (fan.kextBuild ?? "kext 已加载") : "kext 未加载")
 
+            Card {
+                VStack(alignment: .leading, spacing: 13) {
+                    HStack(alignment: .center, spacing: 20) {
+                        fanStat("CPU 风扇", "\(fan.rpmCPU)")
+                        fanStat("GPU 风扇", "\(fan.rpmGPU)")
+                        Spacer(minLength: 8)
+                        VStack(alignment: .trailing, spacing: 1) {
+                            Text("当前档位")
+                                .font(.system(size: 9.5))
+                                .foregroundStyle(Palette.textTertiary)
+                            Text(currentPresetLabel)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(fan.lastApplied == nil ? Palette.textSecondary : Palette.accent)
+                        }
+                    }
+
+                    if !fan.kextLoaded {
+                        Text("没有检测到 SMCAsusFan kext（SMC 键 AFMd 不存在）。转速和曲线下发都依赖它：装上 kext 重启后，这里会自动出现三个档位。")
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(Palette.warn)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else if let presets = fan.presets {
+                        VStack(spacing: 6) {
+                            ForEach(FanControl.order, id: \.self) { name in
+                                if let preset = presets.preset(name) {
+                                    presetRow(name: name, preset: preset)
+                                }
+                            }
+                        }
+                    } else if let err = fan.loadError {
+                        Text("读不到风扇曲线配置：\(err)")
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(Palette.bad)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    if let message = fan.message {
+                        Text(message)
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(message.hasPrefix("已切到") ? Palette.ok : Palette.bad)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+
             // MARK: 机型识别
             // 不同机型 EC 配置不同：先认出真实机型，机主可手动选（按型号名），
             // 所选机型与检测到的硬件不一致时，应用曲线前必须确认硬件损坏风险。
@@ -1515,54 +1560,6 @@ struct PerformanceView: View {
                 }
             }
 
-            Card {
-                VStack(alignment: .leading, spacing: 13) {
-                    HStack(alignment: .center, spacing: 20) {
-                        fanStat("CPU 风扇", "\(fan.rpmCPU)")
-                        fanStat("GPU 风扇", "\(fan.rpmGPU)")
-                        Spacer(minLength: 8)
-                        VStack(alignment: .trailing, spacing: 1) {
-                            Text("当前档位")
-                                .font(.system(size: 9.5))
-                                .foregroundStyle(Palette.textTertiary)
-                            Text(currentPresetLabel)
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(fan.lastApplied == nil ? Palette.textSecondary : Palette.accent)
-                        }
-                    }
-
-                    if !fan.kextLoaded {
-                        Text("没有检测到 SMCAsusFan kext（SMC 键 AFMd 不存在）。转速和曲线下发都依赖它：装上 kext 重启后，这里会自动出现三个档位。")
-                            .font(.system(size: 10.5))
-                            .foregroundStyle(Palette.warn)
-                            .fixedSize(horizontal: false, vertical: true)
-                    } else if let presets = fan.presets {
-                        VStack(spacing: 6) {
-                            ForEach(FanControl.order, id: \.self) { name in
-                                if let preset = presets.preset(name) {
-                                    presetRow(name: name, preset: preset)
-                                }
-                            }
-                        }
-                    } else if let err = fan.loadError {
-                        Text("读不到风扇曲线配置：\(err)")
-                            .font(.system(size: 10.5))
-                            .foregroundStyle(Palette.bad)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    if let message = fan.message {
-                        Text(message)
-                            .font(.system(size: 10.5))
-                            .foregroundStyle(message.hasPrefix("已切到") ? Palette.ok : Palette.bad)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-            }
-
-            // [VelaX-CustomCurve] 自定义曲线编辑器（未在「高级功能」解锁时不显示）
-            CustomCurveGate()
-
             // 机型不匹配 → 硬件损坏风险警告（应用曲线前必须先确认）
             if fan.status == .mismatched {
                 Card {
@@ -1631,6 +1628,9 @@ struct PerformanceView: View {
                     }
                 }
             }
+
+            // [VelaX-CustomCurve] 自定义曲线编辑器（未在「高级功能」解锁时不显示）
+            CustomCurveGate()
 
             Card {
                 VStack(alignment: .leading, spacing: 8) {

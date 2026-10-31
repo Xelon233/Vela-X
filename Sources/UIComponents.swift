@@ -476,10 +476,10 @@ struct Sparkline: View {
                     }
                     // 用「宽而淡」的第二条线模拟辉光：
                     // 比 .shadow 便宜得多（阴影每帧都要离屏模糊，是这套界面最大的 GPU 开销）
-                    line(pts)
+                    Self.smoothPath(pts, in: geo.size)
                         .stroke(color.opacity(0.20),
                                 style: StrokeStyle(lineWidth: 4.5, lineCap: .round, lineJoin: .round))
-                    line(pts)
+                    Self.smoothPath(pts, in: geo.size)
                         .stroke(color,
                                 style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
                 } else {
@@ -521,17 +521,37 @@ struct Sparkline: View {
         return out
     }
 
-    private func line(_ pts: [CGPoint]) -> Path {
+    /// Catmull-Rom → 三次贝塞尔：把折线变成**过所有采样点**的平滑曲线。
+    /// 控制点 y 夹在画布内 —— Path 不会被自动裁剪，不夹的话尖峰数据会把曲线甩出边框。
+    static func smoothPath(_ pts: [CGPoint], in size: CGSize, tension: CGFloat = 1.0) -> Path {
         var p = Path()
-        p.addLines(pts)
+        guard pts.count > 1 else { return p }
+        p.move(to: pts[0])
+        guard pts.count > 2 else {
+            p.addLine(to: pts[1])
+            return p
+        }
+        let k = tension / 6
+        for i in 0..<(pts.count - 1) {
+            let p0 = pts[max(i - 1, 0)]
+            let p1 = pts[i]
+            let p2 = pts[i + 1]
+            let p3 = pts[min(i + 2, pts.count - 1)]
+            var c1 = CGPoint(x: p1.x + (p2.x - p0.x) * k, y: p1.y + (p2.y - p0.y) * k)
+            var c2 = CGPoint(x: p2.x - (p3.x - p1.x) * k, y: p2.y - (p3.y - p1.y) * k)
+            c1.y = min(max(c1.y, 0), size.height)
+            c2.y = min(max(c2.y, 0), size.height)
+            p.addCurve(to: p2, control1: c1, control2: c2)
+        }
         return p
     }
 
+    /// 面积填充：上沿走同一条平滑曲线，再落到底边闭合
     private func area(_ pts: [CGPoint], size: CGSize) -> Path {
-        var p = Path()
-        p.addLines(pts)
-        p.addLine(to: CGPoint(x: pts.last?.x ?? 0, y: size.height))
-        p.addLine(to: CGPoint(x: pts.first?.x ?? 0, y: size.height))
+        guard let first = pts.first, let last = pts.last else { return Path() }
+        var p = Self.smoothPath(pts, in: size)
+        p.addLine(to: CGPoint(x: last.x, y: size.height))
+        p.addLine(to: CGPoint(x: first.x, y: size.height))
         p.closeSubpath()
         return p
     }
@@ -559,10 +579,10 @@ struct FreqECG: View {
                 }
                 if pts.count > 1 {
                     // 宽而淡的辉光（比 .shadow 便宜，避免每帧离屏模糊）
-                    Self.path(pts)
+                    Sparkline.smoothPath(pts, in: geo.size)
                         .stroke(color.opacity(0.18),
                                 style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
-                    Self.path(pts)
+                    Sparkline.smoothPath(pts, in: geo.size)
                         .stroke(color,
                                 style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
                     // 末端扫描光点
@@ -595,12 +615,6 @@ struct FreqECG: View {
             let y = size.height - CGFloat((clamped - lower) / span) * size.height
             return CGPoint(x: CGFloat(idx) * stepX, y: y)
         }
-    }
-
-    private static func path(_ pts: [CGPoint]) -> Path {
-        var p = Path()
-        p.addLines(pts)
-        return p
     }
 }
 
