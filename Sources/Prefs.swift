@@ -38,8 +38,15 @@ enum Prefs {
         }
     }
 
+    /// 读整数：历史上有代码把版本号存成了字符串，`as? Int` 会静默失败返回 0，
+    /// 于是「规则版本 >= 2」永远不成立（2.0.1 及之前的开机静默下发就栽在这）。
+    /// 这里把 NSNumber / String 都兜住。
     static func int(_ key: String, default def: Int = 0) -> Int {
-        store.object(forKey: key) as? Int ?? def
+        guard let obj = store.object(forKey: key) else { return def }
+        if let n = obj as? Int { return n }
+        if let n = obj as? NSNumber { return n.intValue }
+        if let s = obj as? String, let n = Int(s) { return n }
+        return def
     }
 
     static func set(_ value: Int, for key: String) {

@@ -36,7 +36,7 @@ struct MonitorView: View {
     private var tempCurveSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionTitle(text: "温度曲线", trailing: "最近 240 秒",
-                         color: Palette.forTemp(store.cpuTemp))
+                         color: Palette.forTemp(store.cpuTemp), command: "monitor --temp")
             Card {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -61,7 +61,7 @@ struct MonitorView: View {
 
     private var kernelCounterSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionTitle(text: "内核计数器", trailing: "不依赖 kext", color: Palette.mLoad)
+            SectionTitle(text: "内核计数器", trailing: "不依赖 kext", color: Palette.mLoad, command: "monitor --kernel")
             Card {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(alignment: .top, spacing: 22) {
@@ -93,7 +93,7 @@ struct MonitorView: View {
 
     private var liveRow: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionTitle(text: "实时", trailing: "\(store.samplingRate.longLabel)采样 · 历史保留 15 分钟")
+            SectionTitle(text: "实时", trailing: "\(store.samplingRate.longLabel)采样 · 历史保留 15 分钟", command: "monitor --live")
             // 卡片多了会挤成一排细条，改用自适应网格：宽度够就一行排开，不够自动换行。
             // 最小列宽 132 与原先 5 张卡时的实际宽度一致，窗口默认宽度下观感不变。
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 132, maximum: 220), spacing: 12)],
@@ -220,7 +220,7 @@ struct MonitorView: View {
     private var trendSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                SectionTitle(text: "趋势")
+                SectionTitle(text: "趋势", command: "monitor --trend")
                 Spacer()
                 SegmentedButtons(items: [("1 分钟", 60), ("5 分钟", 300), ("15 分钟", 900)],
                                  selection: $window)
@@ -291,7 +291,7 @@ struct MonitorView: View {
     private var processSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                SectionTitle(text: "应用", trailing: "按 \(sortByCPU ? "CPU" : "内存") 排序 · 每 2 秒刷新")
+                SectionTitle(text: "应用", trailing: "按 \(sortByCPU ? "CPU" : "内存") 排序 · 每 2 秒刷新", command: "monitor --procs")
                 Spacer()
                 SegmentedButtons(items: [("CPU", true), ("内存", false)],
                                  selection: $sortByCPU)
@@ -355,7 +355,7 @@ struct MonitorView: View {
 
     private var recordSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionTitle(text: "录制", trailing: "把温度 / 负载 / 内存 / 目标应用记成 CSV")
+            SectionTitle(text: "录制", trailing: "把温度 / 负载 / 内存 / 目标应用记成 CSV", command: "monitor --record")
 
             Card {
                 if let rec = store.recording {

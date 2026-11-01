@@ -863,6 +863,31 @@ struct GrayButtonStyle: ButtonStyle {
     var prominent = false
 
     func makeBody(configuration: Configuration) -> some View {
+        // 550W：按钮不再是圆角胶囊，而是「切角小面板 + 红描边 + 等宽字」，
+        // 和卡片/侧栏同一套语言。按下时底变淡红，不做缩放（缩放会触发重排）。
+        if Palette.isMoss {
+            configuration.label
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .tracking(0.4)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    PanelShape(radius: 0, cut: 5)
+                        .fill(prominent
+                              ? Palette.accent.opacity(configuration.isPressed ? 1.0 : 0.92)
+                              : Palette.accent.opacity(configuration.isPressed ? 0.14 : 0.05))
+                )
+                .overlay(
+                    PanelShape(radius: 0, cut: 5)
+                        .stroke(Palette.accent.opacity(prominent ? 0.9 : 0.45), lineWidth: 1)
+                )
+                .foregroundStyle(prominent ? Color.white : Palette.accent)
+        } else {
+            classicBody(configuration: configuration)
+        }
+    }
+
+    private func classicBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 11.5, weight: .medium))
             .tracking(0.3)

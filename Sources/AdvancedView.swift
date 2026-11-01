@@ -27,7 +27,7 @@ struct AdvancedView: View {
 
             SectionTitle(text: "风扇自定义曲线",
                          trailing: customCurve.unlocked ? "已解锁" : "未解锁",
-                         color: Palette.warn)
+                         color: Palette.warn, command: "fan --curve")
             Card(padding: 16) {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 12) {
@@ -64,7 +64,7 @@ struct AdvancedView: View {
 
             SectionTitle(text: "自定义功耗墙",
                          trailing: powerLimit.unlocked ? "已解锁" : "未解锁",
-                         color: Palette.warn)
+                         color: Palette.warn, command: "power --wall")
             Card(padding: 16) {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 12) {
@@ -99,7 +99,7 @@ struct AdvancedView: View {
                 }
             }
 
-            SectionTitle(text: "HiDPI 显示器缩放", trailing: "one-key-hidpi")
+            SectionTitle(text: "HiDPI 显示器缩放", trailing: "one-key-hidpi", command: "display --hidpi")
             Card(padding: 16) {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("通过向 /Library/Displays 写入显示器 Override 配置，为外接 / 内建显示器开启 HiDPI 缩放档位。仅改动用户数据区，不修改系统卷，卸载本程序后配置仍在。")

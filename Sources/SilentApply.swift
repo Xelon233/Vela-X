@@ -52,8 +52,10 @@ enum SilentApply {
     static var isAuthorized: Bool {
         guard Prefs.bool(authorizedKey) else { return false }
         guard FileManager.default.fileExists(atPath: rulePath) else { return false }
-        guard Prefs.int(versionKey) >= ruleVersion else { return false }
         guard let stored = Prefs.string(exeKey), stored == currentExe else { return false }
+        // 规则版本只作提示，不再当门槛：真正的判据是 probe() 能不能跑通。
+        // （2.0.1 之前把版本存成字符串、这里按 Int 读，恒为 0 → 永远「未授权」，
+        //   于是开机静默下发一次都没真正执行过。）
         return true
     }
 
@@ -126,7 +128,7 @@ enum SilentApply {
         // 真的用免密通道跑一次，确认规则对「这个路径 + 这个参数」真的放行
         Prefs.set(true, for: authorizedKey)
         Prefs.set(exe, for: exeKey)
-        Prefs.set(String(ruleVersion), for: versionKey)
+        Prefs.set(ruleVersion, for: versionKey)     // 存 Int，别存 String
         if let why = probe() {
             clearAuthorization(keepEnabled: true)
             return why
@@ -165,7 +167,14 @@ enum SilentApply {
     /// 在主线程更新控制器 UI —— 这样 sudo 这种会阻塞 ~1.5s 的动作不卡 UI。
     @discardableResult
     static func applyCurrentConfig() -> Bool {
-        guard isEnabled, isAuthorized else { return false }
+        guard isEnabled else {
+            recordResult(problems: ["未开启「开机自动应用配置」"], applied: 0)
+            return false
+        }
+        guard isAuthorized else {
+            recordResult(problems: ["免密规则未生效（设置里关掉再打开可重新授权）"], applied: 0)
+            return false
+        }
 
         // 功耗墙：kext 不支持（AFsw 不存在）则跳过；档位与自定义值都从持久化偏好读
         var powerArgs: [String]?
@@ -266,10 +275,33 @@ enum SilentApply {
     /// 重装成功后立刻补发一次配置，免得这次登录白等。
     static func repairIfNeeded() {
         guard isEnabled else { return }
-        guard !isAuthorized else { return }
-        if installAuthorization() == nil {
-            applyCurrentConfig()
+
+        // ① 真判据只有一条：`sudo -n` 到底通不通。通就把标记补齐（App 被移动过也能自愈），
+        //    不弹任何框；不通再谈重装 —— 老版本吃过「标志位不符就每次登录弹一次」的亏。
+        if probe() == nil {
+            if !isAuthorized {
+                Prefs.set(true, for: authorizedKey)
+                Prefs.set(currentExe, for: exeKey)
+                Prefs.set(ruleVersion, for: versionKey)
+            }
+            return
         }
+
+        // ② 通道不通。若当前跑的不是 /Applications 里的正式版本（比如开发时直接跑 build/xxxx），
+        //    **绝不重装** —— 否则会把 sudoers 改指到 build 路径，正式 App 反而失去免密
+        //    （2.0.1 期间就是这么把自己的授权搞坏的）。只标记失败原因，等用户装正式版再修。
+        guard runsFromApplications else {
+            recordResult(problems: ["当前不是 /Applications 里的正式版本，未改动免密规则"], applied: 0)
+            return
+        }
+
+        // ③ 正式版且通道不通 → 重装一次（这一步需要管理员密码）
+        _ = installAuthorization()
+    }
+
+    /// 当前是否从 /Applications 下的正式安装位置运行
+    private static var runsFromApplications: Bool {
+        currentExe.hasPrefix("/Applications/")
     }
 
     /// 兼容旧调用名

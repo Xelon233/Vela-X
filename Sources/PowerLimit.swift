@@ -233,7 +233,7 @@ struct PowerLimitCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             SectionTitle(text: "功耗墙",
-                         trailing: controller.kextSupported ? "可下发" : "kext 不支持")
+                         trailing: controller.kextSupported ? "可下发" : "kext 不支持", command: "power --limit")
 
             Card {
                 VStack(alignment: .leading, spacing: 11) {

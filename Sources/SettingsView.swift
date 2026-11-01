@@ -16,7 +16,7 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SectionTitle(text: "常规")
+            SectionTitle(text: "常规", command: "config --general")
 
             Card(padding: 16) {
                 VStack(alignment: .leading, spacing: 14) {
@@ -126,7 +126,7 @@ struct SettingsView: View {
                 }
             }
 
-            SectionTitle(text: "外观")
+            SectionTitle(text: "外观", command: "config --theme")
             Card(padding: 16) {
                 HStack(spacing: 8) {
                     ForEach(ThemeMode.allCases) { m in
@@ -165,7 +165,7 @@ struct SettingsView: View {
                 }
             }
 
-            SectionTitle(text: "采样间隔")
+            SectionTitle(text: "采样间隔", command: "config --rate")
             Card(padding: 16) {
                 VStack(alignment: .leading, spacing: 10) {
                     SegmentedButtons(items: SamplingRate.allCases.map { ($0.label, $0) },

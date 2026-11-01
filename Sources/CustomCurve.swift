@@ -265,7 +265,7 @@ struct CustomCurveCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             SectionTitle(text: "自定义曲线",
-                         trailing: fan.kextLoaded ? "可下发" : "kext 未加载")
+                         trailing: fan.kextLoaded ? "可下发" : "kext 未加载", command: "curve --edit")
 
             Card {
                 VStack(alignment: .leading, spacing: 11) {

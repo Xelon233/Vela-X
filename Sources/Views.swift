@@ -122,6 +122,9 @@ struct ContentView: View {
                 .zIndex(10)
             }
         }
+        // 让 Toggle / Slider / Picker 这些系统控件的强调色跟着主题走
+        // （否则 550W 里开关还是系统蓝，一眼出戏）
+        .tint(Palette.accent)
         .onAppear {
             store.start()
             theme.applyAppearance()
@@ -350,11 +353,7 @@ struct SidebarView: View {
     @Namespace private var selectionNS
     /// 液态玻璃的滑动节奏：偏软、带一点回弹，像液体被推过去而不是硬切
     static let selectionSpring = Animation.spring(response: 0.36, dampingFraction: 0.68)
-    /// 550W 切页：一道扫描线从上掠过（0 → 1 表示纵向位置）
-    @State private var scanY: CGFloat = 1
-    @State private var scanOpacity: Double = 0
-    /// 550W 切页：整栏一次极短的红曝光，像阴极射线管被重新点亮
-    @State private var flash: Double = 0
+
 
     /// 550W 下的「本地节点」行：优先机型代号，取不到就退回产品名
     private var mossNodeLine: String {
@@ -419,6 +418,9 @@ struct SidebarView: View {
                                 .font(.system(size: 13.5, weight: page == p ? .semibold : .regular))
                                 .frame(width: 17)
                                 .foregroundStyle(page == p ? Palette.accent : Palette.textSecondary)
+                                // 选中时图标轻微放大：只改 transform，不重排
+                                .scaleEffect(page == p ? 1.12 : 1)
+                                .animation(SidebarView.selectionSpring, value: page)
                             Text(Palette.isMoss ? p.mossTitle : p.title)
                                 .font(Palette.isMoss
                                       ? .system(size: 12.5, weight: page == p ? .semibold : .regular,
@@ -428,6 +430,9 @@ struct SidebarView: View {
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.85)
                                 .foregroundStyle(page == p ? Palette.text : Palette.textSecondary)
+                                // 文字跟一点点位移，读起来像被「推」了一下
+                                .offset(x: page == p ? 2.5 : 0)
+                                .animation(SidebarView.selectionSpring, value: page)
                             Spacer(minLength: 0)
                         }
                         .padding(.leading, 6)
@@ -506,40 +511,11 @@ struct SidebarView: View {
             .padding(.horizontal, 16)
             .padding(.bottom, 16)
         }
-        // 550W：切页时一道红线从上掠到下面 + 一次极短的曝光。
-        // 两者都是一次性动画（0.26 / 0.35 秒）就结束，不是常驻的 repeatForever。
-        .overlay(alignment: .top) {
-            if Palette.isMoss {
-                GeometryReader { geo in
-                    Rectangle()
-                        .fill(LinearGradient(colors: [.clear, Palette.accent.opacity(0.6), .clear],
-                                             startPoint: .leading, endPoint: .trailing))
-                        .frame(height: 1.5)
-                        .offset(y: scanY * geo.size.height)
-                        .opacity(scanOpacity)
-                }
-                .allowsHitTesting(false)
-            }
-        }
-        .overlay {
-            if Palette.isMoss {
-                Palette.accent.opacity(flash).allowsHitTesting(false)
-            }
-        }
-        .onChange(of: page) { _ in playSwitchSweep() }
+        // 换页特效已移除：那条全宽扫描线每帧都要重排一个 GeometryReader 布局，
+        // 既是全侧栏重绘（开销大），观感也像进度条走了一遍（不好看）。
+        // 现在只保留 SelectionGlass 自身的滑动 —— 它是 matchedGeometryEffect 位移，
+        // 只合成不重排，代价小得多。
         .frame(width: 178)
-    }
-
-    /// 550W：换页的「重新同步」小动作。扫描线瞬移到顶端再无动画地滑到底，
-    /// 曝光同一时刻亮起、快速衰减 —— 两段都是一次性，播完就静止。
-    private func playSwitchSweep() {
-        guard Palette.isMoss else { return }
-        scanY = 0
-        scanOpacity = 1
-        withAnimation(.easeOut(duration: 0.26)) { scanY = 1 }
-        withAnimation(.easeOut(duration: 0.30)) { scanOpacity = 0 }
-        flash = 0.05
-        withAnimation(.easeOut(duration: 0.35)) { flash = 0 }
     }
 }
 
@@ -572,6 +548,27 @@ private struct SelectionGlass: View {
                         .fill(Palette.accent)
                         .frame(width: 2.5, height: 13)
                         .padding(.leading, 5)
+                }
+                // 两枚「瞄准角」：右上 + 左下。它们属于玻璃本身，
+                // 所以换页时是跟着 matchedGeometryEffect 一起滑过去的 —— 零额外开销，
+                // 观感像准星在行与行之间移动。
+                .overlay {
+                    GeometryReader { geo in
+                        Path { path in
+                            let w = geo.size.width, h = geo.size.height
+                            path.move(to: CGPoint(x: w - 17, y: 4))
+                            path.addLine(to: CGPoint(x: w - 6, y: 4))
+                            path.move(to: CGPoint(x: w - 4, y: 6))
+                            path.addLine(to: CGPoint(x: w - 4, y: 17))
+                            path.move(to: CGPoint(x: 17, y: h - 4))
+                            path.addLine(to: CGPoint(x: 6, y: h - 4))
+                            path.move(to: CGPoint(x: 4, y: h - 6))
+                            path.addLine(to: CGPoint(x: 4, y: h - 17))
+                        }
+                        .stroke(Palette.accent.opacity(0.9),
+                                style: StrokeStyle(lineWidth: 1.3, lineCap: .square))
+                    }
+                    .allowsHitTesting(false)
                 }
                 .drawingGroup(opaque: false, colorMode: .extendedLinear)
         } else {
@@ -1846,7 +1843,7 @@ struct PerformanceView: View {
             PowerLimitCard()
 
             SectionTitle(text: "风扇曲线",
-                         trailing: fan.kextLoaded ? (fan.kextBuild ?? "kext 已加载") : "kext 未加载")
+                         trailing: fan.kextLoaded ? (fan.kextBuild ?? "kext 已加载") : "kext 未加载", command: "coolant --curve")
 
             Card {
                 VStack(alignment: .leading, spacing: 13) {

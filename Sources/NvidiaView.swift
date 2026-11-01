@@ -27,16 +27,16 @@ struct NvidiaView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SectionTitle(text: "NVIDIA 驱动更新", trailing: "nullmoth/nvidia-macos-driver")
+            SectionTitle(text: "NVIDIA 驱动更新", trailing: "nullmoth/nvidia-macos-driver", command: "gpu --driver")
             heroCard
 
-            SectionTitle(text: "驱动组件", trailing: "\(components.filter(\.loaded).count)/4 已加载")
+            SectionTitle(text: "驱动组件", trailing: "\(components.filter(\.loaded).count)/4 已加载", command: "gpu --components")
             componentsCard
 
-            SectionTitle(text: "显卡")
+            SectionTitle(text: "显卡", command: "gpu --info")
             gpuCard
 
-            SectionTitle(text: "怎么更新")
+            SectionTitle(text: "怎么更新", command: "gpu --howto")
             howToCard
         }
         .onAppear { components = NvidiaUpdate.components() }

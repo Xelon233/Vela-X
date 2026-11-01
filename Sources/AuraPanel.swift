@@ -55,7 +55,7 @@ struct AuraPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             SectionTitle(text: "RGB 灯效",
-                         trailing: AuraEffects.shared.isAvailable ? "Aura HID · 0x5D" : "不可用")
+                         trailing: AuraEffects.shared.isAvailable ? "Aura HID · 0x5D" : "不可用", command: "led --aura")
 
             if !AuraEffects.shared.isAvailable {
                 Card(padding: 12) {

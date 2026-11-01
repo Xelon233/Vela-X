@@ -37,7 +37,7 @@ struct MenuBarSettingsView: View {
             Card {
                 VStack(alignment: .leading, spacing: 0) {
                     SectionTitle(text: "可显示的监控项",
-                                 trailing: "\(selected.count)/\(MenuMetric.allCases.count) 已选")
+                                 trailing: "\(selected.count)/\(MenuMetric.allCases.count) 已选", command: "menubar --items")
                         .padding(.bottom, 4)
 
                     HStack(spacing: 4) {
@@ -63,7 +63,7 @@ struct MenuBarSettingsView: View {
             if selected.contains(.netSpeed) {
                 Card {
                     VStack(alignment: .leading, spacing: 10) {
-                        SectionTitle(text: "网速显示方式")
+                        SectionTitle(text: "网速显示方式", command: "menubar --net")
                         Picker("", selection: $netMode) {
                             ForEach(NetSpeedDisplay.allCases) { mode in
                                 Text(mode.title).tag(mode)
@@ -97,7 +97,7 @@ struct MenuBarSettingsView: View {
             Card {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
-                        SectionTitle(text: "标题栏预览")
+                        SectionTitle(text: "标题栏预览", command: "menubar --preview")
                         Spacer()
                         Button {
                             windowState.isEditMode.toggle()

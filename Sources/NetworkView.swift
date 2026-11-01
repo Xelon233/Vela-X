@@ -10,7 +10,7 @@ struct NetworkView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SectionTitle(text: "网络流量", trailing: totalsTrailing, color: Palette.mNet)
+            SectionTitle(text: "网络流量", trailing: totalsTrailing, color: Palette.mNet, command: "net --flow")
 
             Card {
                 VStack(alignment: .leading, spacing: 14) {
@@ -45,7 +45,7 @@ struct NetworkView: View {
                 }
             }
 
-            SectionTitle(text: "说明")
+            SectionTitle(text: "说明", command: "net --notes")
             Card {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("总量直接读内核的 64 位网卡字节计数器（sysctl net.link.generic.ifdata），与系统统计同源；基线存在本地，所以退出或重启本程序后接着算，只有重启系统或点「重置统计」才会归零。")
