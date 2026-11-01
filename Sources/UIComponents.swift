@@ -438,9 +438,10 @@ struct MossTempShadow: View {
 
     private var centerLabel: some View {
         VStack(spacing: -2) {
-            Text(value.map { String(format: "%.0f", $0) } ?? "—")
-                .font(MossFont.number(size * 0.30))
-                .foregroundStyle(value == nil ? Palette.textSecondary : Palette.text)
+            // 中心读数改用七段液晶体（MossLCDNumber），白底上像一块黑 LCD
+            MossLCDNumber(string: value.map { String(format: "%.0f", $0) } ?? "—",
+                          digitHeight: size * 0.30,
+                          color: value == nil ? Palette.textSecondary : Palette.text)
             Text("°C")
                 .font(.system(size: size * 0.10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Palette.textTertiary)
@@ -494,6 +495,69 @@ struct MossTempShadow: View {
         dot.addArc(center: CGPoint(x: ex, y: ey), radius: 4,
                    startAngle: .radians(0), endAngle: .radians(Double.pi * 2), clockwise: false)
         ctx.fill(dot, with: .color(tempColor))
+    }
+}
+
+/// 七段数码管（液晶体）数字：在 Canvas 里自绘，不依赖外部字体文件。
+/// 灭段留极淡的「鬼影」，读起来像一块真 LCD；on 段用传入色（默认近黑，像白底上的黑 LCD）。
+struct MossLCDNumber: View {
+    let string: String
+    /// 单个数码位高度（pt）
+    var digitHeight: CGFloat = 28
+    var color: Color = Palette.text
+
+    private var t: CGFloat { max(digitHeight * 0.15, 1.4) }      // 段粗
+    private var digitW: CGFloat { digitHeight * 0.58 }           // 数码位宽
+    private var gap: CGFloat { digitHeight * 0.12 }              // 位间距
+    private var n: CGFloat { CGFloat(string.count) }
+    private var totalW: CGFloat { n * digitW + max(n - 1, 0) * gap }
+
+    var body: some View {
+        Canvas { ctx, size in
+            let y = (size.height - digitHeight) / 2
+            var x = (size.width - totalW) / 2
+            for ch in string {
+                mossDrawDigit(ctx: ctx, ox: x, oy: y, w: digitW, h: digitHeight,
+                              t: t, ch: ch, on: color, off: color.opacity(0.09))
+                x += digitW + gap
+            }
+        }
+        .frame(width: totalW + 2, height: digitHeight + 2)
+    }
+}
+
+/// 单个数码位：七段 a~g。空格/不支持的字符全部熄灭。
+private func mossDrawDigit(ctx: GraphicsContext, ox: CGFloat, oy: CGFloat,
+                           w: CGFloat, h: CGFloat, t: CGFloat,
+                           ch: Character, on: Color, off: Color) {
+    // a 上横, b 右上竖, c 右下竖, d 下横, e 左下竖, f 左上竖, g 中横
+    let a = CGRect(x: ox + t,     y: oy,         width: w - 2*t, height: t)
+    let g = CGRect(x: ox + t,     y: oy + h/2 - t/2, width: w - 2*t, height: t)
+    let d = CGRect(x: ox + t,     y: oy + h - t, width: w - 2*t, height: t)
+    let f = CGRect(x: ox,         y: oy + t,     width: t,        height: h/2 - t)
+    let b = CGRect(x: ox + w - t, y: oy + t,     width: t,        height: h/2 - t)
+    let e = CGRect(x: ox,         y: oy + h/2,   width: t,        height: h/2 - t)
+    let c = CGRect(x: ox + w - t, y: oy + h/2,   width: t,        height: h/2 - t)
+    let rects = [a, b, c, d, e, f, g]
+
+    let seg: [Bool]
+    switch ch {
+    case "0": seg = [true,  true,  true,  true,  true,  true,  false]
+    case "1": seg = [false, true,  true,  false, false, false, false]
+    case "2": seg = [true,  true,  false, true,  true,  false, true ]
+    case "3": seg = [true,  true,  true,  true,  false, false, true ]
+    case "4": seg = [false, true,  true,  false, false, true,  true ]
+    case "5": seg = [true,  false, true,  true,  false, true,  true ]
+    case "6": seg = [true,  false, true,  true,  true,  true,  true ]
+    case "7": seg = [true,  true,  true,  false, false, false, false]
+    case "8": seg = [true,  true,  true,  true,  true,  true,  true ]
+    case "9": seg = [true,  true,  true,  true,  false, true,  true ]
+    case "-": seg = [false, false, false, false, false, false, true ]
+    default:  seg = [false, false, false, false, false, false, false]
+    }
+    for i in 0 ..< 7 {
+        ctx.fill(Path(roundedRect: rects[i], cornerRadius: t * 0.3),
+                 with: .color(seg[i] ? on : off))
     }
 }
 
@@ -1638,6 +1702,8 @@ struct MossLogLine: View {
     var size: CGFloat = 9
     /// 每条停留几个 tick（0.5s/tick）
     var ticksPerLine: Int = 3
+    /// 是否允许偶尔「掉字节」崩坏（概览页关掉，去掉代码崩坏特效）
+    var glitch: Bool = true
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.5)) { ctx in
@@ -1647,7 +1713,7 @@ struct MossLogLine: View {
             let cursorOn = tick % 2 == 0
             // 偶尔掉几个字节：日志行每 23 秒崩一次，持续 1 秒
             let raw = lines.isEmpty ? "" : lines[idx]
-            let broken = MossGlitch.isBroken(tick: tick, period: 47, burst: 2)
+            let broken = glitch && MossGlitch.isBroken(tick: tick, period: 47, burst: 2)
             HStack(spacing: 3) {
                 Text("›")
                     .foregroundStyle(Palette.accent.opacity(0.9))
@@ -1732,6 +1798,8 @@ struct MossDispatchStrip: View {
 struct MossFooterStrip: View {
     var lines: [String]
     var node: String
+    /// 是否允许日志行偶尔崩坏（概览页关掉，去掉代码崩坏特效）
+    var glitch: Bool = true
 
     var body: some View {
         HStack(spacing: 0) {
@@ -1743,7 +1811,7 @@ struct MossFooterStrip: View {
             Text("│")
                 .foregroundStyle(Palette.accent.opacity(0.28))
                 .padding(.horizontal, 7)
-            MossLogLine(lines: lines, size: 9)
+            MossLogLine(lines: lines, size: 9, glitch: glitch)
             Spacer(minLength: 10)
             TimelineView(.periodic(from: .now, by: 1)) { _ in
                 Text("T+\(MossUptime.text())")

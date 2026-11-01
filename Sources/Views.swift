@@ -282,6 +282,7 @@ struct MossScreenOverlay: View {
             }
         }
         .ignoresSafeArea()
+        .drawingGroup()
         .allowsHitTesting(false)
     }
 }
@@ -331,12 +332,16 @@ struct MossSolarSystem: View {
             GeometryReader { _ in
                 // 静态层：轨道 + 太阳。不进 TimelineView —— 几圈巨大椭圆只描边一次，
                 // 之后一直复用。把它们塞进逐帧回调正是之前卡顿的原因。
+                // 拍平成一张 Metal 纹理：拖拽时窗口服务器直接复用这张纹理，
+                // 不必每帧重描那几圈大椭圆，明显减轻整窗活层的合成负担。
                 Canvas { c, s in drawBase(c, s) }
+                    .drawingGroup()
 
                 // 动态层：只有 5 个小圆点在动，重绘很便宜。
-                // 24fps 对 0.08~0.34 rad/s 的角速度已足够顺，比 30fps 再省一档。
+                // 20fps 已足够顺（角速度 0.08~0.34 rad/s，慢到肉眼分不出 20/24），
+                // 比 24fps 每少 4 次/秒整窗活层重绘，拖拽更省力。
                 if rotation {
-                    TimelineView(.periodic(from: .now, by: 1/24)) { tl in
+                    TimelineView(.periodic(from: .now, by: 1/20)) { tl in
                         Canvas { c, s in drawPlanets(c, s, date: tl.date) }
                     }
                 } else {
@@ -702,8 +707,6 @@ struct OverviewView: View {
     @State private var dragFrames: [OverviewCard: CGRect] = [:]
     /// 编辑模式（iOS 小组件式）：开 = 窗口固定、卡片可拖/可增删；关 = 窗口可拖、卡片固定。
     @ObservedObject private var windowState = WindowState.shared
-    /// 550W 状态行底部那条扫描线（整页唯一的连续动画，只有 1px 高）
-    @State private var mossSweep = false
 
     /// 窄卡（功耗/频率/显卡/风扇/电池）统一高度，保证两两并排时对齐
     private let smallCardHeight: CGFloat = 108
@@ -717,8 +720,8 @@ struct OverviewView: View {
             Text("▮")
                 .font(.system(size: 9, design: .monospaced))
                 .foregroundStyle(Palette.accent)
-            // 主标题偶尔崩一下：每 17 秒坏 0.75 秒
-            MossGlitchText(text: "MOSS · 550W 在线", tick: 0.25, period: 70, burst: 3, ratio: 22)
+            // 主标题不再崩坏（主页概览去掉代码崩坏特效）
+            Text("MOSS · 550W 在线")
                 .foregroundStyle(Palette.text)
             stripSeparator
             // 每秒钟走一格；秒表本身只是重绘这一小段文字
@@ -750,20 +753,26 @@ struct OverviewView: View {
         .overlay(alignment: .leading) {
             Rectangle().fill(Palette.accent).frame(width: 2)
         }
-        // 沿底边扫过的一道红线：整页唯一的连续动画，1px 高、单层渐变，开销可忽略
+        // 沿底边扫过的一道红线：1px 高、单层渐变。
+        // 用低帧率 TimelineView（30fps）驱动，替代原来的 repeatForever（按屏幕刷新率常驻 ~120fps），
+        // 视觉完全一致（6 秒横扫一遍），但把这道活层的重绘压到 30fps，拖拽/缩放更省力。
         .overlay(alignment: .bottomLeading) {
             GeometryReader { geo in
-                Rectangle()
-                    .fill(LinearGradient(colors: [.clear, Palette.accent.opacity(0.8), .clear],
-                                         startPoint: .leading, endPoint: .trailing))
-                    .frame(width: 130, height: 1)
-                    .offset(x: mossSweep ? geo.size.width : -130)
-                    .animation(.linear(duration: 6).repeatForever(autoreverses: false),
-                               value: mossSweep)
+                let w = geo.size.width
+                TimelineView(.periodic(from: .now, by: 1/30)) { ctx in
+                    let period: Double = 6
+                    let phase = ctx.date.timeIntervalSinceReferenceDate
+                        .truncatingRemainder(dividingBy: period) / period
+                    let x = -130 + phase * (w + 130)
+                    Rectangle()
+                        .fill(LinearGradient(colors: [.clear, Palette.accent.opacity(0.8), .clear],
+                                             startPoint: .leading, endPoint: .trailing))
+                        .frame(width: 130, height: 1)
+                        .offset(x: x)
+                }
             }
             .frame(height: 1)
         }
-        .onAppear { if Palette.isMoss { mossSweep = true } }
     }
 
     /// 状态行里轮播的「设定」文案
@@ -827,7 +836,8 @@ struct OverviewView: View {
                 MossEngineArray()
                     .padding(.top, 4)
                 MossFooterStrip(lines: footerLogLines,
-                                node: store.hardware.modelCode.isEmpty ? "LOCAL" : store.hardware.modelCode)
+                                node: store.hardware.modelCode.isEmpty ? "LOCAL" : store.hardware.modelCode,
+                                glitch: false)
             }
 
             if windowState.isEditMode {
@@ -1177,7 +1187,7 @@ struct OverviewView: View {
             VStack(alignment: .leading, spacing: 0) {
                 SectionTitle(text: "CPU", trailing: "温度 · 频率 · 功耗", color: Palette.mLoad, code: "SYS.CPU", command: "cpu --stat")
                 if Palette.isMoss {
-                    MossLogLine(lines: cpuLogLines, size: 9)
+                    MossLogLine(lines: cpuLogLines, size: 9, glitch: false)
                         .padding(.top, 4)
                 }
                 Spacer(minLength: 6)
@@ -1281,7 +1291,7 @@ struct OverviewView: View {
                     VStack(alignment: .leading, spacing: 5) {
                         terminalFanRow("FAN.0", store.fanRPM, Palette.mFan)
                         terminalFanRow("FAN.1", store.fanRPMGPU, Palette.mGPU)
-                        MossLogLine(lines: fanLogLines, size: 8.5)
+                        MossLogLine(lines: fanLogLines, size: 8.5, glitch: false)
                             .padding(.top, 1)
                     }
                     .padding(.top, 2)
@@ -1489,7 +1499,7 @@ struct OverviewView: View {
             VStack(alignment: .leading, spacing: 0) {
                 SectionTitle(text: "GPU", trailing: "温度 · 占用 · 功耗 · 显存", color: Palette.mGPU, code: "SYS.GPU", command: "gpu --stat")
                 if Palette.isMoss {
-                    MossLogLine(lines: gpuLogLines, size: 9)
+                    MossLogLine(lines: gpuLogLines, size: 9, glitch: false)
                         .padding(.top, 4)
                 }
                 Spacer(minLength: 6)
