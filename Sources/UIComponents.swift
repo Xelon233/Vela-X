@@ -408,11 +408,12 @@ enum MossFont {
     }
 }
 
-/// 550W 的雷达式仪表：
-///   同心圈 + 一圈刻度 + 一根 4 秒转一圈的扫描扇面，温度用外圈的亮点标出。
-/// 只有这块 96pt 的小画布按 20fps 重画（扫面角度来自时间，不存状态），
-/// 其余部分（圈、刻度、十字线）虽然一起重画，但都是几笔画线，成本远低于一张锥形渐变。
-struct MossRadarGauge: View {
+/// 550W 的温度「阴影」仪表：
+///   不再来回扫描。一圈温度色的实心弧（从正上方顺时针，长度 = 当前温度占比）
+///   配一道更粗、更透明的同色「晕」，读起来像热度在表盘上留下的一团雾；
+///   弧尾一颗柔光落点标出此刻温度。中心仍是温度数字。
+/// 纯静态 —— 角度不随时间变，不挂 TimelineView，也就没有逐帧重绘。
+struct MossTempShadow: View {
     let value: Double?
     var size: CGFloat = 96
 
@@ -420,15 +421,19 @@ struct MossRadarGauge: View {
         guard let v = value else { return 0 }
         return min(max((v - 30) / 70, 0), 1)
     }
+    /// 温度色：冷 → 热，越热越红（沿用 Palette.forTemp 的语义，但不在 moss 里走灰红梯度）
+    private var tempColor: Color {
+        guard let v = value else { return Palette.textTertiary }
+        if v < 55 { return Palette.mFreq }      // 冷：青
+        if v < 72 { return Palette.accent2 }    // 温：橙
+        if v < 85 { return Palette.accent }     // 热：红
+        return Palette.bad                      // 烫：深红
+    }
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.05)) { ctx in
-            let t = ctx.date.timeIntervalSince1970
-            let sweep = (t.truncatingRemainder(dividingBy: 4)) / 4 * 360
-            Canvas { c, s in draw(c, s, sweep: sweep) }
-        }
-        .frame(width: size, height: size)
-        .overlay(alignment: .center) { centerLabel }
+        Canvas { ctx, s in draw(ctx, s) }
+            .frame(width: size, height: size)
+            .overlay(alignment: .center) { centerLabel }
     }
 
     private var centerLabel: some View {
@@ -442,64 +447,53 @@ struct MossRadarGauge: View {
         }
     }
 
-    private func draw(_ ctx: GraphicsContext, _ s: CGSize, sweep: Double) {
+    private func draw(_ ctx: GraphicsContext, _ s: CGSize) {
         let center = CGPoint(x: s.width / 2, y: s.height / 2)
-        let r = min(s.width, s.height) / 2 - 3
+        let r = min(s.width, s.height) / 2 - 4
 
-        // 底圈与内圈
-        for (k, o) in [(1.0, 0.26), (0.66, 0.12), (0.33, 0.08)] {
+        // 底圈与内圈（淡墨，不再用红）
+        for (k, o) in [(1.0, 0.10), (0.62, 0.06)] {
             let rr = r * k
             let rect = CGRect(x: center.x - rr, y: center.y - rr, width: rr * 2, height: rr * 2)
-            ctx.stroke(Path(ellipseIn: rect), with: .color(Palette.accent.opacity(o)),
-                       lineWidth: k == 1.0 ? 1.2 : 0.8)
+            ctx.stroke(Path(ellipseIn: rect), with: .color(Palette.text.opacity(o)), lineWidth: 1)
         }
-
-        // 十字虚线
-        var cross = Path()
-        cross.move(to: CGPoint(x: center.x - r, y: center.y))
-        cross.addLine(to: CGPoint(x: center.x + r, y: center.y))
-        cross.move(to: CGPoint(x: center.x, y: center.y - r))
-        cross.addLine(to: CGPoint(x: center.x, y: center.y + r))
-        ctx.stroke(cross, with: .color(Palette.accent.opacity(0.12)),
-                   style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
 
         // 刻度：每 15° 一根，90° 处加长
         var ticks = Path()
         for i in 0 ..< 24 {
-            let a = Double(i) / 24 * 2 * .pi - .pi / 2
+            let a = Double(i) / 24 * 2 * Double.pi - Double.pi / 2
             let long = i % 6 == 0
             let outer = r - 1
             let inner = outer - (long ? 7 : 3.5)
             ticks.move(to: CGPoint(x: center.x + cos(a) * outer, y: center.y + sin(a) * outer))
             ticks.addLine(to: CGPoint(x: center.x + cos(a) * inner, y: center.y + sin(a) * inner))
         }
-        ctx.stroke(ticks, with: .color(Palette.accent.opacity(0.35)), lineWidth: 1)
+        ctx.stroke(ticks, with: .color(Palette.text.opacity(0.18)), lineWidth: 1)
 
-        // 扫描扇面：从扫描线往回 55°，越靠后越淡
-        let span: Double = 55
-        let a1 = (sweep - 90) * .pi / 180
-        let a0 = (sweep - 90 - span) * .pi / 180
-        var sector = Path()
-        sector.move(to: center)
-        sector.addArc(center: center, radius: r - 1, startAngle: .radians(a0),
-                      endAngle: .radians(a1), clockwise: false)
-        sector.closeSubpath()
-        ctx.fill(sector, with: .color(Palette.accent.opacity(0.10)))
-        // 扫描线本身
-        var beam = Path()
-        beam.move(to: center)
-        beam.addLine(to: CGPoint(x: center.x + cos(a1) * (r - 1), y: center.y + sin(a1) * (r - 1)))
-        ctx.stroke(beam, with: .color(Palette.accent.opacity(0.62)), lineWidth: 1.2)
+        guard let _ = value else { return }
 
-        // 温度亮点：沿外圈，从正上方顺时针
-        guard value != nil else { return }
-        let av = (fraction * 360 - 90) * .pi / 180
-        let bx = center.x + cos(av) * (r - 7)
-        let by = center.y + sin(av) * (r - 7)
-        ctx.fill(Path(ellipseIn: CGRect(x: bx - 3, y: by - 3, width: 6, height: 6)),
-                 with: .color(Palette.accent))
-        ctx.stroke(Path(ellipseIn: CGRect(x: bx - 6, y: by - 6, width: 12, height: 12)),
-                   with: .color(Palette.accent.opacity(0.45)), lineWidth: 1)
+        // 温度弧：正上方起，顺时针，长度 = fraction
+        let a0 = -90 * Double.pi / 180
+        let a1 = (fraction * 360 - 90) * Double.pi / 180
+        var arc = Path()
+        arc.addArc(center: center, radius: r, startAngle: .radians(a0),
+                   endAngle: .radians(a1), clockwise: false)
+        // 「阴影」晕：同一道弧再画一遍，更粗更透明 —— 热度留下的雾
+        ctx.stroke(arc, with: .color(tempColor.opacity(0.16)), lineWidth: 13)
+        // 实心弧
+        ctx.stroke(arc, with: .color(tempColor.opacity(0.95)), lineWidth: 6)
+
+        // 弧尾柔光落点：当前温度的「阴影」落点
+        let ex = center.x + cos(a1) * r
+        let ey = center.y + sin(a1) * r
+        var halo = Path()
+        halo.addArc(center: CGPoint(x: ex, y: ey), radius: 9,
+                    startAngle: .radians(0), endAngle: .radians(Double.pi * 2), clockwise: false)
+        ctx.fill(halo, with: .color(tempColor.opacity(0.22)))
+        var dot = Path()
+        dot.addArc(center: CGPoint(x: ex, y: ey), radius: 4,
+                   startAngle: .radians(0), endAngle: .radians(Double.pi * 2), clockwise: false)
+        ctx.fill(dot, with: .color(tempColor))
     }
 }
 
@@ -1689,9 +1683,9 @@ struct MossDispatchStrip: View {
             sep
             group("CPU", cpu, Palette.mLoad)
             sep
-            group("MEM", mem, Palette.mMem)
-            sep
             group("GPU", gpu, Palette.mGPU)
+            sep
+            group("MEM", mem, Palette.mMem)
             sep
             HStack(spacing: 4) {
                 Text("PWR").foregroundStyle(Palette.accent.opacity(0.8))
@@ -1791,9 +1785,10 @@ struct MossAccentPulse: View {
         TimelineView(.periodic(from: .now, by: 2.2)) { ctx in
             let tick = Int(ctx.date.timeIntervalSince1970 / 2.2)
             let bright = tick % 3 == 0
+            // 「不要红色晕开」：卡片斜边呼吸边改成中性墨，不再用红
             PanelAccents(cut: cut)
-                .stroke(Palette.accent.opacity(bright ? 0.95 : 0.55),
-                        style: StrokeStyle(lineWidth: bright ? 2.4 : 2, lineCap: .square))
+                .stroke(Palette.text.opacity(bright ? 0.42 : 0.24),
+                        style: StrokeStyle(lineWidth: bright ? 2.2 : 1.8, lineCap: .square))
         }
     }
 }

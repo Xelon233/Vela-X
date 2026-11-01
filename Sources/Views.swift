@@ -112,6 +112,10 @@ struct ContentView: View {
             if Palette.isMoss {
                 MossScreenOverlay()
                     .zIndex(5)
+                // 局部太阳系绘制图：画在内容之上、侧栏左下空白处（内容背景不透明，
+                // 放在 WorkspaceBackground 里会被盖住，所以这里以 overlay 形式绘出）
+                MossSolarSystem()
+                    .zIndex(4)
             }
 
             if let kind = bootKind {
@@ -193,17 +197,11 @@ struct ContentView: View {
 struct WorkspaceBackground: View {
     var body: some View {
         if Palette.isMoss {
-            ZStack {
-                // 550W 不复用桌面：直接铺一块干净的白（工程图纸），
-                // 这样整窗观感与壁纸无关，任何壁纸下都是同一块限定量产面板。
-                Color(hex: 0xF2F3F5)
-                MossGrid()
-                // 纸面氛围：底部一片发动机冷却塔的暖光 + 一层几乎看不见的扫描线
-                MossHorizon()
-                MossRings()
-                MossScanlines()
-            }
-            .ignoresSafeArea()
+            // 550W 不复用桌面：直接铺一块干净的白（纯白，比之前的更利落），
+            // 这样整窗观感与壁纸无关，任何壁纸下都是同一块限定量产面板。
+            Color.white
+            // 极淡的图纸网格，保留「工程纸」底子（不抢戏）
+            MossGrid()
         } else {
             Palette.veil
                 .ignoresSafeArea()
@@ -248,71 +246,6 @@ struct MossGrid: View {
     }
 }
 
-/// 550W 纸面氛围：底部地平线暖光，像远处那一片发动机塔基映上来的热。
-/// 一层径向渐变，静态，不参与重绘。
-struct MossHorizon: View {
-    var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .bottom) {
-                RadialGradient(colors: [Color(red: 0.784, green: 0.063, blue: 0.180).opacity(0.17),
-                                        Color(red: 0.784, green: 0.063, blue: 0.180).opacity(0.05),
-                                        Color(red: 0.784, green: 0.063, blue: 0.180).opacity(0.0)],
-                               center: .init(x: 0.5, y: 1.02),
-                               startRadius: 6,
-                               endRadius: geo.size.width * 0.78)
-                    .frame(height: geo.size.height * 0.62)
-                // 地平线本身：一条 1px 的红线，像远处塔基与纸面的交界
-                Rectangle()
-                    .fill(Color(red: 0.784, green: 0.063, blue: 0.180).opacity(0.16))
-                    .frame(height: 1)
-            }
-            .frame(maxHeight: .infinity, alignment: .bottom)
-        }
-        .allowsHitTesting(false)
-    }
-}
-
-/// 550W 角落的静态雷达弧：几圈同心圆贴在右上角外，只露出小半截。
-/// 纯装饰、纯静态，用来把「这里有一台在扫描的设备」这件事补上。
-struct MossRings: View {
-    var body: some View {
-        GeometryReader { geo in
-            Canvas { ctx, _ in
-                let ink = Color(red: 0.784, green: 0.063, blue: 0.180)
-                let center = CGPoint(x: geo.size.width + 40, y: -50)
-                for i in 1 ... 4 {
-                    let r = CGFloat(i) * 96
-                    let rect = CGRect(x: center.x - r, y: center.y - r, width: r * 2, height: r * 2)
-                    ctx.stroke(Path(ellipseIn: rect),
-                               with: .color(ink.opacity(i == 2 ? 0.09 : 0.055)),
-                               lineWidth: 1)
-                }
-            }
-        }
-        .allowsHitTesting(false)
-    }
-}
-
-/// 550W 扫描线：每 3pt 一条几乎看不见的横线，给白纸加一层屏幕质感。
-/// 静态 Canvas + drawingGroup，缩放到任意窗口尺寸都是一次绘制。
-struct MossScanlines: View {
-    var step: CGFloat = 3
-    var body: some View {
-        Canvas { ctx, size in
-            var p = Path()
-            var y: CGFloat = 0
-            while y < size.height {
-                p.move(to: CGPoint(x: 0, y: y))
-                p.addLine(to: CGPoint(x: size.width, y: y))
-                y += step
-            }
-            ctx.stroke(p, with: .color(Color.black.opacity(0.022)), lineWidth: 1)
-        }
-        .drawingGroup()
-        .allowsHitTesting(false)
-    }
-}
-
 /// 550W 屏幕罩层：四角定位十字 + 极淡的边缘压暗，让整窗像一块被拍下来的屏幕。
 /// 只画在窗口边缘，中间完全透明，不影响任何内容可读性。
 struct MossScreenOverlay: View {
@@ -324,7 +257,8 @@ struct MossScreenOverlay: View {
                            endRadius: 760)
             GeometryReader { geo in
                 Canvas { ctx, size in
-                    let ink = Color(red: 0.784, green: 0.063, blue: 0.180)
+                    // 定位十字改用中性墨，不再发红（「不要红色晕开」）
+                    let ink = Color.black
                     let inset: CGFloat = 14
                     let arm: CGFloat = 9
                     var cross = Path()
@@ -336,13 +270,73 @@ struct MossScreenOverlay: View {
                         cross.move(to: CGPoint(x: x, y: y - arm))
                         cross.addLine(to: CGPoint(x: x, y: y + arm))
                     }
-                    ctx.stroke(cross, with: .color(ink.opacity(0.28)), lineWidth: 1)
+                    ctx.stroke(cross, with: .color(ink.opacity(0.22)), lineWidth: 1)
                     _ = geo                        // 保持 GeometryReader 以便按窗口尺寸绘制
                 }
             }
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
+    }
+}
+
+/// 550W 背景：局部太阳系绘制图。
+/// 锚在侧栏左下角的空白区（导航列表与「设置」之下那片恒定留白），
+/// 整颗系统收在侧栏宽度的局部里，任何页面都看得见 ——
+/// 中性墨线轨道 + 几颗灰行星 + 一颗不发光的太阳，克制、不发红、不发光，
+/// 与白底工程纸的底子相称。纯静态绘制，不参与逐帧动画。
+struct MossSolarSystem: View {
+    /// 各轨道半径（pt，整体收在侧栏左下空白里）
+    private let orbits: [CGFloat] = [18, 33, 48, 63, 78]
+    /// 行星：所在轨道序号、起始角(弧度)、半径、填充色
+    private let planets: [(orbit: Int, ang: Double, rad: CGFloat, fill: UInt32)] = [
+        (0, 0.7, 2.6, 0x9CA3AF),
+        (1, 2.2, 3.4, 0x6B7280),
+        (2, 4.1, 2.8, 0xB0B6BF),
+        (3, 1.1, 4.2, 0x4B5563),
+        (4, 3.4, 3.2, 0x8A9099),
+    ]
+
+    var body: some View {
+        GeometryReader { geo in
+            Canvas { ctx, size in
+                // 收在侧栏左下空白：x 取侧栏中线附近，y 贴窗口下缘退一点
+                let cx = min(size.width * 0.09, 92)
+                let cy = size.height - 110
+                let ink = Color.black
+
+            // 轨道：越往外越淡
+            for (i, r) in orbits.enumerated() {
+                let rect = CGRect(x: cx - r, y: cy - r, width: r * 2, height: r * 2)
+                ctx.stroke(Path(ellipseIn: rect),
+                           with: .color(ink.opacity(i == 0 ? 0.16 : 0.09)), lineWidth: 1)
+            }
+
+            // 太阳：中心一颗不发光的暖灰实心球 + 极淡外晕（不发红）
+            let sunR: CGFloat = 10
+            var sunHalo = Path()
+            sunHalo.addArc(center: CGPoint(x: cx, y: cy), radius: sunR + 7,
+                           startAngle: .radians(0), endAngle: .radians(Double.pi * 2), clockwise: false)
+            ctx.fill(sunHalo, with: .color(Color(hex: 0x2B2F36).opacity(0.12)))
+            var sun = Path()
+            sun.addArc(center: CGPoint(x: cx, y: cy), radius: sunR,
+                       startAngle: .radians(0), endAngle: .radians(Double.pi * 2), clockwise: false)
+            ctx.fill(sun, with: .color(Color(hex: 0x2B2F36)))
+
+            // 行星
+            for p in planets {
+                let r = orbits[p.orbit]
+                let px = cx + cos(p.ang) * r
+                let py = cy + sin(p.ang) * r
+                var dot = Path()
+                dot.addArc(center: CGPoint(x: px, y: py), radius: p.rad,
+                           startAngle: .radians(0), endAngle: .radians(Double.pi * 2), clockwise: false)
+                ctx.fill(dot, with: .color(Color(hex: p.fill)))
+            }
+            }
+        }
+        .allowsHitTesting(false)
+        .ignoresSafeArea()
     }
 }
 
@@ -669,11 +663,11 @@ struct OverviewView: View {
                 .foregroundStyle(Palette.textTertiary)
             MossCursor(size: 9)
         }
-        .font(.system(size: 10, weight: .medium, design: .monospaced))
-        .tracking(0.3)
+        .font(.system(size: 11.5, weight: .medium, design: .monospaced))
+        .tracking(0.25)
         .lineLimit(1)
-        .padding(.horizontal, 11)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
         .background(Palette.accent.opacity(0.06))
         .overlay(alignment: .leading) {
             Rectangle().fill(Palette.accent).frame(width: 2)
@@ -707,7 +701,7 @@ struct OverviewView: View {
 
     private var stripSeparator: some View {
         Text("│")
-            .font(.system(size: 9, design: .monospaced))
+            .font(.system(size: 10.5, design: .monospaced))
             .foregroundStyle(Palette.accent.opacity(0.35))
     }
 
@@ -1111,7 +1105,7 @@ struct OverviewView: View {
                 Spacer(minLength: 6)
                 HStack(alignment: .center, spacing: 16) {
                     if Palette.isMoss {
-                        MossRadarGauge(value: store.cpuTemp, size: 96)
+                        MossTempShadow(value: store.cpuTemp, size: 96)
                     } else {
                         TempRing(value: store.cpuTemp, size: 96)
                     }
@@ -1423,7 +1417,7 @@ struct OverviewView: View {
                 Spacer(minLength: 6)
                 HStack(alignment: .center, spacing: 16) {
                     if Palette.isMoss {
-                        MossRadarGauge(value: store.gpuTemp, size: 96)
+                        MossTempShadow(value: store.gpuTemp, size: 96)
                     } else {
                         TempRing(value: store.gpuTemp, size: 96)
                     }
