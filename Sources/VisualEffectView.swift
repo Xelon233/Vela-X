@@ -62,6 +62,8 @@ final class WindowToolbarStyler: NSObject, NSToolbarDelegate {
 enum WindowChrome {
     /// 保留 resize 通知的 token，避免观察者被释放后自动失效
     private static var resizeObservers: [NSObjectProtocol] = []
+    /// 外观（透明玻璃 <-> 不透明白窗）切换的订阅，避免观察者被释放后自动失效
+    private static var themeObserver: NSObjectProtocol?
     /// 编辑模式 -> 窗口可移动性 的订阅（只装一次）
     private static var editModeToken: AnyCancellable?
 
@@ -83,15 +85,16 @@ enum WindowChrome {
 
         clearTitlebarGlass(on: window)
 
-        // 透明窗：behindWindow 玻璃才能把桌面折射进来。
-        // 自测模式默认保持不透明窗；加 ASUS_SELFTEST_GLASS=1 时仍然透明，
-        // 因为截图走的是 CGWindowListCreateImage（窗口服务器合成结果），
-        // 这条路径能抓到真正的玻璃，是唯一能亲眼确认「玻璃到不到位」的办法。
-        if !AppEnv.selftest || AppEnv.glassInSelftest {
-            window.isOpaque = false
-            window.backgroundColor = .clear
-            window.isMovableByWindowBackground = true
-        }
+        // 透明窗：behindWindow 玻璃才能把桌面折射进来（默认 / Light / System 主题）。
+        // 但 550W 是纯白不透明主题，用透明窗会让拖动 / 缩放时窗口服务器每帧重新
+        // 采样桌面模糊，明显卡顿 —— 所以 moss 下强制不透明纯白，整窗退化成可廉价
+        // 平移的表面，不再有逐帧桌面重采样。先按初始主题摆好，再订阅外观变化实时切换。
+        applyMossOpacity(on: window)
+        themeObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification, object: Prefs.store, queue: .main) { [weak window] _ in
+                guard let win = window else { return }
+                Self.applyMossOpacity(on: win)
+            }
 
         // 注：理想的「实时缩放期间只缩放上一帧、松手才重排」开关 NSWindow.allowsOnDemandContentResizing
         // 在本机 SDK（macOS 26.5 的 AppKit）里并未导出，故不可用。缩放 / 最小化动画的顺滑改由
@@ -145,6 +148,22 @@ enum WindowChrome {
             work = item
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: item)
         }
+    }
+
+    /// 按当前主题决定窗口不透明度：
+    /// - 550W（moss）：纯白不透明窗，去掉桌面穿透。拖动 / 缩放时窗口服务器只需平移
+    ///   一张缓存好的位图表面，不再每帧重采样桌面模糊 —— 直接消除拖动卡顿。
+    /// - 其他主题：维持透明窗 + 背后玻璃，保留 Liquid Glass 折射观感
+    ///   （自测非玻璃模式本就不透明，这里不动，沿用默认值）。
+    private static func applyMossOpacity(on window: NSWindow) {
+        if SkinFlag.moss {
+            window.isOpaque = true
+            window.backgroundColor = NSColor(white: 1, alpha: 1)
+        } else if !AppEnv.selftest || AppEnv.glassInSelftest {
+            window.isOpaque = false
+            window.backgroundColor = .clear
+        }
+        // selftest 非玻璃：保持默认不透明窗，不动
     }
 
     /// 抹掉标题栏自带的背景层，只留红绿灯。

@@ -177,7 +177,12 @@ struct ContentView: View {
         // 不会像早先那样被裁切）。顶栏与内容因此共用同一块背景，真正沉浸。
         .background {
             ZStack {
-                VisualEffectView(material: .underWindowBackground, blendingMode: .behindWindow)
+                // 背后玻璃只在非 550W 主题需要（桌面折射）；550W 是纯白不透明主题，
+                // 这层 behindWindow 玻璃会拖慢整窗合成（尤其拖动时每帧重采样桌面），
+                // 直接省掉，背景落到 WorkspaceBackground 的纯白上。
+                if !Palette.isMoss {
+                    VisualEffectView(material: .underWindowBackground, blendingMode: .behindWindow)
+                }
                 // 背景只剩一层纯色薄纱：不再有渐变/网格，也就没有重绘成本，
                 // 不需要 equatable / drawingGroup 那一套了。
                 WorkspaceBackground()
