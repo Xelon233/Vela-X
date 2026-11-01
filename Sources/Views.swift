@@ -558,6 +558,8 @@ struct OverviewView: View {
         "领航员空间站 · 链路正常",
         "联合政府 · 授权有效",
         "行星发动机网络 · 接入中",
+        "行星发动机 · 07 号 · 满功率",
+        "赤道转向阵列 · 同步",
     ]
 
     private var stripSeparator: some View {
@@ -606,9 +608,11 @@ struct OverviewView: View {
             }
 
             if Palette.isMoss {
+                // 行星发动机阵列：整页的收边装饰，读起来像远方的引擎地平线
+                MossEngineArray()
+                    .padding(.top, 4)
                 MossFooterStrip(lines: footerLogLines,
                                 node: store.hardware.modelCode.isEmpty ? "LOCAL" : store.hardware.modelCode)
-                    .padding(.top, 2)
             }
 
             if windowState.isEditMode {
@@ -973,7 +977,7 @@ struct OverviewView: View {
                                  color: store.load.thermal == .nominal ? Palette.ok : Palette.warn)
                     }
                     // 固定宽度：让 CPU 卡与 GPU 卡的曲线起点落在同一条竖线上
-                    .frame(width: Palette.isMoss ? 138 : 120, alignment: .leading)
+                    .frame(width: Palette.isMoss ? 152 : 120, alignment: .leading)
                     // 右侧空白用 CPU 负载曲线填充（Sparkline 无网格 / 表格背景）
                     VStack(alignment: .leading, spacing: 4) {
                         CodeLabel(text: "负载曲线", size: 9.5)
@@ -1025,12 +1029,23 @@ struct OverviewView: View {
 
     private func statLine(_ label: String, _ value: String,
                           color: Color = Palette.text) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
             // 550W 皮肤下换成等宽「代码标签」，其余主题与原来一致
             CodeLabel(text: label, size: 9.5)
                 .frame(width: Palette.isMoss ? 58 : 40, alignment: .leading)
+            if Palette.isMoss {
+                // 规格表式引导规：虚线吃掉中间的空隙，值被推到右端。
+                // 用弹性 Shape 而不是固定长度的「·」，否则窄列里会被压成 0 宽（踩过）。
+                DashedRule()
+                    .stroke(Palette.hairline, style: StrokeStyle(lineWidth: 1, dash: [1, 3]))
+                    .frame(height: 1)
+                    .frame(maxWidth: .infinity)
+                    .padding(.bottom, 3)
+            }
             Text(Palette.isMoss ? MossText.code(value) : value)
-                .font(.system(size: 11, weight: .medium).monospacedDigit())
+                .font(.system(size: Palette.isMoss ? 10.5 : 11,
+                             weight: .medium,
+                             design: Palette.isMoss ? .monospaced : .default).monospacedDigit())
                 .foregroundStyle(color)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
@@ -1270,7 +1285,7 @@ struct OverviewView: View {
                                  color: Palette.mGPU)
                         // 功耗与显存不再在这里列一遍 —— 底部有大数 + 曲线，重复显示只会让卡更挤
                     }
-                    .frame(width: Palette.isMoss ? 138 : 120, alignment: .leading)
+                    .frame(width: Palette.isMoss ? 152 : 120, alignment: .leading)
                     // 右侧用显卡占用率曲线填充（与 CPU 卡的负载曲线同一位置）
                     VStack(alignment: .leading, spacing: 4) {
                         CodeLabel(text: "占用率曲线", size: 9.5)

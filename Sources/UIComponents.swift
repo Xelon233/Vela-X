@@ -199,6 +199,13 @@ struct Card<Content: View>: View {
                         MossAccentPulse(cut: 13)
                     }
                 }
+                .overlay {
+                    // 550W 面板装饰：四角定位刻线 + 顶部斜纹带 + 左缘标尺 + 底部虚线。
+                    // 纯静态，和填充/描边一起被拍平进同一张纹理，不参与逐帧绘制。
+                    if Palette.isMoss {
+                        MossPanelDecor()
+                    }
+                }
                 .overlay(alignment: .leading) {
                     if let accent {
                         LinearGradient(colors: [accent, accent.opacity(0)],
@@ -1249,6 +1256,133 @@ struct CodeLabel: View {
 }
 
 // MARK: - 550W 面板形状
+
+/// 行星发动机阵列：一排引擎剪影 + 向上喷出的等离子束，作为概览底部的装饰带。
+/// 纯静态 Canvas（一次绘制、drawingGroup 拍平）：
+///   · 底座是梯形，机身高而窄 —— 电影里那万座发动机的轮廓
+///   · 每座上面一道竖直光束，高度按下标错开，读起来像一整片在同时点火
+/// 不带任何数值含义，纯粹是气氛。
+struct MossEngineArray: View {
+    var engines: Int = 12
+    var height: CGFloat = 36
+
+    var body: some View {
+        Canvas { ctx, size in
+            let ink = Color(red: 0.784, green: 0.063, blue: 0.180)
+            let baseY = size.height - 3
+            let spacing = size.width / CGFloat(max(engines, 1) + 1)
+
+            var bodies = Path()
+            var beams = Path()
+            var ground = Path()
+
+            ground.move(to: CGPoint(x: 0, y: baseY + 1))
+            ground.addLine(to: CGPoint(x: size.width, y: baseY + 1))
+
+            for i in 0 ..< engines {
+                let x = spacing * CGFloat(i + 1)
+                let bodyH = size.height * 0.40
+                let halfW: CGFloat = 5.6
+                // 梯形机身：下宽上窄，顶上留一段喷口
+                bodies.move(to: CGPoint(x: x - halfW, y: baseY))
+                bodies.addLine(to: CGPoint(x: x - halfW * 0.44, y: baseY - bodyH))
+                bodies.addLine(to: CGPoint(x: x - halfW * 0.30, y: baseY - bodyH - 2))
+                bodies.move(to: CGPoint(x: x + halfW, y: baseY))
+                bodies.addLine(to: CGPoint(x: x + halfW * 0.44, y: baseY - bodyH))
+                bodies.addLine(to: CGPoint(x: x + halfW * 0.30, y: baseY - bodyH - 2))
+                // 地面基座
+                bodies.move(to: CGPoint(x: x - halfW - 1.6, y: baseY))
+                bodies.addLine(to: CGPoint(x: x + halfW + 1.6, y: baseY))
+
+                // 等离子柱：向上收窄的两条线，比一根竖线更像“喷流”
+                let beamH = size.height * (i % 3 == 0 ? 0.52 : (i % 3 == 1 ? 0.36 : 0.24))
+                let topY = baseY - bodyH - 2 - beamH
+                beams.move(to: CGPoint(x: x - 1.6, y: baseY - bodyH - 2))
+                beams.addLine(to: CGPoint(x: x - 0.35, y: topY))
+                beams.move(to: CGPoint(x: x + 1.6, y: baseY - bodyH - 2))
+                beams.addLine(to: CGPoint(x: x + 0.35, y: topY))
+            }
+
+            ctx.stroke(ground, with: .color(ink.opacity(0.22)), lineWidth: 1)
+            ctx.stroke(bodies, with: .color(ink.opacity(0.42)), lineWidth: 1)
+            ctx.stroke(beams, with: .color(ink.opacity(0.30)), lineWidth: 1)
+        }
+        .frame(height: height)
+        .drawingGroup()
+        .allowsHitTesting(false)
+    }
+}
+
+/// 550W 面板装饰层。
+/// 画的是「仪器面板上那些没人读、但少了就不像仪器」的东西：
+/// 四角定位刻线、顶部 45° 斜纹带（危险区域的条纹）、左缘刻度尺、底部分段虚线。
+/// 全部静态路径，随卡片一起拍平，不影响滚动性能。
+struct MossPanelDecor: View {
+    var body: some View {
+        Canvas { ctx, size in
+            let ink = Color(red: 0.784, green: 0.063, blue: 0.180)   // 550W 红
+            let w = size.width, h = size.height
+            let cut: CGFloat = 13
+
+            // 四角定位刻线（L 形），避开放大的切角
+            var ticks = Path()
+            let inset: CGFloat = 7
+            let len: CGFloat = 11
+            for corner in 0 ..< 4 {
+                let right = corner % 2 == 1
+                let bottom = corner > 1
+                let x = right ? w - inset : inset
+                let y = bottom ? h - inset : inset
+                let dx: CGFloat = right ? -len : len
+                let dy: CGFloat = bottom ? -len : len
+                // 贴着切角内侧起笔，避免和斜边重叠
+                let startX = right ? x - cut * 0.55 : x + cut * 0.55
+                let startY = bottom ? y - cut * 0.55 : y + cut * 0.55
+                ticks.move(to: CGPoint(x: startX, y: y))
+                ticks.addLine(to: CGPoint(x: startX + dx * 0.8, y: y))
+                ticks.move(to: CGPoint(x: x, y: startY))
+                ticks.addLine(to: CGPoint(x: x, y: startY + dy * 0.8))
+            }
+            ctx.stroke(ticks, with: .color(ink.opacity(0.46)), lineWidth: 1.4)
+
+            // 顶部 45° 斜纹带
+            var hatch = Path()
+            let band: CGFloat = 7
+            var hx: CGFloat = -band
+            while hx < w {
+                hatch.move(to: CGPoint(x: hx, y: 0))
+                hatch.addLine(to: CGPoint(x: hx + band, y: band))
+                hx += 7
+            }
+            ctx.clip(to: Path(CGRect(x: 0, y: 0, width: w, height: band)))
+            ctx.stroke(hatch, with: .color(ink.opacity(0.16)), lineWidth: 1)
+            ctx.clip(to: Path(CGRect(origin: .zero, size: size)))
+
+            // 左缘刻度尺（每 10pt 一格，每 5 格长一点）
+            var rail = Path()
+            var ry = band + 10
+            var n = 0
+            while ry < h - 10 {
+                let long = n % 5 == 0
+                rail.move(to: CGPoint(x: 0, y: ry))
+                rail.addLine(to: CGPoint(x: long ? 6 : 3.5, y: ry))
+                ry += 10; n += 1
+            }
+            ctx.stroke(rail, with: .color(ink.opacity(0.26)), lineWidth: 1)
+
+            // 底部分段虚线
+            var perf = Path()
+            var px: CGFloat = 16
+            while px < w - 16 {
+                perf.move(to: CGPoint(x: px, y: h - 6))
+                perf.addLine(to: CGPoint(x: px + 5, y: h - 6))
+                px += 9
+            }
+            ctx.stroke(perf, with: .color(ink.opacity(0.22)), lineWidth: 1)
+        }
+        .allowsHitTesting(false)
+    }
+}
 
 /// 切角矩形：四角各切一刀、两处大、两处小，整体仍是矩形、布局边框不变，
 /// 只是轮廓不规则 —— 550W 的仪表板就是这个味道（对齐靠布局，不靠圆角）。
