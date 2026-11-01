@@ -97,8 +97,8 @@ struct ContentView: View {
     @EnvironmentObject var store: SensorStore
     @EnvironmentObject var theme: ThemeManager
     @StateObject private var router = PageRouter.shared
-    /// 切进 550W 时的「系统启动」过场
-    @State private var showBoot = false
+    /// 550W 的过场：nil = 不显示；.launch = 启动应用；.themeSwitch = 从别的主题切进来
+    @State private var bootKind: MossBootKind?
 
     var body: some View {
         ZStack {
@@ -108,9 +108,9 @@ struct ContentView: View {
             mainContent
                 .id(theme.mode)
 
-            if showBoot {
-                MossBootOverlay {
-                    withAnimation(.easeOut(duration: 0.28)) { showBoot = false }
+            if let kind = bootKind {
+                MossBootOverlay(kind: kind) {
+                    withAnimation(.easeOut(duration: 0.28)) { bootKind = nil }
                 }
                 .transition(.opacity)
                 .zIndex(10)
@@ -119,12 +119,17 @@ struct ContentView: View {
         .onAppear {
             store.start()
             theme.applyAppearance()
+            // 启动时若本来就在 550W，放一段「核心上线」自检；其它主题不演（保持一致）
+            if theme.mode == .moss, ProcessInfo.processInfo.environment["ASUS_SELFTEST"] == nil {
+                bootKind = .launch
+            }
         }
         .preferredColorScheme(theme.mode.colorScheme)
         // 只在「切进 550W」时播过场；启动时本来就在 550W 不放（那是常态，不该每次开窗都演一遍）
         .onChange(of: theme.mode) { newMode in
             guard newMode == .moss else { return }
-            withAnimation(.easeIn(duration: 0.15)) { showBoot = true }
+            // 切换用短版「网络重新接入」，与启动版区分开
+            withAnimation(.easeIn(duration: 0.15)) { bootKind = .themeSwitch }
         }
     }
 
@@ -565,7 +570,14 @@ struct OverviewView: View {
         VStack(alignment: .leading, spacing: 16) {
             header
 
-            if Palette.isMoss { mossStatusStrip }
+            if Palette.isMoss {
+                mossStatusStrip
+                MossDispatchStrip(cpu: store.load.total,
+                                  mem: store.load.memoryUsedRatio,
+                                  gpu: store.gpuUsage.map { $0 / 100 },
+                                  watts: store.systemPowerWatts,
+                                  cap: Double(store.gpuPowerLimitWatts ?? 115) + 45)
+            }
 
             if visibleCards.isEmpty {
                 emptyHint
@@ -591,6 +603,12 @@ struct OverviewView: View {
                 // 容器在整个拖拽过程中一直存在，手势不会被中途掐掉。
                 .gesture(windowState.isEditMode ? gridDragGesture() : nil)
                 .onPreferenceChange(FramePreferenceKey<OverviewCard>.self) { dragFrames = $0 }
+            }
+
+            if Palette.isMoss {
+                MossFooterStrip(lines: footerLogLines,
+                                node: store.hardware.modelCode.isEmpty ? "LOCAL" : store.hardware.modelCode)
+                    .padding(.top, 2)
             }
 
             if windowState.isEditMode {
@@ -656,6 +674,17 @@ struct OverviewView: View {
             .overlay(alignment: .topTrailing) {
                 if windowState.isEditMode {
                     removeBadge(card)
+                }
+            }
+            // 550W：每张卡右下角挂一个面板编号，像整块控制台上的分区刻度
+            .overlay(alignment: .bottomTrailing) {
+                if Palette.isMoss, let idx = visibleCards.firstIndex(of: card) {
+                    Text(String(format: "%02d", idx + 1))
+                        .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(Palette.accent.opacity(0.30))
+                        .padding(.trailing, 11)
+                        .padding(.bottom, 7)
+                        .allowsHitTesting(false)
                 }
             }
             .animation(.spring(response: 0.30, dampingFraction: 0.8), value: draggingCard)
@@ -1061,6 +1090,18 @@ struct OverviewView: View {
         return ["poll gpu.util → \(use) % · ok",
                 "vram \(used) / \(total) GB",
                 "pwr \(watts) W · link ok"]
+    }
+
+    /// 页脚滚动日志：全是真实读数，滚动时像面板在不停刷新
+    private var footerLogLines: [String] {
+        let load = String(format: "%.0f", store.load.total * 100)
+        let mem = String(format: "%.0f", store.load.memoryUsedRatio * 100)
+        let pwr = store.systemPowerWatts.map { String(format: "%.0f", $0) } ?? "—"
+        let rpm = store.fanRPM.map { String(format: "%.0f", $0) } ?? "—"
+        return ["dispatch cpu \(load)% · mem \(mem)%",
+                "power budget \(pwr) W · stable",
+                "coolant \(rpm) rpm · tracking",
+                "telemetry sync · ok"]
     }
 
     private var fanLogLines: [String] {

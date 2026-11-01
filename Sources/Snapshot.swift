@@ -28,9 +28,12 @@ enum Snapshot {
         // 给静态信息（机型/驱动/能力）留出加载时间；顺便积累几个采样点
         RunLoop.main.run(until: Date().addingTimeInterval(3.4))
 
-        // ASUS_BOOT=<0..5> 直接出「550W 启动过场」的静态帧（开发期验证用）
-        if let raw = ProcessInfo.processInfo.environment["ASUS_BOOT"], let previewStep = Int(raw) {
-            let boot = MossBootOverlay(initialStep: previewStep, onFinish: {})
+        // ASUS_BOOT=<launch|switch>[:步数] 直接出「550W 过场」的静态帧（开发期验证用）
+        if let raw = ProcessInfo.processInfo.environment["ASUS_BOOT"] {
+            let parts = raw.split(separator: ":").map(String.init)
+            let kind: MossBootKind = (parts.first == "launch") ? .launch : .themeSwitch
+            let previewStep = parts.count > 1 ? (Int(parts[1]) ?? 99) : (kind == .launch ? 5 : 3)
+            let boot = MossBootOverlay(kind: kind, initialStep: previewStep, onFinish: {})
                 .frame(width: size.width, height: size.height)
             let renderer = ImageRenderer(content: boot)
             renderer.scale = 2.0

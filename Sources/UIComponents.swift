@@ -299,7 +299,8 @@ struct SectionTitle: View {
             Text("➜")
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .foregroundStyle(color)
-            Text(command)
+            // 550W：命令一律大写（CPU --STAT），像机器自己的表单，而不是人手敲的
+            Text(command.uppercased())
                 .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
                 .tracking(0.2)
                 .foregroundStyle(color)
@@ -1382,6 +1383,106 @@ struct MossLogLine: View {
                     .foregroundStyle(Palette.accent.opacity(cursorOn ? 0.9 : 0.15))
             }
             .font(.system(size: size, weight: .medium, design: .monospaced))
+        }
+    }
+}
+
+/// 资源调度条：把 CPU / 内存 / GPU / 功耗四条压成一行「方块读数」。
+/// 全部取自真实采样，不编数字；纯文本方块（▓░），不画图，零绘制开销。
+struct MossDispatchStrip: View {
+    var cpu: Double?        // 0…1
+    var mem: Double?        // 0…1
+    var gpu: Double?        // 0…1
+    var watts: Double?
+    var cap: Double
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Text("▮")
+                .foregroundStyle(Palette.accent)
+            Text("资源调度")
+                .foregroundStyle(Palette.text)
+                .padding(.leading, 3)
+            sep
+            group("CPU", cpu, Palette.mLoad)
+            sep
+            group("MEM", mem, Palette.mMem)
+            sep
+            group("GPU", gpu, Palette.mGPU)
+            sep
+            HStack(spacing: 4) {
+                Text("PWR").foregroundStyle(Palette.accent.opacity(0.8))
+                Text(watts.map { String(format: "%.0f", $0) } ?? "—")
+                    .foregroundStyle(Palette.text)
+                Text("/ \(Int(cap)) W").foregroundStyle(Palette.textTertiary)
+            }
+            Spacer(minLength: 8)
+            Text("// 1s 采样")
+                .foregroundStyle(Palette.textTertiary)
+        }
+        .font(.system(size: 9, weight: .medium, design: .monospaced))
+        .tracking(0.3)
+        .lineLimit(1)
+        .padding(.horizontal, 11)
+        .padding(.vertical, 5)
+        .overlay(alignment: .top) {
+            Rectangle().fill(Palette.hairline).frame(height: 1)
+        }
+    }
+
+    private var sep: some View {
+        Text("│")
+            .foregroundStyle(Palette.accent.opacity(0.28))
+            .padding(.horizontal, 7)
+    }
+
+    private func group(_ name: String, _ value: Double?, _ color: Color) -> some View {
+        let v = min(max(value ?? 0, 0), 1)
+        let filled = Int((v * 5).rounded())
+        return HStack(spacing: 4) {
+            Text(name).foregroundStyle(Palette.accent.opacity(0.8))
+            Text(String(repeating: "▓", count: filled)
+                 + String(repeating: "░", count: 5 - filled))
+                .foregroundStyle(color.opacity(0.85))
+            Text(value.map { String(format: "%.0f%%", $0 * 100) } ?? "—")
+                .foregroundStyle(Palette.text)
+        }
+    }
+}
+
+/// 页脚观测条：概览最下面一行，和顶部状态行首尾呼应。
+/// 左边是滚动日志（真实采样），右边是运行时间码与节点 —— 整页读起来像一块持续工作的面板。
+struct MossFooterStrip: View {
+    var lines: [String]
+    var node: String
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Text("▮")
+                .foregroundStyle(Palette.accent)
+            Text("观测日志")
+                .foregroundStyle(Palette.text)
+                .padding(.leading, 3)
+            Text("│")
+                .foregroundStyle(Palette.accent.opacity(0.28))
+                .padding(.horizontal, 7)
+            MossLogLine(lines: lines, size: 9)
+            Spacer(minLength: 10)
+            TimelineView(.periodic(from: .now, by: 1)) { _ in
+                Text("T+\(MossUptime.text())")
+            }
+            .foregroundStyle(Palette.textSecondary)
+            Text("// \(node) · 1s 采样")
+                .foregroundStyle(Palette.textTertiary)
+                .padding(.leading, 10)
+        }
+        .font(.system(size: 9, weight: .medium, design: .monospaced))
+        .tracking(0.3)
+        .lineLimit(1)
+        .padding(.horizontal, 11)
+        .padding(.vertical, 6)
+        .overlay(alignment: .top) {
+            Rectangle().fill(Palette.hairline).frame(height: 1)
         }
     }
 }
