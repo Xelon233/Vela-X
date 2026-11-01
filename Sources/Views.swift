@@ -112,9 +112,10 @@ struct ContentView: View {
             if Palette.isMoss {
                 MossScreenOverlay()
                     .zIndex(5)
-                // 局部太阳系绘制图：画在内容之上、侧栏左下空白处（内容背景不透明，
-                // 放在 WorkspaceBackground 里会被盖住，所以这里以 overlay 形式绘出）
-                MossSolarSystem()
+                // 局部太阳系绘制图：圆心在左上角、弧线扫过整窗（内容背景不透明，
+                // 放在 WorkspaceBackground 里会被盖住，所以这里以 overlay 形式绘出）。
+                // 侧栏换页会换一个公转角，所以把当前页传进去。
+                MossSolarSystem(page: router.page)
                     .zIndex(4)
             }
 
@@ -285,13 +286,23 @@ struct MossScreenOverlay: View {
 /// 作为整窗的浅淡水印铺在内容之上（内容背景不透明，放在 WorkspaceBackground 里会被盖住，
 /// 故以 overlay 形式绘出、整体低不透明度，读起来像透在面板底下的工程蓝图）。
 /// 轨道、太阳、行星都是中性墨/暖灰，不发红、不发光。
-/// 侧栏开关（`mossSolarRotation`）控制行星是否公转 —— 关掉则停在起始角，退化为纯静态背景。
+/// **圆心固定在左上角**，轨道按「左上角 → 右下角」的距离等比放大，弧线扫过整窗。
+/// 侧栏选不同功能 → 换一个公转角（`pagePhase`）；侧栏开关（`mossSolarRotation`）控制是否持续公转。
+///
+/// ⚠️ 性能：轨道是**几圈巨大的椭圆**（半径上千 pt，描边很贵）。所以拆成
+///   · 静态层 `drawBase`：轨道 + 太阳，只画一次，之后一直复用；
+///   · 动态层 `drawPlanets`：逐帧只画 5 个小圆点。
+/// 别把轨道塞回 `TimelineView` —— 每帧重描那几圈大椭圆正是之前卡顿的原因。
 struct MossSolarSystem: View {
+    /// 侧栏当前选中的功能页：换页 → 换一个公转角
+    var page: Page = .overview
     /// 与侧栏同一个开关：true = 公转，false = 停在起始角
     @AppStorage("mossSolarRotation", store: Prefs.store) private var rotation = true
 
-    /// 轨道半径占「窗口中心到角落距离」的比例 —— 随窗口尺寸放大到铺满整窗
-    private let orbitFracs: [CGFloat] = [0.18, 0.34, 0.50, 0.66, 0.82]
+    /// 圆心相对左上角的内缩（让太阳 + 外晕完整露出来）
+    private let sunInset: CGFloat = 56
+    /// 轨道半径占「左上角 → 右下角」距离的比例 —— 随窗口尺寸放大到铺满整窗
+    private let orbitFracs: [CGFloat] = [0.20, 0.38, 0.55, 0.72, 0.88]
     /// 行星：所在轨道序号、起始角(弧度)、公转角速度(rad/s)、半径、填充色
     private let planets: [(orbit: Int, ang: Double, speed: Double, rad: CGFloat, fill: UInt32)] = [
         (0, 0.7, 0.34, 3.4, 0x9CA3AF),
@@ -301,16 +312,30 @@ struct MossSolarSystem: View {
         (4, 3.4, 0.08, 4.4, 0x8A9099),
     ]
 
+    /// 换页 → 行星沿轨道挪一段：在可见象限（0…90°）内按页序铺开。
+    /// ⚠️ 圆心在左上角时只有第一象限的弧落在窗内，铺满整圈会把行星甩出窗口看不见。
+    private var pagePhase: Double {
+        let all = Page.allCases
+        let idx = all.firstIndex(of: page) ?? 0
+        return Double(idx) * (Double.pi / 2) / Double(max(1, all.count - 1))
+    }
+
     var body: some View {
         ZStack {
             Color.clear
             GeometryReader { _ in
+                // 静态层：轨道 + 太阳。不进 TimelineView —— 几圈巨大椭圆只描边一次，
+                // 之后一直复用。把它们塞进逐帧回调正是之前卡顿的原因。
+                Canvas { c, s in drawBase(c, s) }
+
+                // 动态层：只有 5 个小圆点在动，重绘很便宜。
+                // 24fps 对 0.08~0.34 rad/s 的角速度已足够顺，比 30fps 再省一档。
                 if rotation {
-                    TimelineView(.periodic(from: .now, by: 1/30)) { tl in
-                        Canvas { c, s in render(c, s, date: tl.date) }
+                    TimelineView(.periodic(from: .now, by: 1/24)) { tl in
+                        Canvas { c, s in drawPlanets(c, s, date: tl.date) }
                     }
                 } else {
-                    Canvas { c, s in render(c, s, date: nil) }
+                    Canvas { c, s in drawPlanets(c, s, date: nil) }
                 }
             }
         }
@@ -318,23 +343,28 @@ struct MossSolarSystem: View {
         .ignoresSafeArea()
     }
 
-    private func render(_ ctx: GraphicsContext, _ size: CGSize, date: Date?) {
-        let t = date.map { $0.timeIntervalSinceReferenceDate } ?? 0
-        // 锚点：窗口正中心，轨道随窗口尺寸放大到铺满整窗（径向蓝图感，不偏压某一角）
-        let cx = size.width / 2
-        let cy = size.height / 2
-        let span = sqrt(size.width * size.width + size.height * size.height) / 2
-        let orbits = orbitFracs.map { $0 * span }
+    /// 轨道半径：按「左上角 → 右下角」的距离等比放大，弧线扫过整窗
+    private func orbitRadii(for size: CGSize) -> [CGFloat] {
+        let dx = size.width - sunInset
+        let dy = size.height - sunInset
+        let span = sqrt(dx * dx + dy * dy)
+        return orbitFracs.map { $0 * span }
+    }
+
+    /// 静态层：轨道 + 太阳（圆心在左上角）
+    private func drawBase(_ ctx: GraphicsContext, _ size: CGSize) {
+        let cx = sunInset
+        let cy = sunInset
         let ink = Color.black
 
         // 轨道：越往外越淡（中性墨线，不发红、不发光，整体压低到「透图」级别的微淡）
-        for (i, r) in orbits.enumerated() {
+        for (i, r) in orbitRadii(for: size).enumerated() {
             let rect = CGRect(x: cx - r, y: cy - r, width: r * 2, height: r * 2)
             ctx.stroke(Path(ellipseIn: rect),
                        with: .color(ink.opacity(i == 0 ? 0.08 : 0.045)), lineWidth: 1)
         }
 
-        // 太阳：中心一颗不发光的暖灰实心球 + 极淡外晕（不发红，压低到背景级）
+        // 太阳：左上角一颗不发光的暖灰实心球 + 极淡外晕（不发红，压低到背景级）
         let sunR: CGFloat = 10
         var sunHalo = Path()
         sunHalo.addArc(center: CGPoint(x: cx, y: cy), radius: sunR + 8,
@@ -344,12 +374,20 @@ struct MossSolarSystem: View {
         sun.addArc(center: CGPoint(x: cx, y: cy), radius: sunR,
                    startAngle: .radians(0), endAngle: .radians(Double.pi * 2), clockwise: false)
         ctx.fill(sun, with: .color(Color(hex: 0x2B2F36).opacity(0.38)))
+    }
 
-        // 行星：沿轨道公转；rotation 关则停在起始角（纯静态背景）。
-        // 压到更淡（0.3），只作背景里的一点星点，不抢卡片正文。
+    /// 动态层：行星。角度 = 起始角 + 换页偏移（pagePhase）+ 公转（t × 角速度）
+    private func drawPlanets(_ ctx: GraphicsContext, _ size: CGSize, date: Date?) {
+        let t = date.map { $0.timeIntervalSinceReferenceDate } ?? 0
+        let cx = sunInset
+        let cy = sunInset
+        let radii = orbitRadii(for: size)
+        let phase = pagePhase
+
+        // 压到很淡（0.3），只作背景里的一点星点，不抢卡片正文
         for p in planets {
-            let r = orbits[p.orbit]
-            let ang = p.ang + (rotation ? t * p.speed : 0)
+            let r = radii[p.orbit]
+            let ang = p.ang + phase + (rotation ? t * p.speed : 0)
             let px = cx + cos(ang) * r
             let py = cy + sin(ang) * r
             var dot = Path()
