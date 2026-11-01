@@ -280,73 +280,88 @@ struct MossScreenOverlay: View {
     }
 }
 
-/// 550W 背景：局部太阳系绘制图。
-/// 锚在侧栏左下角的空白区（导航列表与「设置」之下那片恒定留白），
-/// 整颗系统收在侧栏宽度的局部里，任何页面都看得见 ——
-/// 中性墨线轨道 + 几颗灰行星 + 一颗不发光的太阳，克制、不发红、不发光，
-/// 与白底工程纸的底子相称。纯静态绘制，不参与逐帧动画。
+/// 550W 背景：局部太阳系的「透视」绘制图。
+///
+/// 作为整窗的浅淡水印铺在内容之上（内容背景不透明，放在 WorkspaceBackground 里会被盖住，
+/// 故以 overlay 形式绘出、整体低不透明度，读起来像透在面板底下的工程蓝图）。
+/// 轨道、太阳、行星都是中性墨/暖灰，不发红、不发光。
+/// 侧栏开关（`mossSolarRotation`）控制行星是否公转 —— 关掉则停在起始角，退化为纯静态背景。
 struct MossSolarSystem: View {
-    /// 各轨道半径（pt，整体收在侧栏左下空白里）
-    private let orbits: [CGFloat] = [18, 33, 48, 63, 78]
-    /// 行星：所在轨道序号、起始角(弧度)、半径、填充色
-    private let planets: [(orbit: Int, ang: Double, rad: CGFloat, fill: UInt32)] = [
-        (0, 0.7, 2.6, 0x9CA3AF),
-        (1, 2.2, 3.4, 0x6B7280),
-        (2, 4.1, 2.8, 0xB0B6BF),
-        (3, 1.1, 4.2, 0x4B5563),
-        (4, 3.4, 3.2, 0x8A9099),
+    /// 与侧栏同一个开关：true = 公转，false = 停在起始角
+    @AppStorage("mossSolarRotation", store: Prefs.store) private var rotation = true
+
+    /// 各轨道半径（pt）—— 放大成铺在右下角的背景场
+    private let orbits: [CGFloat] = [54, 98, 142, 186, 230]
+    /// 行星：所在轨道序号、起始角(弧度)、公转角速度(rad/s)、半径、填充色
+    private let planets: [(orbit: Int, ang: Double, speed: Double, rad: CGFloat, fill: UInt32)] = [
+        (0, 0.7, 0.34, 3.4, 0x9CA3AF),
+        (1, 2.2, 0.23, 4.4, 0x6B7280),
+        (2, 4.1, 0.16, 3.8, 0xB0B6BF),
+        (3, 1.1, 0.11, 5.4, 0x4B5563),
+        (4, 3.4, 0.08, 4.4, 0x8A9099),
     ]
 
     var body: some View {
         ZStack {
             Color.clear
-            GeometryReader { geo in
-                Canvas { ctx, size in
-                    // 收在侧栏左下空白：x 贴左侧栏中线附近，y 近窗口下缘退一点
-                    let cx = min(size.width * 0.085, 78)
-                    let cy = size.height - 84
-                    let ink = Color.black
-
-            // 轨道：越往外越淡（中性墨线，不发红、不发光）
-            for (i, r) in orbits.enumerated() {
-                let rect = CGRect(x: cx - r, y: cy - r, width: r * 2, height: r * 2)
-                ctx.stroke(Path(ellipseIn: rect),
-                           with: .color(ink.opacity(i == 0 ? 0.15 : 0.08)), lineWidth: 1)
+            GeometryReader { _ in
+                if rotation {
+                    TimelineView(.periodic(from: .now, by: 1/30)) { tl in
+                        Canvas { c, s in render(c, s, date: tl.date) }
+                    }
+                } else {
+                    Canvas { c, s in render(c, s, date: nil) }
+                }
             }
-
-            // 太阳：中心一颗不发光的暖灰实心球 + 极淡外晕
-            let sunR: CGFloat = 8
-            var sunHalo = Path()
-            sunHalo.addArc(center: CGPoint(x: cx, y: cy), radius: sunR + 6,
-                           startAngle: .radians(0), endAngle: .radians(Double.pi * 2), clockwise: false)
-            ctx.fill(sunHalo, with: .color(Color(hex: 0x2B2F36).opacity(0.10)))
-            var sun = Path()
-            sun.addArc(center: CGPoint(x: cx, y: cy), radius: sunR,
-                       startAngle: .radians(0), endAngle: .radians(Double.pi * 2), clockwise: false)
-            ctx.fill(sun, with: .color(Color(hex: 0x2B2F36)))
-
-            // 行星：几颗灰阶小球，安静地绕着
-            for p in planets {
-                let r = orbits[p.orbit]
-                let px = cx + cos(p.ang) * r
-                let py = cy + sin(p.ang) * r
-                var dot = Path()
-                dot.addArc(center: CGPoint(x: px, y: py), radius: p.rad,
-                           startAngle: .radians(0), endAngle: .radians(Double.pi * 2), clockwise: false)
-                ctx.fill(dot, with: .color(Color(hex: p.fill)))
-            }
-                    _ = geo
-                } // Canvas
-            } // GeometryReader
-        } // ZStack
+        }
         .allowsHitTesting(false)
         .ignoresSafeArea()
+    }
+
+    private func render(_ ctx: GraphicsContext, _ size: CGSize, date: Date?) {
+        let t = date.map { $0.timeIntervalSinceReferenceDate } ?? 0
+        // 锚点：窗口右下留白，作为背景场（避免压住侧栏导航与卡片正文）
+        let cx = max(size.width - 110, 178 + 130)
+        let cy = size.height - 80
+        let ink = Color.black
+
+        // 轨道：越往外越淡（中性墨线，不发红、不发光）
+        for (i, r) in orbits.enumerated() {
+            let rect = CGRect(x: cx - r, y: cy - r, width: r * 2, height: r * 2)
+            ctx.stroke(Path(ellipseIn: rect),
+                       with: .color(ink.opacity(i == 0 ? 0.12 : 0.07)), lineWidth: 1)
+        }
+
+        // 太阳：中心一颗不发光的暖灰实心球 + 极淡外晕（不发红）
+        let sunR: CGFloat = 11
+        var sunHalo = Path()
+        sunHalo.addArc(center: CGPoint(x: cx, y: cy), radius: sunR + 9,
+                       startAngle: .radians(0), endAngle: .radians(Double.pi * 2), clockwise: false)
+        ctx.fill(sunHalo, with: .color(Color(hex: 0x2B2F36).opacity(0.08)))
+        var sun = Path()
+        sun.addArc(center: CGPoint(x: cx, y: cy), radius: sunR,
+                   startAngle: .radians(0), endAngle: .radians(Double.pi * 2), clockwise: false)
+        ctx.fill(sun, with: .color(Color(hex: 0x2B2F36).opacity(0.5)))
+
+        // 行星：沿轨道公转；rotation 关则停在起始角（纯静态背景）
+        for p in planets {
+            let r = orbits[p.orbit]
+            let ang = p.ang + (rotation ? t * p.speed : 0)
+            let px = cx + cos(ang) * r
+            let py = cy + sin(ang) * r
+            var dot = Path()
+            dot.addArc(center: CGPoint(x: px, y: py), radius: p.rad,
+                       startAngle: .radians(0), endAngle: .radians(Double.pi * 2), clockwise: false)
+            ctx.fill(dot, with: .color(Color(hex: p.fill).opacity(0.6)))
+        }
     }
 }
 
 struct SidebarView: View {
     @Binding var page: Page
     @EnvironmentObject var store: SensorStore
+    /// 550W 太阳系公转开关（与 MossSolarSystem 共用同一份 UserDefaults）
+    @AppStorage("mossSolarRotation", store: Prefs.store) private var solarRotation = true
     /// 选中玻璃滑块的共享坐标空间
     @Namespace private var selectionNS
     /// 液态玻璃的滑动节奏：偏软、带一点回弹，像液体被推过去而不是硬切
@@ -479,6 +494,19 @@ struct SidebarView: View {
                 Divider()
                     .overlay(Palette.hairline)
                     .padding(.vertical, 6)
+
+                // 550W：太阳系公转开关，控制背景绘制图的旋转
+                if Palette.isMoss {
+                    Toggle(isOn: $solarRotation) {
+                        Text("太阳系公转")
+                            .font(.system(size: 9.5, design: .monospaced))
+                    }
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .tint(Palette.accent)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                }
 
                 // 设置入口：原本散落在侧栏底部的「开机自启 / 外观 / 采样间隔」已收拢到「设置」页
                 Button {
