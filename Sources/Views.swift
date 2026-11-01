@@ -415,17 +415,17 @@ struct SidebarView: View {
                             // 这里留同宽的透明占位，保证没选中时文字位置不跳
                             Color.clear.frame(width: 2, height: 14)
                             Image(systemName: p.icon)
-                                .font(.system(size: 13.5, weight: page == p ? .semibold : .regular))
-                                .frame(width: 17)
+                                .font(.system(size: 15, weight: page == p ? .semibold : .regular))
+                                .frame(width: 19)
                                 .foregroundStyle(page == p ? Palette.accent : Palette.textSecondary)
                                 // 选中时图标轻微放大：只改 transform，不重排
                                 .scaleEffect(page == p ? 1.12 : 1)
                                 .animation(SidebarView.selectionSpring, value: page)
                             Text(Palette.isMoss ? p.mossTitle : p.title)
                                 .font(Palette.isMoss
-                                      ? .system(size: 12.5, weight: page == p ? .semibold : .regular,
+                                      ? .system(size: 13.5, weight: page == p ? .semibold : .regular,
                                                 design: .monospaced)
-                                      : .system(size: 13, weight: page == p ? .semibold : .regular))
+                                      : .system(size: 14, weight: page == p ? .semibold : .regular))
                                 .tracking(Palette.isMoss ? 0.5 : 0.4)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.85)
@@ -437,7 +437,7 @@ struct SidebarView: View {
                         }
                         .padding(.leading, 6)
                         .padding(.trailing, 10)
-                        .padding(.vertical, 7.5)
+                        .padding(.vertical, 8.5)
                         .background {
                             // 全场只有这一块玻璃：选中项变了，它靠 matchedGeometryEffect
                             // 在行与行之间滑动，而不是每行各自亮一下
@@ -1110,7 +1110,11 @@ struct OverviewView: View {
                 }
                 Spacer(minLength: 6)
                 HStack(alignment: .center, spacing: 16) {
-                    TempRing(value: store.cpuTemp, size: 96)
+                    if Palette.isMoss {
+                        MossRadarGauge(value: store.cpuTemp, size: 96)
+                    } else {
+                        TempRing(value: store.cpuTemp, size: 96)
+                    }
                     VStack(alignment: .leading, spacing: 4) {
                         statLine("状态", store.tempStatusText,
                                  color: Palette.forTemp(store.cpuTemp))
@@ -1120,7 +1124,7 @@ struct OverviewView: View {
                                  color: store.load.thermal == .nominal ? Palette.ok : Palette.warn)
                     }
                     // 固定宽度：让 CPU 卡与 GPU 卡的曲线起点落在同一条竖线上
-                    .frame(width: Palette.isMoss ? 152 : 120, alignment: .leading)
+                    .frame(width: Palette.isMoss ? 168 : 120, alignment: .leading)
                     // 右侧空白用 CPU 负载曲线填充（Sparkline 无网格 / 表格背景）
                     VStack(alignment: .leading, spacing: 4) {
                         CodeLabel(text: "负载曲线", size: 9.5)
@@ -1186,9 +1190,7 @@ struct OverviewView: View {
                     .padding(.bottom, 3)
             }
             Text(Palette.isMoss ? MossText.code(value) : value)
-                .font(.system(size: Palette.isMoss ? 10.5 : 11,
-                             weight: .medium,
-                             design: Palette.isMoss ? .monospaced : .default).monospacedDigit())
+                .font(Palette.isMoss ? MossFont.number(12) : .system(size: 11, weight: .medium).monospacedDigit())
                 .foregroundStyle(color)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
@@ -1420,7 +1422,11 @@ struct OverviewView: View {
                 }
                 Spacer(minLength: 6)
                 HStack(alignment: .center, spacing: 16) {
-                    TempRing(value: store.gpuTemp, size: 96)
+                    if Palette.isMoss {
+                        MossRadarGauge(value: store.gpuTemp, size: 96)
+                    } else {
+                        TempRing(value: store.gpuTemp, size: 96)
+                    }
                     VStack(alignment: .leading, spacing: 4) {
                         statLine("状态", gpuTempStatusText,
                                  color: Palette.forTemp(store.gpuTemp))
@@ -1428,7 +1434,7 @@ struct OverviewView: View {
                                  color: Palette.mGPU)
                         // 功耗与显存不再在这里列一遍 —— 底部有大数 + 曲线，重复显示只会让卡更挤
                     }
-                    .frame(width: Palette.isMoss ? 152 : 120, alignment: .leading)
+                    .frame(width: Palette.isMoss ? 168 : 120, alignment: .leading)
                     // 右侧用显卡占用率曲线填充（与 CPU 卡的负载曲线同一位置）
                     VStack(alignment: .leading, spacing: 4) {
                         CodeLabel(text: "占用率曲线", size: 9.5)
@@ -1485,12 +1491,15 @@ struct OverviewView: View {
             CodeLabel(text: title, size: 9.5)
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(value)
-                    .font(.system(size: 17, weight: .semibold).monospacedDigit())
+                    // 550W：大数换 DIN，字面更"仪表"；其余主题保持原来的等宽数字
+                    .font(Palette.isMoss ? MossFont.number(19)
+                                         : .system(size: 17, weight: .semibold).monospacedDigit())
                     .foregroundStyle(has ? color : Palette.textSecondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                 Text(unit)
-                    .font(.system(size: 9.5))
+                    .font(Palette.isMoss ? .system(size: 9, weight: .semibold, design: .monospaced)
+                                         : .system(size: 9.5))
                     .foregroundStyle(Palette.textSecondary)
             }
         }

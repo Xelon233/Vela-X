@@ -323,7 +323,7 @@ struct SectionTitle: View {
                 .foregroundStyle(color)
             // 550W：命令一律大写（CPU --STAT），像机器自己的表单，而不是人手敲的
             Text(command.uppercased())
-                .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
+                .font(MossFont.display(12.5))
                 .tracking(0.2)
                 .foregroundStyle(color)
                 .lineLimit(1)
@@ -391,6 +391,115 @@ struct SectionTitle: View {
                     .lineLimit(1)
             }
         }
+    }
+}
+
+// MARK: - 550W 字体与雷达仪表
+
+/// 550W 的显示字体：DIN Alternate Bold —— 车站/机场牌与车载仪表用的那款，
+/// 数字笔画平直、对比强，读起来像「机器在报数」。中文自动回落到系统字体。
+enum MossFont {
+    static func display(_ size: CGFloat, weight: Font.Weight = .bold) -> Font {
+        .custom("DINAlternate-Bold", size: size).weight(weight)
+    }
+    /// 数字（尺寸略大时字面更饱满）
+    static func number(_ size: CGFloat) -> Font {
+        .custom("DINAlternate-Bold", size: size)
+    }
+}
+
+/// 550W 的雷达式仪表：
+///   同心圈 + 一圈刻度 + 一根 4 秒转一圈的扫描扇面，温度用外圈的亮点标出。
+/// 只有这块 96pt 的小画布按 20fps 重画（扫面角度来自时间，不存状态），
+/// 其余部分（圈、刻度、十字线）虽然一起重画，但都是几笔画线，成本远低于一张锥形渐变。
+struct MossRadarGauge: View {
+    let value: Double?
+    var size: CGFloat = 96
+
+    private var fraction: Double {
+        guard let v = value else { return 0 }
+        return min(max((v - 30) / 70, 0), 1)
+    }
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.05)) { ctx in
+            let t = ctx.date.timeIntervalSince1970
+            let sweep = (t.truncatingRemainder(dividingBy: 4)) / 4 * 360
+            Canvas { c, s in draw(c, s, sweep: sweep) }
+        }
+        .frame(width: size, height: size)
+        .overlay(alignment: .center) { centerLabel }
+    }
+
+    private var centerLabel: some View {
+        VStack(spacing: -2) {
+            Text(value.map { String(format: "%.0f", $0) } ?? "—")
+                .font(MossFont.number(size * 0.30))
+                .foregroundStyle(value == nil ? Palette.textSecondary : Palette.text)
+            Text("°C")
+                .font(.system(size: size * 0.10, weight: .semibold, design: .monospaced))
+                .foregroundStyle(Palette.textTertiary)
+        }
+    }
+
+    private func draw(_ ctx: GraphicsContext, _ s: CGSize, sweep: Double) {
+        let center = CGPoint(x: s.width / 2, y: s.height / 2)
+        let r = min(s.width, s.height) / 2 - 3
+
+        // 底圈与内圈
+        for (k, o) in [(1.0, 0.26), (0.66, 0.12), (0.33, 0.08)] {
+            let rr = r * k
+            let rect = CGRect(x: center.x - rr, y: center.y - rr, width: rr * 2, height: rr * 2)
+            ctx.stroke(Path(ellipseIn: rect), with: .color(Palette.accent.opacity(o)),
+                       lineWidth: k == 1.0 ? 1.2 : 0.8)
+        }
+
+        // 十字虚线
+        var cross = Path()
+        cross.move(to: CGPoint(x: center.x - r, y: center.y))
+        cross.addLine(to: CGPoint(x: center.x + r, y: center.y))
+        cross.move(to: CGPoint(x: center.x, y: center.y - r))
+        cross.addLine(to: CGPoint(x: center.x, y: center.y + r))
+        ctx.stroke(cross, with: .color(Palette.accent.opacity(0.12)),
+                   style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
+
+        // 刻度：每 15° 一根，90° 处加长
+        var ticks = Path()
+        for i in 0 ..< 24 {
+            let a = Double(i) / 24 * 2 * .pi - .pi / 2
+            let long = i % 6 == 0
+            let outer = r - 1
+            let inner = outer - (long ? 7 : 3.5)
+            ticks.move(to: CGPoint(x: center.x + cos(a) * outer, y: center.y + sin(a) * outer))
+            ticks.addLine(to: CGPoint(x: center.x + cos(a) * inner, y: center.y + sin(a) * inner))
+        }
+        ctx.stroke(ticks, with: .color(Palette.accent.opacity(0.35)), lineWidth: 1)
+
+        // 扫描扇面：从扫描线往回 55°，越靠后越淡
+        let span: Double = 55
+        let a1 = (sweep - 90) * .pi / 180
+        let a0 = (sweep - 90 - span) * .pi / 180
+        var sector = Path()
+        sector.move(to: center)
+        sector.addArc(center: center, radius: r - 1, startAngle: .radians(a0),
+                      endAngle: .radians(a1), clockwise: false)
+        sector.closeSubpath()
+        ctx.fill(sector, with: .color(Palette.accent.opacity(0.10)))
+        // 扫描线本身
+        var beam = Path()
+        beam.move(to: center)
+        beam.addLine(to: CGPoint(x: center.x + cos(a1) * (r - 1), y: center.y + sin(a1) * (r - 1)))
+        ctx.stroke(beam, with: .color(Palette.accent.opacity(0.62)), lineWidth: 1.2)
+
+        // 温度亮点：沿外圈，从正上方顺时针
+        guard value != nil else { return }
+        let av = (fraction * 360 - 90) * .pi / 180
+        let bx = center.x + cos(av) * (r - 7)
+        let by = center.y + sin(av) * (r - 7)
+        ctx.fill(Path(ellipseIn: CGRect(x: bx - 3, y: by - 3, width: 6, height: 6)),
+                 with: .color(Palette.accent))
+        ctx.stroke(Path(ellipseIn: CGRect(x: bx - 6, y: by - 6, width: 12, height: 12)),
+                   with: .color(Palette.accent.opacity(0.45)), lineWidth: 1)
     }
 }
 
