@@ -338,10 +338,10 @@ struct MossSolarSystem: View {
                     .drawingGroup()
 
                 // 动态层：只有 5 个小圆点在动，重绘很便宜。
-                // 20fps 已足够顺（角速度 0.08~0.34 rad/s，慢到肉眼分不出 20/24），
-                // 比 24fps 每少 4 次/秒整窗活层重绘，拖拽更省力。
+                // 10fps 足够顺（最慢轨道 0.08 rad/s，每帧仅转 ~0.8°），
+                // 比之前的 20fps 又砍掉一半整窗活层重绘，拖拽/缩放更省力。
                 if rotation {
-                    TimelineView(.periodic(from: .now, by: 1/20)) { tl in
+                    TimelineView(.periodic(from: .now, by: 1/10)) { tl in
                         Canvas { c, s in drawPlanets(c, s, date: tl.date) }
                     }
                 } else {
@@ -361,7 +361,8 @@ struct MossSolarSystem: View {
         return orbitFracs.map { $0 * span }
     }
 
-    /// 静态层：轨道 + 太阳（圆心在左上角）
+    /// 静态层：轨道（圆心在左上角）。只画一次，之后拍平成纹理复用。
+    /// ⚠️ 不画太阳中心点 —— 用户要求去掉中心点显示。
     private func drawBase(_ ctx: GraphicsContext, _ size: CGSize) {
         let cx = sunInset
         let cy = sunInset
@@ -373,17 +374,6 @@ struct MossSolarSystem: View {
             ctx.stroke(Path(ellipseIn: rect),
                        with: .color(ink.opacity(i == 0 ? 0.08 : 0.045)), lineWidth: 1)
         }
-
-        // 太阳：左上角一颗不发光的暖灰实心球 + 极淡外晕（不发红，压低到背景级）
-        let sunR: CGFloat = 10
-        var sunHalo = Path()
-        sunHalo.addArc(center: CGPoint(x: cx, y: cy), radius: sunR + 8,
-                       startAngle: .radians(0), endAngle: .radians(Double.pi * 2), clockwise: false)
-        ctx.fill(sunHalo, with: .color(Color(hex: 0x2B2F36).opacity(0.06)))
-        var sun = Path()
-        sun.addArc(center: CGPoint(x: cx, y: cy), radius: sunR,
-                   startAngle: .radians(0), endAngle: .radians(Double.pi * 2), clockwise: false)
-        ctx.fill(sun, with: .color(Color(hex: 0x2B2F36).opacity(0.38)))
     }
 
     /// 动态层：行星。角度 = 起始角 + 换页偏移（pagePhase）+ 公转（t × 角速度）
@@ -754,12 +744,12 @@ struct OverviewView: View {
             Rectangle().fill(Palette.accent).frame(width: 2)
         }
         // 沿底边扫过的一道红线：1px 高、单层渐变。
-        // 用低帧率 TimelineView（30fps）驱动，替代原来的 repeatForever（按屏幕刷新率常驻 ~120fps），
-        // 视觉完全一致（6 秒横扫一遍），但把这道活层的重绘压到 30fps，拖拽/缩放更省力。
+        // 用低帧率 TimelineView（12fps）驱动，替代原来的 repeatForever（按屏幕刷新率常驻 ~120fps），
+        // 视觉完全一致（6 秒横扫一遍），但把这道活层的重绘压到 12fps，拖拽/缩放更省力。
         .overlay(alignment: .bottomLeading) {
             GeometryReader { geo in
                 let w = geo.size.width
-                TimelineView(.periodic(from: .now, by: 1/30)) { ctx in
+                TimelineView(.periodic(from: .now, by: 1/12)) { ctx in
                     let period: Double = 6
                     let phase = ctx.date.timeIntervalSinceReferenceDate
                         .truncatingRemainder(dividingBy: period) / period

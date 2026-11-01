@@ -438,10 +438,11 @@ struct MossTempShadow: View {
 
     private var centerLabel: some View {
         VStack(spacing: -2) {
-            // 中心读数改用七段液晶体（MossLCDNumber），白底上像一块黑 LCD
-            MossLCDNumber(string: value.map { String(format: "%.0f", $0) } ?? "—",
-                          digitHeight: size * 0.30,
-                          color: value == nil ? Palette.textSecondary : Palette.text)
+            // 中心读数用回原字体（DIN 等宽数字）；Text 比七段液晶体 Canvas 自绘更省，
+            // 传感器每次刷新只需重画一次文本而非十几段矩形。
+            Text(value.map { String(format: "%.0f", $0) } ?? "—")
+                .font(MossFont.number(size * 0.30))
+                .foregroundStyle(value == nil ? Palette.textSecondary : Palette.text)
             Text("°C")
                 .font(.system(size: size * 0.10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Palette.textTertiary)
