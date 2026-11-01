@@ -325,23 +325,23 @@ struct MossSolarSystem: View {
         let cy = size.height - 80
         let ink = Color.black
 
-        // 轨道：越往外越淡（中性墨线，不发红、不发光）
+        // 轨道：越往外越淡（中性墨线，不发红、不发光，整体压低到「透图」级别的微淡）
         for (i, r) in orbits.enumerated() {
             let rect = CGRect(x: cx - r, y: cy - r, width: r * 2, height: r * 2)
             ctx.stroke(Path(ellipseIn: rect),
-                       with: .color(ink.opacity(i == 0 ? 0.12 : 0.07)), lineWidth: 1)
+                       with: .color(ink.opacity(i == 0 ? 0.09 : 0.05)), lineWidth: 1)
         }
 
-        // 太阳：中心一颗不发光的暖灰实心球 + 极淡外晕（不发红）
-        let sunR: CGFloat = 11
+        // 太阳：中心一颗不发光的暖灰实心球 + 极淡外晕（不发红，压低到背景级）
+        let sunR: CGFloat = 9
         var sunHalo = Path()
-        sunHalo.addArc(center: CGPoint(x: cx, y: cy), radius: sunR + 9,
+        sunHalo.addArc(center: CGPoint(x: cx, y: cy), radius: sunR + 7,
                        startAngle: .radians(0), endAngle: .radians(Double.pi * 2), clockwise: false)
-        ctx.fill(sunHalo, with: .color(Color(hex: 0x2B2F36).opacity(0.08)))
+        ctx.fill(sunHalo, with: .color(Color(hex: 0x2B2F36).opacity(0.06)))
         var sun = Path()
         sun.addArc(center: CGPoint(x: cx, y: cy), radius: sunR,
                    startAngle: .radians(0), endAngle: .radians(Double.pi * 2), clockwise: false)
-        ctx.fill(sun, with: .color(Color(hex: 0x2B2F36).opacity(0.5)))
+        ctx.fill(sun, with: .color(Color(hex: 0x2B2F36).opacity(0.4)))
 
         // 行星：沿轨道公转；rotation 关则停在起始角（纯静态背景）
         for p in planets {
@@ -352,7 +352,7 @@ struct MossSolarSystem: View {
             var dot = Path()
             dot.addArc(center: CGPoint(x: px, y: py), radius: p.rad,
                        startAngle: .radians(0), endAngle: .radians(Double.pi * 2), clockwise: false)
-            ctx.fill(dot, with: .color(Color(hex: p.fill).opacity(0.6)))
+            ctx.fill(dot, with: .color(Color(hex: p.fill).opacity(0.5)))
         }
     }
 }
