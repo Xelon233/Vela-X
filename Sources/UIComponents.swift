@@ -222,9 +222,24 @@ struct Card<Content: View>: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         // 外发光仍是实时阴影（glow 卡才给）；其余卡不发光，靠描边与玻璃分层，观感几乎无差。
-        // 550W 完全不发光：白底上一个光晕只会糊成一团，工业面板靠硬描边立起来。
-        .shadow(color: (glow && !Palette.isMoss) ? Palette.accent.opacity(scheme == .light ? 0.07 : 0.10) : .clear,
-                radius: (glow && !Palette.isMoss) ? 7 : 0, x: 0, y: (glow && !Palette.isMoss) ? 3 : 0)
+        // 550W 不发光（白底上光晕会糊），但给一层很浅的落地影：面板像真的搁在纸面上。
+        // 只做一层（radius 9 / y 3），不再叠第二层接触影 —— 7 张卡各两道离屏模糊会立刻把
+        // 之前优化掉的合成开销加回来，一层已经足够撑起层次。
+        .shadow(color: shadowColor, radius: shadowRadius, x: 0, y: shadowY)
+    }
+
+    /// 550W 用一层浅投影撑层次；其它主题维持原样（glow 卡才有彩色外发光）
+    private var shadowColor: Color {
+        if Palette.isMoss { return Color.black.opacity(0.085) }
+        return glow ? Palette.accent.opacity(scheme == .light ? 0.07 : 0.10) : .clear
+    }
+    private var shadowRadius: CGFloat {
+        if Palette.isMoss { return 9 }
+        return glow ? 7 : 0
+    }
+    private var shadowY: CGFloat {
+        if Palette.isMoss { return 3 }
+        return glow ? 3 : 0
     }
 
     private var glassShape: PanelShape {

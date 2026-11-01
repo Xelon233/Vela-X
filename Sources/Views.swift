@@ -108,6 +108,12 @@ struct ContentView: View {
             mainContent
                 .id(theme.mode)
 
+            // 550W：整窗罩一层「屏幕感」—— 四角定位十字 + 极淡边缘压暗
+            if Palette.isMoss {
+                MossScreenOverlay()
+                    .zIndex(5)
+            }
+
             if let kind = bootKind {
                 MossBootOverlay(kind: kind) {
                     withAnimation(.easeOut(duration: 0.28)) { bootKind = nil }
@@ -189,6 +195,10 @@ struct WorkspaceBackground: View {
                 // 这样整窗观感与壁纸无关，任何壁纸下都是同一块限定量产面板。
                 Color(hex: 0xF2F3F5)
                 MossGrid()
+                // 纸面氛围：底部一片发动机冷却塔的暖光 + 一层几乎看不见的扫描线
+                MossHorizon()
+                MossRings()
+                MossScanlines()
             }
             .ignoresSafeArea()
         } else {
@@ -235,6 +245,104 @@ struct MossGrid: View {
     }
 }
 
+/// 550W 纸面氛围：底部地平线暖光，像远处那一片发动机塔基映上来的热。
+/// 一层径向渐变，静态，不参与重绘。
+struct MossHorizon: View {
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .bottom) {
+                RadialGradient(colors: [Color(red: 0.784, green: 0.063, blue: 0.180).opacity(0.17),
+                                        Color(red: 0.784, green: 0.063, blue: 0.180).opacity(0.05),
+                                        Color(red: 0.784, green: 0.063, blue: 0.180).opacity(0.0)],
+                               center: .init(x: 0.5, y: 1.02),
+                               startRadius: 6,
+                               endRadius: geo.size.width * 0.78)
+                    .frame(height: geo.size.height * 0.62)
+                // 地平线本身：一条 1px 的红线，像远处塔基与纸面的交界
+                Rectangle()
+                    .fill(Color(red: 0.784, green: 0.063, blue: 0.180).opacity(0.16))
+                    .frame(height: 1)
+            }
+            .frame(maxHeight: .infinity, alignment: .bottom)
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// 550W 角落的静态雷达弧：几圈同心圆贴在右上角外，只露出小半截。
+/// 纯装饰、纯静态，用来把「这里有一台在扫描的设备」这件事补上。
+struct MossRings: View {
+    var body: some View {
+        GeometryReader { geo in
+            Canvas { ctx, _ in
+                let ink = Color(red: 0.784, green: 0.063, blue: 0.180)
+                let center = CGPoint(x: geo.size.width + 40, y: -50)
+                for i in 1 ... 4 {
+                    let r = CGFloat(i) * 96
+                    let rect = CGRect(x: center.x - r, y: center.y - r, width: r * 2, height: r * 2)
+                    ctx.stroke(Path(ellipseIn: rect),
+                               with: .color(ink.opacity(i == 2 ? 0.09 : 0.055)),
+                               lineWidth: 1)
+                }
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// 550W 扫描线：每 3pt 一条几乎看不见的横线，给白纸加一层屏幕质感。
+/// 静态 Canvas + drawingGroup，缩放到任意窗口尺寸都是一次绘制。
+struct MossScanlines: View {
+    var step: CGFloat = 3
+    var body: some View {
+        Canvas { ctx, size in
+            var p = Path()
+            var y: CGFloat = 0
+            while y < size.height {
+                p.move(to: CGPoint(x: 0, y: y))
+                p.addLine(to: CGPoint(x: size.width, y: y))
+                y += step
+            }
+            ctx.stroke(p, with: .color(Color.black.opacity(0.022)), lineWidth: 1)
+        }
+        .drawingGroup()
+        .allowsHitTesting(false)
+    }
+}
+
+/// 550W 屏幕罩层：四角定位十字 + 极淡的边缘压暗，让整窗像一块被拍下来的屏幕。
+/// 只画在窗口边缘，中间完全透明，不影响任何内容可读性。
+struct MossScreenOverlay: View {
+    var body: some View {
+        ZStack {
+            RadialGradient(colors: [.clear, Color.black.opacity(0.055)],
+                           center: .center,
+                           startRadius: 260,
+                           endRadius: 760)
+            GeometryReader { geo in
+                Canvas { ctx, size in
+                    let ink = Color(red: 0.784, green: 0.063, blue: 0.180)
+                    let inset: CGFloat = 14
+                    let arm: CGFloat = 9
+                    var cross = Path()
+                    for c in 0 ..< 4 {
+                        let x = c % 2 == 1 ? size.width - inset : inset
+                        let y = c > 1 ? size.height - inset : inset
+                        cross.move(to: CGPoint(x: x - arm, y: y))
+                        cross.addLine(to: CGPoint(x: x + arm, y: y))
+                        cross.move(to: CGPoint(x: x, y: y - arm))
+                        cross.addLine(to: CGPoint(x: x, y: y + arm))
+                    }
+                    ctx.stroke(cross, with: .color(ink.opacity(0.28)), lineWidth: 1)
+                    _ = geo                        // 保持 GeometryReader 以便按窗口尺寸绘制
+                }
+            }
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+    }
+}
+
 struct SidebarView: View {
     @Binding var page: Page
     @EnvironmentObject var store: SensorStore
@@ -242,6 +350,11 @@ struct SidebarView: View {
     @Namespace private var selectionNS
     /// 液态玻璃的滑动节奏：偏软、带一点回弹，像液体被推过去而不是硬切
     static let selectionSpring = Animation.spring(response: 0.36, dampingFraction: 0.68)
+    /// 550W 切页：一道扫描线从上掠过（0 → 1 表示纵向位置）
+    @State private var scanY: CGFloat = 1
+    @State private var scanOpacity: Double = 0
+    /// 550W 切页：整栏一次极短的红曝光，像阴极射线管被重新点亮
+    @State private var flash: Double = 0
 
     /// 550W 下的「本地节点」行：优先机型代号，取不到就退回产品名
     private var mossNodeLine: String {
@@ -393,7 +506,40 @@ struct SidebarView: View {
             .padding(.horizontal, 16)
             .padding(.bottom, 16)
         }
+        // 550W：切页时一道红线从上掠到下面 + 一次极短的曝光。
+        // 两者都是一次性动画（0.26 / 0.35 秒）就结束，不是常驻的 repeatForever。
+        .overlay(alignment: .top) {
+            if Palette.isMoss {
+                GeometryReader { geo in
+                    Rectangle()
+                        .fill(LinearGradient(colors: [.clear, Palette.accent.opacity(0.6), .clear],
+                                             startPoint: .leading, endPoint: .trailing))
+                        .frame(height: 1.5)
+                        .offset(y: scanY * geo.size.height)
+                        .opacity(scanOpacity)
+                }
+                .allowsHitTesting(false)
+            }
+        }
+        .overlay {
+            if Palette.isMoss {
+                Palette.accent.opacity(flash).allowsHitTesting(false)
+            }
+        }
+        .onChange(of: page) { _ in playSwitchSweep() }
         .frame(width: 178)
+    }
+
+    /// 550W：换页的「重新同步」小动作。扫描线瞬移到顶端再无动画地滑到底，
+    /// 曝光同一时刻亮起、快速衰减 —— 两段都是一次性，播完就静止。
+    private func playSwitchSweep() {
+        guard Palette.isMoss else { return }
+        scanY = 0
+        scanOpacity = 1
+        withAnimation(.easeOut(duration: 0.26)) { scanY = 1 }
+        withAnimation(.easeOut(duration: 0.30)) { scanOpacity = 0 }
+        flash = 0.05
+        withAnimation(.easeOut(duration: 0.35)) { flash = 0 }
     }
 }
 
