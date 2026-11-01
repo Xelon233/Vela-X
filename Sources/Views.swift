@@ -298,32 +298,34 @@ struct MossSolarSystem: View {
     ]
 
     var body: some View {
-        GeometryReader { geo in
-            Canvas { ctx, size in
-                // 收在侧栏左下空白：x 取侧栏中线附近，y 贴窗口下缘退一点
-                let cx = min(size.width * 0.09, 92)
-                let cy = size.height - 110
-                let ink = Color.black
+        ZStack {
+            Color.clear
+            GeometryReader { geo in
+                Canvas { ctx, size in
+                    // 收在侧栏左下空白：x 贴左侧栏中线附近，y 近窗口下缘退一点
+                    let cx = min(size.width * 0.085, 78)
+                    let cy = size.height - 84
+                    let ink = Color.black
 
-            // 轨道：越往外越淡
+            // 轨道：越往外越淡（中性墨线，不发红、不发光）
             for (i, r) in orbits.enumerated() {
                 let rect = CGRect(x: cx - r, y: cy - r, width: r * 2, height: r * 2)
                 ctx.stroke(Path(ellipseIn: rect),
-                           with: .color(ink.opacity(i == 0 ? 0.16 : 0.09)), lineWidth: 1)
+                           with: .color(ink.opacity(i == 0 ? 0.15 : 0.08)), lineWidth: 1)
             }
 
-            // 太阳：中心一颗不发光的暖灰实心球 + 极淡外晕（不发红）
-            let sunR: CGFloat = 10
+            // 太阳：中心一颗不发光的暖灰实心球 + 极淡外晕
+            let sunR: CGFloat = 8
             var sunHalo = Path()
-            sunHalo.addArc(center: CGPoint(x: cx, y: cy), radius: sunR + 7,
+            sunHalo.addArc(center: CGPoint(x: cx, y: cy), radius: sunR + 6,
                            startAngle: .radians(0), endAngle: .radians(Double.pi * 2), clockwise: false)
-            ctx.fill(sunHalo, with: .color(Color(hex: 0x2B2F36).opacity(0.12)))
+            ctx.fill(sunHalo, with: .color(Color(hex: 0x2B2F36).opacity(0.10)))
             var sun = Path()
             sun.addArc(center: CGPoint(x: cx, y: cy), radius: sunR,
                        startAngle: .radians(0), endAngle: .radians(Double.pi * 2), clockwise: false)
             ctx.fill(sun, with: .color(Color(hex: 0x2B2F36)))
 
-            // 行星
+            // 行星：几颗灰阶小球，安静地绕着
             for p in planets {
                 let r = orbits[p.orbit]
                 let px = cx + cos(p.ang) * r
@@ -333,8 +335,10 @@ struct MossSolarSystem: View {
                            startAngle: .radians(0), endAngle: .radians(Double.pi * 2), clockwise: false)
                 ctx.fill(dot, with: .color(Color(hex: p.fill)))
             }
-            }
-        }
+                    _ = geo
+                } // Canvas
+            } // GeometryReader
+        } // ZStack
         .allowsHitTesting(false)
         .ignoresSafeArea()
     }
