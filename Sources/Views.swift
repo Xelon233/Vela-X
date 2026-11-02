@@ -97,6 +97,8 @@ struct ContentView: View {
     @EnvironmentObject var store: SensorStore
     @EnvironmentObject var theme: ThemeManager
     @StateObject private var router = PageRouter.shared
+    /// 窗口可见性 / 是否正在缩放：缩放期间撤掉整窗装饰层，避免每帧重分配 GPU 表面
+    @ObservedObject private var visibility = WindowVisibility.shared
     /// 550W 的过场：nil = 不显示；.launch = 启动应用；.themeSwitch = 从别的主题切进来
     @State private var bootKind: MossBootKind?
 
@@ -109,7 +111,9 @@ struct ContentView: View {
                 .id(theme.mode)
 
             // 550W：整窗罩一层「屏幕感」—— 四角定位十字 + 极淡边缘压暗
-            if Palette.isMoss {
+            // ⚠️ 缩放期间整层撤掉：这两层都是**整窗**尺寸，每帧重排都要为它们
+            // 重新分配 GPU 表面；它们只有 4%~9% 不透明度，缩放时消失几乎察觉不到。
+            if Palette.isMoss, !visibility.isResizing {
                 MossScreenOverlay()
                     .zIndex(5)
                 // 局部太阳系绘制图：圆心在左上角、弧线扫过整窗（内容背景不透明，
@@ -201,13 +205,16 @@ struct ContentView: View {
 /// 现在只压一层低不透明度纯色，颜色全部交给壁纸：
 /// 透过 behindWindow 玻璃折射进来的就是桌面本身的颜色，换壁纸就换氛围。
 struct WorkspaceBackground: View {
+    @ObservedObject private var visibility = WindowVisibility.shared
+
     var body: some View {
         if Palette.isMoss {
             // 550W 不复用桌面：直接铺一块干净的白（纯白，比之前的更利落），
             // 这样整窗观感与壁纸无关，任何壁纸下都是同一块限定量产面板。
             Color.white
-            // 极淡的图纸网格，保留「工程纸」底子（不抢戏）
-            MossGrid()
+            // 极淡的图纸网格，保留「工程纸」底子（不抢戏）。
+            // 缩放期间省掉：整窗 Canvas 每帧都要重描几十条线 + 重分配一块整窗纹理。
+            if !visibility.isResizing { MossGrid() }
         } else {
             Palette.veil
                 .ignoresSafeArea()
@@ -264,6 +271,15 @@ final class WindowVisibility: ObservableObject {
 
     @Published private(set) var isVisible = true
 
+    /// 是否正在拖动边角缩放（live resize）。
+    ///
+    /// 缩放时每帧都要整窗重排 + 重栅格化，而 550W 有两个**整窗**装饰层
+    /// （`MossScreenOverlay`、`MossSolarSystem`）和整窗底纹网格。它们在缩放过程中
+    /// 每帧都要重新分配一块整窗大小的 GPU 表面（采样里 `RootTexture::make_texture` →
+    /// `newTexture` → `nvk_AllocateMemory` 占了约 13%），是「缩小窗口有点卡」的主因。
+    /// 这些装饰只有 4%~9% 不透明度，缩放期间撤掉几乎看不出来，松手立刻回来。
+    @Published private(set) var isResizing = false
+
     private weak var window: NSWindow?
     private var observers: [NSObjectProtocol] = []
     /// 兜底轮询：某些路径（开机静默启动后自动收窗）不会发遮挡通知，
@@ -280,10 +296,15 @@ final class WindowVisibility: ObservableObject {
             NSWindow.didMiniaturizeNotification,
             NSWindow.didDeminiaturizeNotification,
             NSWindow.willCloseNotification,
+            NSWindow.willStartLiveResizeNotification,
+            NSWindow.didEndLiveResizeNotification,
         ]
         observers = names.map { name in
-            nc.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
-                self?.refresh()
+            nc.addObserver(forName: name, object: window, queue: .main) { [weak self] note in
+                guard let self else { return }
+                if note.name == NSWindow.willStartLiveResizeNotification { self.isResizing = true }
+                if note.name == NSWindow.didEndLiveResizeNotification { self.isResizing = false }
+                self.refresh()
             }
         }
         poll?.invalidate()
@@ -936,8 +957,11 @@ struct OverviewView: View {
 
             if Palette.isMoss {
                 // 行星发动机阵列：整页的收边装饰，读起来像远方的引擎地平线
-                MossEngineArray()
-                    .padding(.top, 4)
+                // （缩放期间不画：整条是 Canvas，每帧重栅格化不划算）
+                MossDecorGate {
+                    MossEngineArray()
+                        .padding(.top, 4)
+                }
                 MossFooterStrip(lines: footerLogLines,
                                 node: store.hardware.modelCode.isEmpty ? "LOCAL" : store.hardware.modelCode,
                                 glitch: false)
@@ -1020,7 +1044,7 @@ struct OverviewView: View {
                 }
             }
             .animation(.spring(response: 0.30, dampingFraction: 0.8), value: draggingCard)
-            .collectFrame(id: card)
+            .collectFrameIfEditing(windowState.isEditMode, id: card)
     }
 
     /// 编辑模式下每张卡右上角的「移除」角标（minus 圆标）。

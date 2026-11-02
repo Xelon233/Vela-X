@@ -179,6 +179,8 @@ struct Card<Content: View>: View {
     /// 圆角（Liquid Glass 大圆角 + 连续曲线）
     var radius: CGFloat = 22
     @Environment(\.colorScheme) private var scheme
+    /// 缩放期间关掉投影：阴影是离屏模糊，7 张卡每帧各重算一次，是缩放掉帧的大头之一
+    @ObservedObject private var visibility = WindowVisibility.shared
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -196,14 +198,14 @@ struct Card<Content: View>: View {
                     // 550W：沿着两处大斜边加一段红边，比四角角标更贴合切角轮廓
                     if Palette.isMoss {
                         // 斜边红条缓慢呼吸：整个 550W 界面唯一的「活」的装饰
-                        MossAccentPulse(cut: 13)
+                        MossDecorGate { MossAccentPulse(cut: 13) }
                     }
                 }
                 .overlay {
                     // 550W 面板装饰：四角定位刻线 + 顶部斜纹带 + 左缘标尺 + 底部虚线。
                     // 纯静态，和填充/描边一起被拍平进同一张纹理，不参与逐帧绘制。
                     if Palette.isMoss {
-                        MossPanelDecor()
+                        MossDecorGate { MossPanelDecor() }
                     }
                 }
                 .overlay(alignment: .leading) {
@@ -225,7 +227,9 @@ struct Card<Content: View>: View {
         // 550W 不发光（白底上光晕会糊），但给一层很浅的落地影：面板像真的搁在纸面上。
         // 只做一层（radius 9 / y 3），不再叠第二层接触影 —— 7 张卡各两道离屏模糊会立刻把
         // 之前优化掉的合成开销加回来，一层已经足够撑起层次。
-        .shadow(color: shadowColor, radius: shadowRadius, x: 0, y: shadowY)
+        .shadow(color: visibility.isResizing ? .clear : shadowColor,
+                radius: visibility.isResizing ? 0 : shadowRadius,
+                x: 0, y: shadowY)
     }
 
     /// 550W 用一层浅投影撑层次；其它主题维持原样（glow 卡才有彩色外发光）
@@ -1872,6 +1876,18 @@ enum MossUptime {
         return d > 0
             ? String(format: "%dd %02d:%02d:%02d", d, h, m, s)
             : String(format: "%02d:%02d:%02d", h, m, s)
+    }
+}
+
+/// 缩放期间的装饰层闸门：拖动边角缩放时，纯装饰内容（面板刻线、斜纹带、
+/// 发动机剪影…）每帧都要跟着重新栅格化，而它们在缩放过程中几乎看不清。
+/// 缩放期间直接不渲染，松手立刻回来 —— 每帧少几十个矢量绘制与图层合成。
+struct MossDecorGate<Content: View>: View {
+    @ObservedObject private var visibility = WindowVisibility.shared
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        if !visibility.isResizing { content }
     }
 }
 

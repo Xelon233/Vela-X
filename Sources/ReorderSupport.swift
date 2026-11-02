@@ -45,4 +45,18 @@ extension View {
             }
         )
     }
+
+    /// 只在编辑模式采集 frame。
+    ///
+    /// `collectFrame` 给每张卡挂一个 `GeometryReader` + preference，而
+    /// `onPreferenceChange` 又会写 `@State` → **每次布局之后再触发一轮布局**。
+    /// 拖拽排序只在编辑模式可用，平时这套采集纯属白烧（缩放时每帧都要多跑一轮布局）。
+    @ViewBuilder
+    func collectFrameIfEditing<ID: Hashable>(_ editing: Bool, id: ID) -> some View {
+        if editing {
+            collectFrame(id: id)
+        } else {
+            self
+        }
+    }
 }
