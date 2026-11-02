@@ -252,6 +252,51 @@ struct MossGrid: View {
     }
 }
 
+/// 窗口可见性跟踪。
+///
+/// 为什么需要：550W 的装饰（行星公转、页脚扫描线、光标闪烁、日志轮播、卡片呼吸边…）
+/// 都是 `TimelineView` 逐帧刷新。窗口被遮挡 / 最小化 / 切到别的 Space 时，
+/// 这些像素根本没人看见，但每一跳仍会触发
+/// 「SwiftUI 图更新 → 整窗 AppKit 布局 → CA 提交 → 离屏渲染 → GPU 表面分配」，
+/// 实测能让「看不见的窗口」白烧掉约 9% 单核。挂上这个闸门后，不可见时全部退化为静态一帧。
+final class WindowVisibility: ObservableObject {
+    static let shared = WindowVisibility()
+
+    @Published private(set) var isVisible = true
+
+    private weak var window: NSWindow?
+    private var observers: [NSObjectProtocol] = []
+
+    func attach(_ window: NSWindow) {
+        guard self.window !== window else { return }
+        self.window = window
+        let nc = NotificationCenter.default
+        for o in observers { nc.removeObserver(o) }
+        let names: [Notification.Name] = [
+            NSWindow.didChangeOcclusionStateNotification,
+            NSWindow.didMiniaturizeNotification,
+            NSWindow.didDeminiaturizeNotification,
+            NSWindow.didOrderOnScreenNotification,
+            NSWindow.didOrderOffScreenNotification,
+        ]
+        observers = names.map { name in
+            nc.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                self?.refresh()
+            }
+        }
+        refresh()
+    }
+
+    /// 只有「在屏 + 未最小化 + 未被完全遮挡」才算可见；拿不准时按可见处理（保底不改变现状）。
+    private func refresh() {
+        guard let w = window else { return }
+        let visible = w.isVisible
+            && !w.isMiniaturized
+            && w.occlusionState.contains(.visible)
+        if visible != isVisible { isVisible = visible }
+    }
+}
+
 /// 550W 屏幕罩层：四角定位十字 + 极淡的边缘压暗，让整窗像一块被拍下来的屏幕。
 /// 只画在窗口边缘，中间完全透明，不影响任何内容可读性。
 struct MossScreenOverlay: View {
@@ -341,8 +386,8 @@ struct MossSolarSystem: View {
                 // 10fps 足够顺（最慢轨道 0.08 rad/s，每帧仅转 ~0.8°），
                 // 比之前的 20fps 又砍掉一半整窗活层重绘，拖拽/缩放更省力。
                 if rotation {
-                    TimelineView(.periodic(from: .now, by: 1/10)) { tl in
-                        Canvas { c, s in drawPlanets(c, s, date: tl.date) }
+                    MossTicker(interval: 1/10) { date in
+                        Canvas { c, s in drawPlanets(c, s, date: date) }
                     }
                 } else {
                     Canvas { c, s in drawPlanets(c, s, date: nil) }
@@ -715,14 +760,14 @@ struct OverviewView: View {
                 .foregroundStyle(Palette.text)
             stripSeparator
             // 每秒钟走一格；秒表本身只是重绘这一小段文字
-            TimelineView(.periodic(from: .now, by: 1)) { _ in
+            MossTicker(interval: 1) { _ in
                 Text("已运行 \(MossUptime.text())")
                     .foregroundStyle(Palette.text)
             }
             stripSeparator
             // 电影里的几条设定，轮流挂在状态行上
-            TimelineView(.periodic(from: .now, by: 6)) { ctx in
-                let i = Int(ctx.date.timeIntervalSince1970 / 6) % mossMissionLines.count
+            MossTicker(interval: 6) { date in
+                let i = Int(date.timeIntervalSince1970 / 6) % mossMissionLines.count
                 Text(mossMissionLines[i])
             }
             .foregroundStyle(Palette.textSecondary)
@@ -749,9 +794,9 @@ struct OverviewView: View {
         .overlay(alignment: .bottomLeading) {
             GeometryReader { geo in
                 let w = geo.size.width
-                TimelineView(.periodic(from: .now, by: 1/12)) { ctx in
+                MossTicker(interval: 1/10) { date in
                     let period: Double = 6
-                    let phase = ctx.date.timeIntervalSinceReferenceDate
+                    let phase = date.timeIntervalSinceReferenceDate
                         .truncatingRemainder(dividingBy: period) / period
                     let x = -130 + phase * (w + 130)
                     Rectangle()

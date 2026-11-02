@@ -90,6 +90,11 @@ enum WindowChrome {
         // 采样桌面模糊，明显卡顿 —— 所以 moss 下强制不透明纯白，整窗退化成可廉价
         // 平移的表面，不再有逐帧桌面重采样。先按初始主题摆好，再订阅外观变化实时切换。
         applyMossOpacity(on: window)
+
+        // 让 550W 的装饰动画跟随窗口可见性：不可见时全部暂停，
+        // 避免为没人看的像素持续触发整窗布局与离屏渲染。
+        WindowVisibility.shared.attach(window)
+
         themeObserver = NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification, object: Prefs.store, queue: .main) { [weak window] _ in
                 guard let win = window else { return }

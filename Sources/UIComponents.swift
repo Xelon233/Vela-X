@@ -1681,14 +1681,40 @@ struct CodeRow: View {
 
 // MARK: - 550W 动态终端
 
+/// 装饰动画的统一节拍器。
+///
+/// 窗口可见时才挂 `TimelineView`；不可见（被遮挡 / 最小化 / 别的 Space）时
+/// 直接渲染静态一帧 —— 一整个 moss 概览有十几个小定时器（光标、日志轮播、
+/// 卡片呼吸边、扫描线…），窗口看不见时它们全都在白烧 CPU。
+struct MossTicker<Content: View>: View {
+    var interval: TimeInterval
+    @ObservedObject private var visibility = WindowVisibility.shared
+    private let content: (Date) -> Content
+
+    init(interval: TimeInterval, @ViewBuilder content: @escaping (Date) -> Content) {
+        self.interval = interval
+        self.content = content
+    }
+
+    var body: some View {
+        if visibility.isVisible {
+            TimelineView(.periodic(from: .now, by: interval)) { ctx in
+                content(ctx.date)
+            }
+        } else {
+            content(Date())
+        }
+    }
+}
+
 /// 方块光标：0.55s 一闪。
 /// 用 `TimelineView` 做**离散跳变**（不做插值动画）—— 只有它自己那一小块文字重绘，
 /// 比 `repeatForever` 的动画链便宜得多，长时间挂着也不会把 GPU 拖起来。
 struct MossCursor: View {
     var size: CGFloat = 9
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.55)) { ctx in
-            let on = Int(ctx.date.timeIntervalSince1970 / 0.55) % 2 == 0
+        MossTicker(interval: 0.55) { date in
+            let on = Int(date.timeIntervalSince1970 / 0.55) % 2 == 0
             Text("▮")
                 .font(.system(size: size, weight: .bold, design: .monospaced))
                 .foregroundStyle(Palette.accent.opacity(on ? 0.95 : 0.18))
@@ -1707,8 +1733,8 @@ struct MossLogLine: View {
     var glitch: Bool = true
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.5)) { ctx in
-            let tick = Int(ctx.date.timeIntervalSince1970 / 0.5)
+        MossTicker(interval: 0.5) { date in
+            let tick = Int(date.timeIntervalSince1970 / 0.5)
             let count = max(lines.count, 1)
             let idx = (tick / max(ticksPerLine, 1)) % count
             let cursorOn = tick % 2 == 0
@@ -1814,7 +1840,7 @@ struct MossFooterStrip: View {
                 .padding(.horizontal, 7)
             MossLogLine(lines: lines, size: 9, glitch: glitch)
             Spacer(minLength: 10)
-            TimelineView(.periodic(from: .now, by: 1)) { _ in
+            MossTicker(interval: 1) { _ in
                 Text("T+\(MossUptime.text())")
             }
             .foregroundStyle(Palette.textSecondary)
@@ -1851,8 +1877,8 @@ enum MossUptime {
 struct MossAccentPulse: View {
     var cut: CGFloat = 13
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 2.2)) { ctx in
-            let tick = Int(ctx.date.timeIntervalSince1970 / 2.2)
+        MossTicker(interval: 2.2) { date in
+            let tick = Int(date.timeIntervalSince1970 / 2.2)
             let bright = tick % 3 == 0
             // 「不要红色晕开」：卡片斜边呼吸边改成中性墨，不再用红
             PanelAccents(cut: cut)
@@ -1906,8 +1932,8 @@ struct MossGlitchText: View {
     var ratio: Int = 24
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: tick)) { ctx in
-            let t = Int(ctx.date.timeIntervalSince1970 / tick)
+        MossTicker(interval: tick) { date in
+            let t = Int(date.timeIntervalSince1970 / tick)
             Text(MossGlitch.isBroken(tick: t, period: period, burst: burst)
                  ? MossGlitch.corrupt(text, seed: t, ratio: ratio)
                  : text)
