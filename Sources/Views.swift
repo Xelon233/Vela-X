@@ -266,6 +266,9 @@ final class WindowVisibility: ObservableObject {
 
     private weak var window: NSWindow?
     private var observers: [NSObjectProtocol] = []
+    /// 兜底轮询：某些路径（开机静默启动后自动收窗）不会发遮挡通知，
+    /// 每秒纯属性检查一次即可，不参与任何 SwiftUI 刷新。
+    private var poll: Timer?
 
     func attach(_ window: NSWindow) {
         guard self.window !== window else { return }
@@ -276,14 +279,17 @@ final class WindowVisibility: ObservableObject {
             NSWindow.didChangeOcclusionStateNotification,
             NSWindow.didMiniaturizeNotification,
             NSWindow.didDeminiaturizeNotification,
-            NSWindow.didOrderOnScreenNotification,
-            NSWindow.didOrderOffScreenNotification,
+            NSWindow.willCloseNotification,
         ]
         observers = names.map { name in
             nc.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
                 self?.refresh()
             }
         }
+        poll?.invalidate()
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.refresh() }
+        RunLoop.main.add(timer, forMode: .common)
+        poll = timer
         refresh()
     }
 
@@ -294,6 +300,82 @@ final class WindowVisibility: ObservableObject {
             && !w.isMiniaturized
             && w.occlusionState.contains(.visible)
         if visible != isVisible { isVisible = visible }
+    }
+}
+
+/// 550W 状态行底部那道横扫红线。
+///
+/// ⚠️ 性能教训：这条 1px 的线曾经是整窗最大的 CPU 开销。
+///  - 用 `TimelineView`（10fps）：每跳一次都会触发
+///    「SwiftUI 属性图更新 → AppKit 整窗 `_layoutViewTree` → CA 提交 → 离屏渲染」，
+///    实测单次约 7ms，10fps 就能把单核吃到 30%+。
+///  - 用 SwiftUI 的 `repeatForever`：更糟，按屏幕刷新率持续触发，单核 44%。
+/// 所以这里**直接落到 CALayer**：`CABasicAnimation` 在渲染服务器里插值，
+/// 完全不经过 SwiftUI 的属性图，主线程零刷新。
+struct MossSweepLine: NSViewRepresentable {
+    @ObservedObject private var visibility = WindowVisibility.shared
+
+    func makeNSView(context: Context) -> SweepView { SweepView() }
+
+    func updateNSView(_ view: SweepView, context: Context) {
+        view.setActive(visibility.isVisible)
+    }
+
+    final class SweepView: NSView {
+        private let sweep = CAGradientLayer()
+        private var active = false
+        private let lineWidth: CGFloat = 130
+        private let period: Double = 6
+
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            wantsLayer = true
+            layer?.masksToBounds = true
+            let accent = NSColor(Palette.accent).withAlphaComponent(0.8)
+            sweep.colors = [NSColor.clear.cgColor, accent.cgColor, NSColor.clear.cgColor]
+            sweep.startPoint = CGPoint(x: 0, y: 0.5)
+            sweep.endPoint = CGPoint(x: 1, y: 0.5)
+            sweep.bounds = CGRect(x: 0, y: 0, width: lineWidth, height: 1)
+            sweep.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+            layer?.addSublayer(sweep)
+        }
+
+        required init?(coder: NSCoder) { fatalError("init(coder:) 未实现") }
+
+        /// 不拦截任何点击/拖动
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        /// 贴底 1pt：视图可能被翻转，按 isFlipped 取 y
+        private var lineY: CGFloat { isFlipped ? bounds.height - 0.5 : 0.5 }
+
+        override func layout() {
+            super.layout()
+            sweep.bounds = CGRect(x: 0, y: 0, width: lineWidth, height: 1)
+            sweep.position = CGPoint(x: -lineWidth, y: lineY)
+            if active { restartAnimation() }
+        }
+
+        func setActive(_ on: Bool) {
+            guard on != active else { return }
+            active = on
+            if on { restartAnimation() } else { sweep.removeAnimation(forKey: "sweep") }
+        }
+
+        private func restartAnimation() {
+            guard active, bounds.width > 1 else { return }
+            sweep.removeAnimation(forKey: "sweep")
+            let from = -lineWidth
+            let to = bounds.width + lineWidth
+            let anim = CABasicAnimation(keyPath: "position.x")
+            anim.fromValue = from
+            anim.toValue = to
+            anim.duration = period
+            anim.repeatCount = .infinity
+            anim.timingFunction = CAMediaTimingFunction(name: .linear)
+            anim.isRemovedOnCompletion = false
+            sweep.add(anim, forKey: "sweep")
+            sweep.position = CGPoint(x: to, y: lineY)   // 模型值停在终点，移除动画时不跳
+        }
     }
 }
 
@@ -386,7 +468,9 @@ struct MossSolarSystem: View {
                 // 10fps 足够顺（最慢轨道 0.08 rad/s，每帧仅转 ~0.8°），
                 // 比之前的 20fps 又砍掉一半整窗活层重绘，拖拽/缩放更省力。
                 if rotation {
-                    MossTicker(interval: 1/10) { date in
+                    // 4fps：这个窗口每跳一次约 7ms（整窗布局），10fps 会吃掉 7% 单核。
+                    // 行星本身很淡、角速度只有 0.08~0.34 rad/s，4fps 已看不出台阶。
+                    MossTicker(interval: 1/4) { date in
                         Canvas { c, s in drawPlanets(c, s, date: date) }
                     }
                 } else {
@@ -788,25 +872,9 @@ struct OverviewView: View {
         .overlay(alignment: .leading) {
             Rectangle().fill(Palette.accent).frame(width: 2)
         }
-        // 沿底边扫过的一道红线：1px 高、单层渐变。
-        // 用低帧率 TimelineView（12fps）驱动，替代原来的 repeatForever（按屏幕刷新率常驻 ~120fps），
-        // 视觉完全一致（6 秒横扫一遍），但把这道活层的重绘压到 12fps，拖拽/缩放更省力。
+        // 沿底边扫过的一道红线：交给 Core Animation 的无限线性动画驱动。
         .overlay(alignment: .bottomLeading) {
-            GeometryReader { geo in
-                let w = geo.size.width
-                MossTicker(interval: 1/10) { date in
-                    let period: Double = 6
-                    let phase = date.timeIntervalSinceReferenceDate
-                        .truncatingRemainder(dividingBy: period) / period
-                    let x = -130 + phase * (w + 130)
-                    Rectangle()
-                        .fill(LinearGradient(colors: [.clear, Palette.accent.opacity(0.8), .clear],
-                                             startPoint: .leading, endPoint: .trailing))
-                        .frame(width: 130, height: 1)
-                        .offset(x: x)
-                }
-            }
-            .frame(height: 1)
+            MossSweepLine()
         }
     }
 

@@ -1713,8 +1713,9 @@ struct MossTicker<Content: View>: View {
 struct MossCursor: View {
     var size: CGFloat = 9
     var body: some View {
-        MossTicker(interval: 0.55) { date in
-            let on = Int(date.timeIntervalSince1970 / 0.55) % 2 == 0
+        // 1s 一闪：0.55s 的闪烁在这个窗口里等于每秒多两次整窗重排，不值得
+        MossTicker(interval: 1) { date in
+            let on = Int(date.timeIntervalSince1970 / 1) % 2 == 0
             Text("▮")
                 .font(.system(size: size, weight: .bold, design: .monospaced))
                 .foregroundStyle(Palette.accent.opacity(on ? 0.95 : 0.18))
@@ -1727,14 +1728,15 @@ struct MossCursor: View {
 struct MossLogLine: View {
     let lines: [String]
     var size: CGFloat = 9
-    /// 每条停留几个 tick（0.5s/tick）
+    /// 每条停留几个 tick（1s/tick）
     var ticksPerLine: Int = 3
     /// 是否允许偶尔「掉字节」崩坏（概览页关掉，去掉代码崩坏特效）
     var glitch: Bool = true
 
     var body: some View {
-        MossTicker(interval: 0.5) { date in
-            let tick = Int(date.timeIntervalSince1970 / 0.5)
+        // 1s 一跳（原 0.5s）：这个窗口每跳一次都是整窗重排，日志轮播没必要那么勤
+        MossTicker(interval: 1) { date in
+            let tick = Int(date.timeIntervalSince1970 / 1)
             let count = max(lines.count, 1)
             let idx = (tick / max(ticksPerLine, 1)) % count
             let cursorOn = tick % 2 == 0
@@ -1873,18 +1875,18 @@ enum MossUptime {
     }
 }
 
-/// 卡片斜边红条的「呼吸」：2.2s 换一次亮度，离散、无插值
+/// 卡片斜边的强调描边。
+///
+/// 早期这里是「2.2s 呼吸一次」的 `TimelineView` —— 但每张卡各挂一个定时器，
+/// 7 张卡就是每秒 ~3 次整窗重排；在整窗布局约 7ms 的成本下，这笔账不划算。
+/// 现在固定为一档亮度（视觉上几乎无差），把逐帧开销归零。
 struct MossAccentPulse: View {
     var cut: CGFloat = 13
     var body: some View {
-        MossTicker(interval: 2.2) { date in
-            let tick = Int(date.timeIntervalSince1970 / 2.2)
-            let bright = tick % 3 == 0
-            // 「不要红色晕开」：卡片斜边呼吸边改成中性墨，不再用红
-            PanelAccents(cut: cut)
-                .stroke(Palette.text.opacity(bright ? 0.42 : 0.24),
-                        style: StrokeStyle(lineWidth: bright ? 2.2 : 1.8, lineCap: .square))
-        }
+        // 「不要红色晕开」：用中性墨，不用红
+        PanelAccents(cut: cut)
+            .stroke(Palette.text.opacity(0.30),
+                    style: StrokeStyle(lineWidth: 2, lineCap: .square))
     }
 }
 
