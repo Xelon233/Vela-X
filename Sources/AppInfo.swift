@@ -28,8 +28,8 @@ enum AppInfo {
     static let build: String = plistValue("CFBundleVersion") ?? fallbackBuild
 
     /// CLI 通过符号链接调用时 Bundle.main 拿不到 Info.plist，用编译期常量兜底
-    static let fallbackVersion = "2.4.5"
-    static let fallbackBuild = "83"
+    static let fallbackVersion = "2.4.6"
+    static let fallbackBuild = "84"
 
     /// 先问 Bundle，再沿可执行文件路径找 Info.plist（build/asuscontrol 符号链接场景）
     static func plistValue(_ key: String) -> String? {
@@ -69,17 +69,24 @@ enum AppInfo {
 
     /// 系统版本，例如 "macOS 15.8.1 (24G90)"
     ///
-    /// ⚠️ **必须缓存**：`sw_vers` 要 fork/exec 一个子进程，一次十几毫秒。
-    /// 早先这里是 `static var`（每次访问都算），而「关于」页把它写在 `body` 里 ——
-    /// 每次视图重算都 spawn 一个进程，慢到触发下一轮布局，直接演变成
-    /// `AttributeGraph: cycle detected` 的依赖环，把关于页和切页拖到卡死。
+    /// ⚠️ **绝不能 spawn 子进程**（这里曾经 `fork` 一个 `/usr/bin/sw_vers`）。
+    /// 两个连环坑：
+    /// 1. 写成 `static var` 时，视图每次重算都 spawn 一次（十几毫秒），
+    ///    慢到触发下一轮布局 → `AttributeGraph: cycle detected` 依赖环；
+    /// 2. 改成 `static let` 后更糟：`Process.waitUntilExit()` 会在主线程**跑 runloop**，
+    ///    于是求值过程中又进了一次 SwiftUI 显示周期 → 再次读 `osVersion` →
+    ///    `dispatch_once` 递归加锁 → `BUG IN CLIENT OF LIBDISPATCH: trying to lock recursively`
+    ///    → `EXC_BAD_INSTRUCTION`（打开「关于」页直接崩）。
+    ///
+    /// 现在用 `sysctlbyname("kern.osversion")`：它**就是** `sw_vers -buildVersion` 的值，
+    /// 只是一次内核查询 —— 零进程、不进 runloop、可安全地在 `body` 里求值。
     static let osVersion: String = {
         let v = ProcessInfo.processInfo.operatingSystemVersion
         var text = "macOS \(v.majorVersion).\(v.minorVersion)"
         if v.patchVersion > 0 { text += ".\(v.patchVersion)" }
-        let build = SystemProbe.run("/usr/bin/sw_vers", ["-buildVersion"])
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if !build.isEmpty { text += " (\(build))" }
+        if let build = SystemProbe.sysctlString("kern.osversion"), !build.isEmpty {
+            text += " (\(build))"
+        }
         return text
     }()
 
