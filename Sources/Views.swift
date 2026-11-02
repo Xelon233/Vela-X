@@ -212,10 +212,17 @@ struct WorkspaceBackground: View {
         if Palette.isMoss {
             // 550W 不复用桌面：直接铺一块干净的白（纯白，比之前的更利落），
             // 这样整窗观感与壁纸无关，任何壁纸下都是同一块限定量产面板。
-            Color.white
-            // 极淡的图纸网格，保留「工程纸」底子（不抢戏）。
-            // 缩放期间省掉：整窗 Canvas 每帧都要重描几十条线 + 重分配一块整窗纹理。
-            if !visibility.isBusy { MossGrid().equatable() }
+            // ⚠️ 必须包成**显式 ZStack 再 ignoresSafeArea**：
+            // 直接堆两个视图（TupleView）时，`Color.white` 会铺到标题栏那一行，
+            // 但 Canvas 会被安全区挡在内容区 —— 顶栏成了「纯白无网格」，
+            // 比下面的工程纸亮一档，看起来色调不统一。
+            ZStack {
+                Color.white
+                // 极淡的图纸网格，保留「工程纸」底子（不抢戏）。
+                // 缩放期间省掉：整窗 Canvas 每帧都要重描几十条线 + 重分配一块整窗纹理。
+                if !visibility.isBusy { MossGrid().equatable() }
+            }
+            .ignoresSafeArea()
         } else {
             Palette.veil
                 .ignoresSafeArea()
@@ -517,54 +524,27 @@ struct MossSolarSystem: View {
                 MossSolarOrbits(sunInset: sunInset, orbitFracs: orbitFracs)
                     .equatable()
 
-                // 动态层：只有 5 个小圆点在动，重绘很便宜。
-                // 10fps 足够顺（最慢轨道 0.08 rad/s，每帧仅转 ~0.8°），
-                // 比之前的 20fps 又砍掉一半整窗活层重绘，拖拽/缩放更省力。
-                if rotation {
-                    // 4fps：这个窗口每跳一次约 7ms（整窗布局），10fps 会吃掉 7% 单核。
-                    // 行星本身很淡、角速度只有 0.08~0.34 rad/s，4fps 已看不出台阶。
-                    MossTicker(interval: 1/4) { date in
-                        Canvas { c, s in drawPlanets(c, s, date: date) }
-                    }
-                } else {
-                    Canvas { c, s in drawPlanets(c, s, date: nil) }
-                }
+                // 动态层：行星。**不走 SwiftUI**——用 CALayer + CAKeyframeAnimation，
+                // 由渲染服务器按刷新率插值。之前是 4fps 的 TimelineView（每跳一次约 7ms
+                // 整窗重排，根本提不上去，所以看着一卡一卡）；换 CA 后 60fps 顺滑且主线程零刷新。
+                MossPlanetField(sunInset: sunInset,
+                                orbitFracs: orbitFracs,
+                                specs: planets.map {
+                                    MossPlanetField.Spec(orbit: $0.orbit,
+                                                         angle: $0.ang,
+                                                         speed: $0.speed,
+                                                         radius: $0.rad,
+                                                         hex: $0.fill)
+                                },
+                                phase: pagePhase,
+                                spin: rotation)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .allowsHitTesting(false)
         .ignoresSafeArea()
     }
 
-    /// 轨道半径：按「左上角 → 右下角」的距离等比放大，弧线扫过整窗
-    private func orbitRadii(for size: CGSize) -> [CGFloat] {
-        let dx = size.width - sunInset
-        let dy = size.height - sunInset
-        let span = sqrt(dx * dx + dy * dy)
-        return orbitFracs.map { $0 * span }
-    }
-
-    /// 静态层拆出去后，这里只剩「行星」的绘制（依赖 pagePhase）
-
-    /// 动态层：行星。角度 = 起始角 + 换页偏移（pagePhase）+ 公转（t × 角速度）
-    private func drawPlanets(_ ctx: GraphicsContext, _ size: CGSize, date: Date?) {
-        let t = date.map { $0.timeIntervalSinceReferenceDate } ?? 0
-        let cx = sunInset
-        let cy = sunInset
-        let radii = orbitRadii(for: size)
-        let phase = pagePhase
-
-        // 压到很淡（0.3），只作背景里的一点星点，不抢卡片正文
-        for p in planets {
-            let r = radii[p.orbit]
-            let ang = p.ang + phase + (rotation ? t * p.speed : 0)
-            let px = cx + cos(ang) * r
-            let py = cy + sin(ang) * r
-            var dot = Path()
-            dot.addArc(center: CGPoint(x: px, y: py), radius: p.rad,
-                       startAngle: .radians(0), endAngle: .radians(Double.pi * 2), clockwise: false)
-            ctx.fill(dot, with: .color(Color(hex: p.fill).opacity(0.3)))
-        }
-    }
 }
 
 /// 太阳系的静态轨道层（**与 page 无关**）。
@@ -594,6 +574,132 @@ struct MossSolarOrbits: View, Equatable {
             }
         }
         .drawingGroup()
+    }
+}
+
+/// 太阳系行星层：CALayer + `CAKeyframeAnimation`。
+///
+/// 为什么不走 SwiftUI：这个窗口里任何一次 SwiftUI 更新都要 ~7ms（整窗重排 + 属性图更新），
+/// 行星用 `TimelineView` 最多只能跑 4fps，看着一卡一卡。CA 动画由渲染服务器按刷新率插值，
+/// **主线程零刷新** —— 于是可以放心做 60fps，CPU 几乎不变。
+struct MossPlanetField: NSViewRepresentable {
+    struct Spec: Equatable {
+        let orbit: Int
+        let angle: Double     // 起始角（弧度）
+        let speed: Double     // 角速度 rad/s
+        let radius: CGFloat   // 行星半径（pt）
+        let hex: UInt32       // 颜色
+    }
+
+    let sunInset: CGFloat
+    let orbitFracs: [CGFloat]
+    let specs: [Spec]
+    let phase: Double
+    let spin: Bool
+
+    func makeNSView(context: Context) -> PlanetView {
+        let v = PlanetView()
+        v.wantsLayer = true
+        return v
+    }
+
+    func updateNSView(_ v: PlanetView, context: Context) {
+        v.configure(sunInset: sunInset, orbitFracs: orbitFracs,
+                    specs: specs, phase: phase, spin: spin)
+    }
+
+    final class PlanetView: NSView {
+        private var sunInset: CGFloat = 56
+        private var orbitFracs: [CGFloat] = []
+        private var specs: [Spec] = []
+        private var phase: Double = 0
+        private var spin = false
+        private var dots: [CALayer] = []
+        private var signature = ""
+
+        override var isFlipped: Bool { true }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        func configure(sunInset: CGFloat, orbitFracs: [CGFloat], specs: [Spec],
+                       phase: Double, spin: Bool) {
+            let sig = "\(Int(bounds.width))x\(Int(bounds.height))|\(sunInset)|\(phase)|\(spin)|\(specs.count)"
+            self.sunInset = sunInset
+            self.orbitFracs = orbitFracs
+            self.specs = specs
+            self.phase = phase
+            self.spin = spin
+            guard sig != signature else { return }
+            signature = sig
+            rebuild()
+        }
+
+        override func layout() {
+            super.layout()
+            signature = ""      // 尺寸变了必须重建
+            rebuild()
+        }
+
+        private static func color(_ hex: UInt32, alpha: CGFloat) -> NSColor {
+            NSColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255,
+                    green: CGFloat((hex >> 8) & 0xFF) / 255,
+                    blue: CGFloat(hex & 0xFF) / 255,
+                    alpha: alpha)
+        }
+
+        private func rebuild() {
+            guard bounds.width > 1, bounds.height > 1, !specs.isEmpty else { return }
+            layer?.masksToBounds = false
+
+            let dx = bounds.width - sunInset
+            let dy = bounds.height - sunInset
+            let span = sqrt(dx * dx + dy * dy)
+            let radii = orbitFracs.map { $0 * span }
+            let center = CGPoint(x: sunInset, y: sunInset)
+            let scale = window?.backingScaleFactor ?? 2
+
+            while dots.count > specs.count { dots.removeLast().removeFromSuperlayer() }
+            while dots.count < specs.count {
+                let l = CALayer()
+                l.masksToBounds = false
+                layer?.addSublayer(l)
+                dots.append(l)
+            }
+
+            for (i, spec) in specs.enumerated() {
+                let dot = dots[i]
+                dot.contentsScale = scale
+                dot.bounds = CGRect(x: 0, y: 0, width: spec.radius * 2, height: spec.radius * 2)
+                dot.cornerRadius = spec.radius
+                dot.backgroundColor = Self.color(spec.hex, alpha: 0.3).cgColor
+                dot.removeAnimation(forKey: "orbit")
+
+                let r = radii[min(max(spec.orbit, 0), radii.count - 1)]
+                let start = CGFloat(spec.angle + phase)
+                dot.position = CGPoint(x: center.x + cos(start) * r,
+                                       y: center.y + sin(start) * r)
+                guard spin, spec.speed > 0 else { continue }
+
+                // 用「自己算好的点数组」而不是 CGPath：
+                // 图层坐标是翻转过的（isFlipped），path 会被按未翻转的空间解释，
+                // 结果起点正确、整圈却镜像到窗口外。点数组与 position 同一坐标系，稳。
+                let steps = 180
+                var pts: [NSValue] = []
+                pts.reserveCapacity(steps + 1)
+                for k in 0...steps {
+                    let a = start + 2 * CGFloat.pi * CGFloat(k) / CGFloat(steps)
+                    pts.append(NSValue(point: CGPoint(x: center.x + cos(a) * r,
+                                                      y: center.y + sin(a) * r)))
+                }
+                let anim = CAKeyframeAnimation(keyPath: "position")
+                anim.values = pts
+                anim.calculationMode = .linear
+                anim.duration = 2 * Double.pi / spec.speed
+                anim.repeatCount = .infinity
+                anim.timingFunction = CAMediaTimingFunction(name: .linear)
+                anim.isRemovedOnCompletion = false
+                dot.add(anim, forKey: "orbit")
+            }
+        }
     }
 }
 

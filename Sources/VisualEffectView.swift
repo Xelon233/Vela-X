@@ -129,6 +129,19 @@ enum WindowChrome {
             window.styleMask.insert(.fullSizeContentView)
         }
 
+        // ⚠️ 改 styleMask 会重建标题栏容器，把刚抹掉的背景视图又加回来 ——
+        // 于是红绿灯那一行变成一块纯白（没有工程网格），比下面亮一档。
+        // 这里在装配完成后补抹两次：立刻一次 + 稍后一次（AppKit 的装配是异步的）。
+        clearTitlebarGlass(on: window)
+        DispatchQueue.main.async { [weak window] in
+            guard let w = window else { return }
+            Self.clearTitlebarGlass(on: w)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak w] in
+                guard let w else { return }
+                Self.clearTitlebarGlass(on: w)
+            }
+        }
+
         // 改窗口尺寸时系统可能重建工具栏视图，把玻璃又带回来，这里重新抹一次。
         // 用通知中心而不是 window.delegate —— SwiftUI 自己占着 delegate。
         // 必须防抖：拖拽边角时这个通知每秒来几十次，每次都遍历/摘除子视图会把
@@ -202,6 +215,25 @@ enum WindowChrome {
             red.autoresizingMask = [.width, .height]
             titlebarView.addSubview(red)
         }
+        if ProcessInfo.processInfo.environment["TOPBAR_DUMP"] != nil {
+            func dump(_ v: NSView, _ depth: Int) {
+                let pad = String(repeating: "  ", count: depth)
+                let cls = String(describing: type(of: v))
+                let bg = v.layer?.backgroundColor.map { "\($0.alpha)" } ?? "-"
+                let msg = pad + cls + " alpha=" + String(format: "%.2f", v.alphaValue)
+                    + " hidden=" + (v.isHidden ? "1" : "0")
+                    + " bgA=" + bg + " frame=" + NSStringFromRect(v.frame)
+                FileHandle.standardError.write(Data((msg + "\n").utf8))
+                for c in v.subviews { dump(c, depth + 1) }
+            }
+            FileHandle.standardError.write(Data("=== TOPBAR DUMP ===\n".utf8))
+            dump(titlebarView, 0)
+            if let c = titlebarView.superview {
+                FileHandle.standardError.write(Data("=== container ===\n".utf8))
+                dump(c, 0)
+            }
+        }
+
         // 装饰层挂在外面那层 container 上
         if let container = titlebarView.superview {
             for sub in container.subviews where String(describing: type(of: sub)).contains("Decoration") {
