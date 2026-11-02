@@ -88,9 +88,71 @@ enum Page: String, CaseIterable, Identifiable {
 /// 当前页面。做成共享对象，这样菜单栏弹窗里的「去设置」也能把主窗口切到指定页
 final class PageRouter: ObservableObject {
     static let shared = PageRouter()
+
+    /// 正在显示的页
     @Published var page: Page =
         Page(rawValue: ProcessInfo.processInfo.environment["ASUS_PAGE"] ?? "") ?? .overview
+
+    /// 立即切页（菜单栏跳转等，不走动画）
+    func jump(to p: Page) {
+        guard p != page else { return }
+        var tx = Transaction()
+        tx.disablesAnimations = true
+        withTransaction(tx) { page = p }
+        SidebarSelection.shared.clearPending()
+    }
+}
+
+/// 侧栏「高亮先行」的选中状态。
+///
+/// 单独一个对象、只被 `SidebarView` 订阅 —— 若把它塞进 `PageRouter`，
+/// 点一下就会让 `ContentView`（整页内容）跟着失效，多一次整窗重排。
+final class SidebarSelection: ObservableObject {
+    static let shared = SidebarSelection()
+
+    /// 预选页：玻璃先滑过去，内容等滑动结束再换
+    @Published private(set) var pending: Page?
+
+    /// 滑动节奏（0.36 → 0.24 → 0.16 → 0.13：越短越像「指哪打哪」）
+    static let spring = Animation.spring(response: 0.13, dampingFraction: 0.92)
+    /// 高亮滑完到换内容的间隔。必须 ≥ 弹簧时长，否则重建页面的那几十毫秒会盖在动画上。
+    static let swapDelay: Double = 0.15
+
+    private var work: DispatchWorkItem?
     private init() {}
+
+    /// 切页：高亮立刻动，内容稍后换。
+    ///
+    /// 换页要重建新页整棵树（实测一页约 50ms，两个重页互切 100ms+），这段时间主线程
+    /// 被完全占住。若和高亮滑动塞进同一个事务，玻璃会卡在半路「一跳一跳」——
+    /// 这就是「侧边栏切换明显掉帧」的来源。所以把换内容推迟到滑动结束之后。
+    func select(_ p: Page) {
+        let current = PageRouter.shared.page
+
+        // 点回「当前正在显示的页」：撤销还没生效的预选，否则到点还是会跳走
+        if p == current {
+            work?.cancel()
+            if pending != nil { withAnimation(Self.spring) { pending = nil } }
+            return
+        }
+        guard pending != p else { return }
+
+        withAnimation(Self.spring) { pending = p }
+
+        work?.cancel()
+        let job = DispatchWorkItem { [weak self] in
+            guard let self, self.pending == p else { return }
+            // 内容本身不带动画：新页整棵树弹簧入场会让每一帧都重排一次
+            var tx = Transaction()
+            tx.disablesAnimations = true
+            withTransaction(tx) { PageRouter.shared.page = p }
+            self.pending = nil
+        }
+        work = job
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.swapDelay, execute: job)
+    }
+
+    func clearPending() { pending = nil }
 }
 
 struct ContentView: View {
@@ -718,36 +780,15 @@ struct MossPlanetField: NSViewRepresentable {
 struct SidebarView: View {
     @Binding var page: Page
     @EnvironmentObject var store: SensorStore
+    /// 切页走 selection.select()：高亮先行、内容稍后。
+    /// 它是独立对象，只影响侧栏 —— 点一下不会让整页内容跟着失效。
+    @ObservedObject private var selection = SidebarSelection.shared
     /// 550W 太阳系公转开关（与 MossSolarSystem 共用同一份 UserDefaults）
     @AppStorage("mossSolarRotation", store: Prefs.store) private var solarRotation = true
     /// 选中玻璃滑块的共享坐标空间
     @Namespace private var selectionNS
-    /// 液态玻璃的滑动节奏。
-    /// 0.36s/0.68（带回弹）→ 0.24s/0.86 → **0.16s/0.92**：
-    /// 每次滑动的帧数直接决定「点了要等一下」的感觉 —— 收得越紧越像「指哪打哪」。
-    static let selectionSpring = Animation.spring(response: 0.16, dampingFraction: 0.92)
-
-    /// 高亮先行的「预选页」。
-    ///
-    /// 切页时整棵内容树要重建（~140ms），如果高亮和内容在同一个事务里更新，
-    /// 用户点下去要干等一百多毫秒才看到任何变化 —— 这就是「没有指哪打哪」的来源。
-    /// 现在先把高亮推过去（玻璃滑块由 CA 插值，主线程忙也照常滑），
-    /// 下一帧再把内容换过去：点击立刻有反馈，内容随后跟上。
-    @State private var pendingPage: Page?
-
-    /// 侧栏高亮/选中态实际使用的页：预选优先
-    private var displayPage: Page { pendingPage ?? page }
-
-    private func select(_ p: Page) {
-        guard page != p else { return }
-        withAnimation(Self.selectionSpring) { pendingPage = p }
-        // 必须跨过一帧再换内容：少于 16.7ms 的话，高亮和内容会被合并进同一个
-        // 显示周期 —— 那就白等了，用户还是「点下去没反应」。
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.025) {
-            withAnimation(Self.selectionSpring) { page = p }
-            if pendingPage == p { pendingPage = nil }
-        }
-    }
+    /// 侧栏高亮/选中态实际使用的页：预选（高亮先行）优先
+    private var displayPage: Page { selection.pending ?? page }
 
 
     /// 550W 下的「本地节点」行：优先机型代号，取不到就退回产品名
@@ -801,7 +842,7 @@ struct SidebarView: View {
                 // 仍保留在 Page 枚举里，由左下角按钮导航过去。
                 ForEach(Page.allCases.filter { $0 != .settings }) { p in
                     Button {
-                        select(p)
+                        selection.select(p)
                     } label: {
                         HStack(spacing: 9) {
                             // 发光竖条画在 SelectionGlass 里，跟着滑块一起移动；
@@ -846,9 +887,10 @@ struct SidebarView: View {
                     .padding(.horizontal, 8)
                 }
             }
-            // 防呆：页面被别处改走（菜单栏「去设置」等）时，别让预选高亮留在旧行
+            // 防呆：页面被别处直接改走（菜单栏「去设置」等）时，别让预选高亮留在旧行。
+            // 正常情况下 selection.select() 会在换页后自己清掉预选。
             .onChange(of: page) { newValue in
-                if let p = pendingPage, p != newValue { pendingPage = nil }
+                if let p = selection.pending, p != newValue { selection.clearPending() }
             }
 
             Spacer()
@@ -894,7 +936,7 @@ struct SidebarView: View {
 
                 // 设置入口：原本散落在侧栏底部的「开机自启 / 外观 / 采样间隔」已收拢到「设置」页
                 Button {
-                    select(.settings)
+                    selection.select(.settings)
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "gearshape")

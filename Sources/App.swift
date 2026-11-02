@@ -168,7 +168,7 @@ struct MenuBarView: View {
     }
 
     private func revealMainWindow(setPage page: Page? = nil) {
-        if let page { PageRouter.shared.page = page }
+        if let page { PageRouter.shared.jump(to: page) }
         if let w = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" }) {
             w.makeKeyAndOrderFront(nil)
         }
