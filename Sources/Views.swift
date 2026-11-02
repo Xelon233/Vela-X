@@ -115,6 +115,7 @@ struct ContentView: View {
             // 重新分配 GPU 表面；它们只有 4%~9% 不透明度，缩放时消失几乎察觉不到。
             if Palette.isMoss, !visibility.isBusy {
                 MossScreenOverlay()
+                    .equatable()
                     .zIndex(5)
                 // 局部太阳系绘制图：圆心在左上角、弧线扫过整窗（内容背景不透明，
                 // 放在 WorkspaceBackground 里会被盖住，所以这里以 overlay 形式绘出）。
@@ -214,7 +215,7 @@ struct WorkspaceBackground: View {
             Color.white
             // 极淡的图纸网格，保留「工程纸」底子（不抢戏）。
             // 缩放期间省掉：整窗 Canvas 每帧都要重描几十条线 + 重分配一块整窗纹理。
-            if !visibility.isBusy { MossGrid() }
+            if !visibility.isBusy { MossGrid().equatable() }
         } else {
             Palette.veil
                 .ignoresSafeArea()
@@ -224,8 +225,12 @@ struct WorkspaceBackground: View {
 
 /// 550W 底纸网格：28pt 一格细线，每 4 格加深一条。
 /// 静态绘制（Canvas 只在尺寸变化时重画），不参与逐帧动画，所以不增加合成负担。
-struct MossGrid: View {
+/// ⚠️ 与 `page` 无关的**整窗**静态层，一律要 `.equatable()`：
+/// 否则每次切页 / 传感器刷新，SwiftUI 都会重跑 body、把整窗 Canvas 重新光栅化一次（十几毫秒）。
+struct MossGrid: View, Equatable {
     var step: CGFloat = 28
+
+    static func == (l: Self, r: Self) -> Bool { l.step == r.step }
 
     var body: some View {
         Canvas { ctx, size in
@@ -429,7 +434,9 @@ struct MossSweepLine: NSViewRepresentable {
 
 /// 550W 屏幕罩层：四角定位十字 + 极淡的边缘压暗，让整窗像一块被拍下来的屏幕。
 /// 只画在窗口边缘，中间完全透明，不影响任何内容可读性。
-struct MossScreenOverlay: View {
+struct MossScreenOverlay: View, Equatable {
+    static func == (l: Self, r: Self) -> Bool { true }
+
     var body: some View {
         ZStack {
             RadialGradient(colors: [.clear, Color.black.opacity(0.055)],
@@ -505,12 +512,10 @@ struct MossSolarSystem: View {
         ZStack {
             Color.clear
             GeometryReader { _ in
-                // 静态层：轨道 + 太阳。不进 TimelineView —— 几圈巨大椭圆只描边一次，
-                // 之后一直复用。把它们塞进逐帧回调正是之前卡顿的原因。
-                // 拍平成一张 Metal 纹理：拖拽时窗口服务器直接复用这张纹理，
-                // 不必每帧重描那几圈大椭圆，明显减轻整窗活层的合成负担。
-                Canvas { c, s in drawBase(c, s) }
-                    .drawingGroup()
+                // 静态层：轨道。与 page 无关，做成 Equatable ——
+                // 切页时 SwiftUI 跳过它的 body，整窗 Canvas 不会重新光栅化。
+                MossSolarOrbits(sunInset: sunInset, orbitFracs: orbitFracs)
+                    .equatable()
 
                 // 动态层：只有 5 个小圆点在动，重绘很便宜。
                 // 10fps 足够顺（最慢轨道 0.08 rad/s，每帧仅转 ~0.8°），
@@ -538,20 +543,7 @@ struct MossSolarSystem: View {
         return orbitFracs.map { $0 * span }
     }
 
-    /// 静态层：轨道（圆心在左上角）。只画一次，之后拍平成纹理复用。
-    /// ⚠️ 不画太阳中心点 —— 用户要求去掉中心点显示。
-    private func drawBase(_ ctx: GraphicsContext, _ size: CGSize) {
-        let cx = sunInset
-        let cy = sunInset
-        let ink = Color.black
-
-        // 轨道：越往外越淡（中性墨线，不发红、不发光，整体压低到「透图」级别的微淡）
-        for (i, r) in orbitRadii(for: size).enumerated() {
-            let rect = CGRect(x: cx - r, y: cy - r, width: r * 2, height: r * 2)
-            ctx.stroke(Path(ellipseIn: rect),
-                       with: .color(ink.opacity(i == 0 ? 0.08 : 0.045)), lineWidth: 1)
-        }
-    }
+    /// 静态层拆出去后，这里只剩「行星」的绘制（依赖 pagePhase）
 
     /// 动态层：行星。角度 = 起始角 + 换页偏移（pagePhase）+ 公转（t × 角速度）
     private func drawPlanets(_ ctx: GraphicsContext, _ size: CGSize, date: Date?) {
@@ -575,6 +567,36 @@ struct MossSolarSystem: View {
     }
 }
 
+/// 太阳系的静态轨道层（**与 page 无关**）。
+///
+/// 单独成 `Equatable` 视图的目的：切页 / 传感器刷新时，SwiftUI 会直接跳过它的 body，
+/// 那张整窗大小的 Canvas 就不会被重新光栅化。之前它跟着 `MossSolarSystem(page:)`
+/// 一起重建，每次切页都白画一遍几圈半径上千 pt 的椭圆（实测约占 moss 切页多出的 26ms）。
+struct MossSolarOrbits: View, Equatable {
+    let sunInset: CGFloat
+    let orbitFracs: [CGFloat]
+
+    static func == (l: Self, r: Self) -> Bool {
+        l.sunInset == r.sunInset && l.orbitFracs == r.orbitFracs
+    }
+
+    var body: some View {
+        Canvas { ctx, size in
+            let ink = Color.black
+            let dx = size.width - sunInset
+            let dy = size.height - sunInset
+            let span = sqrt(dx * dx + dy * dy)
+            // 轨道：越往外越淡（中性墨线，不发红、不发光，压低到「透图」级别的微淡）
+            for (i, r) in orbitFracs.map({ $0 * span }).enumerated() {
+                let rect = CGRect(x: sunInset - r, y: sunInset - r, width: r * 2, height: r * 2)
+                ctx.stroke(Path(ellipseIn: rect),
+                           with: .color(ink.opacity(i == 0 ? 0.08 : 0.045)), lineWidth: 1)
+            }
+        }
+        .drawingGroup()
+    }
+}
+
 struct SidebarView: View {
     @Binding var page: Page
     @EnvironmentObject var store: SensorStore
@@ -583,9 +605,31 @@ struct SidebarView: View {
     /// 选中玻璃滑块的共享坐标空间
     @Namespace private var selectionNS
     /// 液态玻璃的滑动节奏。
-    /// 原先是 0.36s / 阻尼 0.68（带回弹）——回弹会多拖十几帧，每帧都是一次整窗重排。
-    /// 现在收紧到 0.24s / 0.86：手感更干脆，动画帧数少了近一半。
-    static let selectionSpring = Animation.spring(response: 0.24, dampingFraction: 0.86)
+    /// 0.36s/0.68（带回弹）→ 0.24s/0.86 → **0.16s/0.92**：
+    /// 每次滑动的帧数直接决定「点了要等一下」的感觉 —— 收得越紧越像「指哪打哪」。
+    static let selectionSpring = Animation.spring(response: 0.16, dampingFraction: 0.92)
+
+    /// 高亮先行的「预选页」。
+    ///
+    /// 切页时整棵内容树要重建（~140ms），如果高亮和内容在同一个事务里更新，
+    /// 用户点下去要干等一百多毫秒才看到任何变化 —— 这就是「没有指哪打哪」的来源。
+    /// 现在先把高亮推过去（玻璃滑块由 CA 插值，主线程忙也照常滑），
+    /// 下一帧再把内容换过去：点击立刻有反馈，内容随后跟上。
+    @State private var pendingPage: Page?
+
+    /// 侧栏高亮/选中态实际使用的页：预选优先
+    private var displayPage: Page { pendingPage ?? page }
+
+    private func select(_ p: Page) {
+        guard page != p else { return }
+        withAnimation(Self.selectionSpring) { pendingPage = p }
+        // 必须跨过一帧再换内容：少于 16.7ms 的话，高亮和内容会被合并进同一个
+        // 显示周期 —— 那就白等了，用户还是「点下去没反应」。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.025) {
+            withAnimation(Self.selectionSpring) { page = p }
+            if pendingPage == p { pendingPage = nil }
+        }
+    }
 
 
     /// 550W 下的「本地节点」行：优先机型代号，取不到就退回产品名
@@ -639,33 +683,31 @@ struct SidebarView: View {
                 // 仍保留在 Page 枚举里，由左下角按钮导航过去。
                 ForEach(Page.allCases.filter { $0 != .settings }) { p in
                     Button {
-                        guard page != p else { return }
-                        // 只在切换选中项时带弹簧动画：整块玻璃滑块会从上一行滑到新行
-                        withAnimation(SidebarView.selectionSpring) { page = p }
+                        select(p)
                     } label: {
                         HStack(spacing: 9) {
                             // 发光竖条画在 SelectionGlass 里，跟着滑块一起移动；
                             // 这里留同宽的透明占位，保证没选中时文字位置不跳
                             Color.clear.frame(width: 2, height: 14)
                             Image(systemName: p.icon)
-                                .font(.system(size: 15, weight: page == p ? .semibold : .regular))
+                                .font(.system(size: 15, weight: displayPage == p ? .semibold : .regular))
                                 .frame(width: 19)
-                                .foregroundStyle(page == p ? Palette.accent : Palette.textSecondary)
+                                .foregroundStyle(displayPage == p ? Palette.accent : Palette.textSecondary)
                                 // 选中时图标轻微放大：只改 transform，不重排。
                                 // 这里**不加**弹簧动画 —— 11 行 × 2 处微动画会在每次切页时
                                 // 让整窗连续重排 0.36 秒，是侧栏「点了要等一下」的主因之一。
-                                .scaleEffect(page == p ? 1.12 : 1)
+                                .scaleEffect(displayPage == p ? 1.12 : 1)
                             Text(Palette.isMoss ? p.mossTitle : p.title)
                                 .font(Palette.isMoss
-                                      ? .system(size: 13.5, weight: page == p ? .semibold : .regular,
+                                      ? .system(size: 13.5, weight: displayPage == p ? .semibold : .regular,
                                                 design: .monospaced)
-                                      : .system(size: 14, weight: page == p ? .semibold : .regular))
+                                      : .system(size: 14, weight: displayPage == p ? .semibold : .regular))
                                 .tracking(Palette.isMoss ? 0.5 : 0.4)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.85)
-                                .foregroundStyle(page == p ? Palette.text : Palette.textSecondary)
+                                .foregroundStyle(displayPage == p ? Palette.text : Palette.textSecondary)
                                 // 文字跟一点点位移（同上：只改位置，不做动画）
-                                .offset(x: page == p ? 2.5 : 0)
+                                .offset(x: displayPage == p ? 2.5 : 0)
                             Spacer(minLength: 0)
                         }
                         .padding(.leading, 6)
@@ -674,7 +716,7 @@ struct SidebarView: View {
                         .background {
                             // 全场只有这一块玻璃：选中项变了，它靠 matchedGeometryEffect
                             // 在行与行之间滑动，而不是每行各自亮一下
-                            if page == p {
+                            if displayPage == p {
                                 SelectionGlass(radius: Palette.cornerRadius)
                                     .matchedGeometryEffect(id: "sidebar.selection", in: selectionNS)
                             }
@@ -685,6 +727,10 @@ struct SidebarView: View {
                     .help(Palette.isMoss ? "\(p.mossTitle) · \(p.title)" : p.title)
                     .padding(.horizontal, 8)
                 }
+            }
+            // 防呆：页面被别处改走（菜单栏「去设置」等）时，别让预选高亮留在旧行
+            .onChange(of: page) { newValue in
+                if let p = pendingPage, p != newValue { pendingPage = nil }
             }
 
             Spacer()
@@ -730,7 +776,7 @@ struct SidebarView: View {
 
                 // 设置入口：原本散落在侧栏底部的「开机自启 / 外观 / 采样间隔」已收拢到「设置」页
                 Button {
-                    PageRouter.shared.page = .settings
+                    select(.settings)
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "gearshape")
@@ -819,7 +865,8 @@ private struct SelectionGlass: View {
                     .frame(width: 21, height: 21)
                     .allowsHitTesting(false)
                 }
-                .drawingGroup(opaque: false, colorMode: .extendedLinear)
+            // 不拍平：这块玻璃只有几笔小图形，滑动的每一帧尺寸都在变，
+            // drawingGroup 反而每帧都要重新离屏渲染一次。
         } else {
             glass(shape)
         }
