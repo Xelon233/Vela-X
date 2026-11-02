@@ -373,6 +373,18 @@ final class WindowVisibility: ObservableObject {
     /// 翻译层，genie 扭曲基本靠软件算，层越少越跟手）。
     @Published private(set) var isMinimizing = false
 
+    /// 指针是否停在 Dock 那一带。
+    ///
+    /// 为什么在意：太阳系公转与页脚扫描线是**常驻**的 Core Animation，会让窗口服务器
+    /// 每帧都去合成我们这块上百个图层的窗口。这台机的 Metal 是 Mesa nouveau 翻译层，
+    /// GPU 本来就不快 —— 指针划到 Dock 上时，Dock 的放大特效与我们的常驻动画抢同一个
+    /// 合成器，放大就一卡一卡（其它应用没有常驻动画，所以没这问题）。
+    /// 指针进 Dock 带就把这两处动画停掉：用户这时在看 Dock，背景静止完全看不出来。
+    @Published private(set) var isNearDock = false
+
+    /// 装饰动画的总闸：窗口可见 + 不在缩放/最小化 + 指针不在 Dock 上
+    var shouldAnimateDecor: Bool { isVisible && !isBusy && !isNearDock }
+
     /// 缩放或最小化中：两种情况下都值得把纯装饰层撤掉
     var isBusy: Bool { isResizing || isMinimizing }
 
@@ -398,6 +410,8 @@ final class WindowVisibility: ObservableObject {
             NSWindow.willMiniaturizeNotification,
             NSWindow.didDeminiaturizeNotification,
         ]
+        startDockMonitor()
+
         observers = names.map { name in
             nc.addObserver(forName: name, object: window, queue: .main) { [weak self] note in
                 guard let self else { return }
@@ -422,6 +436,37 @@ final class WindowVisibility: ObservableObject {
     }
 
     /// 只有「在屏 + 未最小化 + 未被完全遮挡」才算可见；拿不准时按可见处理（保底不改变现状）。
+    private var dockTimer: Timer?
+
+    /// 10Hz 轮询鼠标位置判断有没有进 Dock 带（`NSEvent.mouseLocation` 不需要辅助访问权限）。
+    /// Dock 的位置直接从 `visibleFrame` 与 `frame` 的差算出来，不用查窗口列表。
+    private func startDockMonitor() {
+        guard dockTimer == nil else { return }
+        let t = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in self?.refreshDockProximity() }
+        RunLoop.main.add(t, forMode: .common)
+        dockTimer = t
+    }
+
+    private func refreshDockProximity() {
+        guard window?.isVisible == true else {
+            if isNearDock { isNearDock = false }
+            return
+        }
+        let p = NSEvent.mouseLocation
+        var near = false
+        for screen in NSScreen.screens where screen.frame.contains(p) {
+            let v = screen.visibleFrame
+            // visibleFrame 已经把 Dock 与菜单栏排除掉：落在它外面、且贴边的就算进 Dock 带。
+            // 底部留 14pt 缓冲，兼顾自动隐藏的 Dock（放大时指针会贴到最下沿）。
+            if p.y < v.minY + 14 || p.x < v.minX + 6 || p.x > v.maxX - 6 { near = true }
+            if p.y > v.maxY - 4 { near = false }      // 菜单栏那边不算
+            break
+        }
+        if near != isNearDock {
+            isNearDock = near
+        }
+    }
+
     private func refresh() {
         guard let w = window else { return }
         let visible = w.isVisible
@@ -453,7 +498,9 @@ struct MossSweepLine: NSViewRepresentable {
     func makeNSView(context: Context) -> SweepView { SweepView() }
 
     func updateNSView(_ view: SweepView, context: Context) {
-        view.setActive(visibility.isVisible)
+        // 跟着总闸走：窗口不可见 / 正在缩放 / 指针在 Dock 上都停 —— 这条线是常驻 CA 动画，
+        // 会让窗口服务器每帧都合成我们这块窗口，Dock 放大时正是被它拖慢的。
+        view.setActive(visibility.shouldAnimateDecor)
     }
 
     final class SweepView: NSView {
@@ -567,6 +614,8 @@ struct MossSolarSystem: View {
     var page: Page = .overview
     /// 与侧栏同一个开关：true = 公转，false = 停在起始角
     @AppStorage("mossSolarRotation", store: Prefs.store) private var rotation = true
+    /// 装饰动画总闸（窗口不可见 / 缩放中 / 指针在 Dock 上都停）
+    @ObservedObject private var visibility = WindowVisibility.shared
 
     /// 圆心相对左上角的内缩（让太阳 + 外晕完整露出来）
     private let sunInset: CGFloat = 56
@@ -611,7 +660,7 @@ struct MossSolarSystem: View {
                                                          hex: $0.fill)
                                 },
                                 phase: pagePhase,
-                                spin: rotation)
+                                spin: rotation && visibility.shouldAnimateDecor)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
@@ -745,10 +794,17 @@ struct MossPlanetField: NSViewRepresentable {
                 dot.bounds = CGRect(x: 0, y: 0, width: spec.radius * 2, height: spec.radius * 2)
                 dot.cornerRadius = spec.radius
                 dot.backgroundColor = Self.color(spec.hex, alpha: 0.3).cgColor
+
+                // ⚠️ 先摘掉旧动画再判断：这些图层是复用的（不重建），
+                // 只在 `spin` 为真时才 add —— 忘了 remove 的话，暂停只是「不再新挂」，
+                // 旧动画会一直跑下去（曾经因此以为 Dock 闸门没生效）。
                 dot.removeAnimation(forKey: "orbit")
 
                 let r = radii[min(max(spec.orbit, 0), radii.count - 1)]
-                let start = CGFloat(spec.angle + phase)
+                // 相位按**绝对时间**取，而不是每次从固定起始角重放：
+                // 否则每次重建（换页 / 缩放 / Dock 闸门暂停恢复）行星都会「跳回起点」。
+                let t = Date().timeIntervalSinceReferenceDate
+                let start = CGFloat(spec.angle + phase + (spin ? t * spec.speed : 0))
                 dot.position = CGPoint(x: center.x + cos(start) * r,
                                        y: center.y + sin(start) * r)
                 guard spin, spec.speed > 0 else { continue }
