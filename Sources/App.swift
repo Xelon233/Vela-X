@@ -291,6 +291,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+
+
         guard ProcessInfo.processInfo.environment["ASUS_SELFTEST"] != nil else { return }
         setbuf(stdout, nil)   // 自测输出不缓冲，崩溃时也能看到进度
         // 默认等 4 秒。机器慢的时候 4 秒只够采一轮，网速和 CPU 占用率

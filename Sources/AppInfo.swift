@@ -22,17 +22,14 @@ enum AppInfo {
     /// 驱动页 / 关于页引用的项目主页
     static let repoURL = "https://github.com/nullmoth/nvidia-macos-driver"
 
-    static var version: String {
-        plistValue("CFBundleShortVersionString") ?? fallbackVersion
-    }
+    // 同样是「每次访问都查一遍」的老写法，改成缓存（版本号运行期不会变）
+    static let version: String = plistValue("CFBundleShortVersionString") ?? fallbackVersion
 
-    static var build: String {
-        plistValue("CFBundleVersion") ?? fallbackBuild
-    }
+    static let build: String = plistValue("CFBundleVersion") ?? fallbackBuild
 
     /// CLI 通过符号链接调用时 Bundle.main 拿不到 Info.plist，用编译期常量兜底
-    static let fallbackVersion = "2.4.0"
-    static let fallbackBuild = "78"
+    static let fallbackVersion = "2.4.1"
+    static let fallbackBuild = "79"
 
     /// 先问 Bundle，再沿可执行文件路径找 Info.plist（build/asuscontrol 符号链接场景）
     static func plistValue(_ key: String) -> String? {
@@ -56,22 +53,27 @@ enum AppInfo {
         return v.hasPrefix("v") ? v : "v" + v
     }
 
-    /// 可执行文件的修改时间——比手写日期可靠
-    static var buildDate: Date? {
+    /// 可执行文件的修改时间——比手写日期可靠。**只算一次**（读文件属性是 I/O）
+    static let buildDate: Date? = {
         let path = Bundle.main.executablePath ?? CommandLine.arguments.first
         guard let path else { return nil }
         return (try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate]) as? Date
-    }
+    }()
 
-    static var buildDateText: String {
+    static let buildDateText: String = {
         guard let date = buildDate else { return "—" }
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd HH:mm"
         return f.string(from: date)
-    }
+    }()
 
     /// 系统版本，例如 "macOS 15.8.1 (24G90)"
-    static var osVersion: String {
+    ///
+    /// ⚠️ **必须缓存**：`sw_vers` 要 fork/exec 一个子进程，一次十几毫秒。
+    /// 早先这里是 `static var`（每次访问都算），而「关于」页把它写在 `body` 里 ——
+    /// 每次视图重算都 spawn 一个进程，慢到触发下一轮布局，直接演变成
+    /// `AttributeGraph: cycle detected` 的依赖环，把关于页和切页拖到卡死。
+    static let osVersion: String = {
         let v = ProcessInfo.processInfo.operatingSystemVersion
         var text = "macOS \(v.majorVersion).\(v.minorVersion)"
         if v.patchVersion > 0 { text += ".\(v.patchVersion)" }
@@ -79,7 +81,7 @@ enum AppInfo {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if !build.isEmpty { text += " (\(build))" }
         return text
-    }
+    }()
 
     /// 复制到剪贴板 / 诊断报告用的一行
     static var oneLine: String {

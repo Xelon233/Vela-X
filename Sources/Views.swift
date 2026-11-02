@@ -555,8 +555,10 @@ struct SidebarView: View {
     @AppStorage("mossSolarRotation", store: Prefs.store) private var solarRotation = true
     /// 选中玻璃滑块的共享坐标空间
     @Namespace private var selectionNS
-    /// 液态玻璃的滑动节奏：偏软、带一点回弹，像液体被推过去而不是硬切
-    static let selectionSpring = Animation.spring(response: 0.36, dampingFraction: 0.68)
+    /// 液态玻璃的滑动节奏。
+    /// 原先是 0.36s / 阻尼 0.68（带回弹）——回弹会多拖十几帧，每帧都是一次整窗重排。
+    /// 现在收紧到 0.24s / 0.86：手感更干脆，动画帧数少了近一半。
+    static let selectionSpring = Animation.spring(response: 0.24, dampingFraction: 0.86)
 
 
     /// 550W 下的「本地节点」行：优先机型代号，取不到就退回产品名
@@ -622,9 +624,10 @@ struct SidebarView: View {
                                 .font(.system(size: 15, weight: page == p ? .semibold : .regular))
                                 .frame(width: 19)
                                 .foregroundStyle(page == p ? Palette.accent : Palette.textSecondary)
-                                // 选中时图标轻微放大：只改 transform，不重排
+                                // 选中时图标轻微放大：只改 transform，不重排。
+                                // 这里**不加**弹簧动画 —— 11 行 × 2 处微动画会在每次切页时
+                                // 让整窗连续重排 0.36 秒，是侧栏「点了要等一下」的主因之一。
                                 .scaleEffect(page == p ? 1.12 : 1)
-                                .animation(SidebarView.selectionSpring, value: page)
                             Text(Palette.isMoss ? p.mossTitle : p.title)
                                 .font(Palette.isMoss
                                       ? .system(size: 13.5, weight: page == p ? .semibold : .regular,
@@ -634,9 +637,8 @@ struct SidebarView: View {
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.85)
                                 .foregroundStyle(page == p ? Palette.text : Palette.textSecondary)
-                                // 文字跟一点点位移，读起来像被「推」了一下
+                                // 文字跟一点点位移（同上：只改位置，不做动画）
                                 .offset(x: page == p ? 2.5 : 0)
-                                .animation(SidebarView.selectionSpring, value: page)
                             Spacer(minLength: 0)
                         }
                         .padding(.leading, 6)
@@ -767,24 +769,27 @@ private struct SelectionGlass: View {
                         .padding(.leading, 5)
                 }
                 // 两枚「瞄准角」：右上 + 左下。它们属于玻璃本身，
-                // 所以换页时是跟着 matchedGeometryEffect 一起滑过去的 —— 零额外开销，
-                // 观感像准星在行与行之间移动。
-                .overlay {
-                    GeometryReader { geo in
-                        Path { path in
-                            let w = geo.size.width, h = geo.size.height
-                            path.move(to: CGPoint(x: w - 17, y: 4))
-                            path.addLine(to: CGPoint(x: w - 6, y: 4))
-                            path.move(to: CGPoint(x: w - 4, y: 6))
-                            path.addLine(to: CGPoint(x: w - 4, y: 17))
-                            path.move(to: CGPoint(x: 17, y: h - 4))
-                            path.addLine(to: CGPoint(x: 6, y: h - 4))
-                            path.move(to: CGPoint(x: 4, y: h - 6))
-                            path.addLine(to: CGPoint(x: 4, y: h - 17))
-                        }
-                        .stroke(Palette.accent.opacity(0.9),
-                                style: StrokeStyle(lineWidth: 1.3, lineCap: .square))
+                // 所以换页时是跟着 matchedGeometryEffect 一起滑过去的。
+                // ⚠️ 用固定尺寸的 Path + alignment 定位，**不要套 GeometryReader**：
+                // 滑动动画期间 GeometryReader 每帧都要重算几何，等于给动画加成本。
+                .overlay(alignment: .topTrailing) {
+                    Path { p in
+                        p.move(to: CGPoint(x: 4, y: 4)); p.addLine(to: CGPoint(x: 15, y: 4))
+                        p.move(to: CGPoint(x: 17, y: 6)); p.addLine(to: CGPoint(x: 17, y: 17))
                     }
+                    .stroke(Palette.accent.opacity(0.9),
+                            style: StrokeStyle(lineWidth: 1.3, lineCap: .square))
+                    .frame(width: 21, height: 21)
+                    .allowsHitTesting(false)
+                }
+                .overlay(alignment: .bottomLeading) {
+                    Path { p in
+                        p.move(to: CGPoint(x: 17, y: 17)); p.addLine(to: CGPoint(x: 6, y: 17))
+                        p.move(to: CGPoint(x: 4, y: 15)); p.addLine(to: CGPoint(x: 4, y: 4))
+                    }
+                    .stroke(Palette.accent.opacity(0.9),
+                            style: StrokeStyle(lineWidth: 1.3, lineCap: .square))
+                    .frame(width: 21, height: 21)
                     .allowsHitTesting(false)
                 }
                 .drawingGroup(opaque: false, colorMode: .extendedLinear)
@@ -932,7 +937,9 @@ struct OverviewView: View {
             if visibleCards.isEmpty {
                 emptyHint
             } else {
-                VStack(spacing: 12) {
+                // LazyVStack：切进这一页时只构建可见的几行，屏幕外的卡不参与
+                // 视图树构建 —— 切页耗时与视图数量成正比，这一条能省掉近一半。
+                LazyVStack(spacing: 12) {
                     ForEach(Array(cardRows.enumerated()), id: \.offset) { _, row in
                         HStack(spacing: 12) {
                             ForEach(row) { card in
