@@ -227,8 +227,8 @@ struct Card<Content: View>: View {
         // 550W 不发光（白底上光晕会糊），但给一层很浅的落地影：面板像真的搁在纸面上。
         // 只做一层（radius 9 / y 3），不再叠第二层接触影 —— 7 张卡各两道离屏模糊会立刻把
         // 之前优化掉的合成开销加回来，一层已经足够撑起层次。
-        .shadow(color: visibility.isResizing ? .clear : shadowColor,
-                radius: visibility.isResizing ? 0 : shadowRadius,
+        .shadow(color: visibility.isBusy ? .clear : shadowColor,
+                radius: visibility.isBusy ? 0 : shadowRadius,
                 x: 0, y: shadowY)
     }
 
@@ -1887,7 +1887,7 @@ struct MossDecorGate<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        if !visibility.isResizing { content }
+        if !visibility.isBusy { content }
     }
 }
 

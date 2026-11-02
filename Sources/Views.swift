@@ -113,7 +113,7 @@ struct ContentView: View {
             // 550W：整窗罩一层「屏幕感」—— 四角定位十字 + 极淡边缘压暗
             // ⚠️ 缩放期间整层撤掉：这两层都是**整窗**尺寸，每帧重排都要为它们
             // 重新分配 GPU 表面；它们只有 4%~9% 不透明度，缩放时消失几乎察觉不到。
-            if Palette.isMoss, !visibility.isResizing {
+            if Palette.isMoss, !visibility.isBusy {
                 MossScreenOverlay()
                     .zIndex(5)
                 // 局部太阳系绘制图：圆心在左上角、弧线扫过整窗（内容背景不透明，
@@ -214,7 +214,7 @@ struct WorkspaceBackground: View {
             Color.white
             // 极淡的图纸网格，保留「工程纸」底子（不抢戏）。
             // 缩放期间省掉：整窗 Canvas 每帧都要重描几十条线 + 重分配一块整窗纹理。
-            if !visibility.isResizing { MossGrid() }
+            if !visibility.isBusy { MossGrid() }
         } else {
             Palette.veil
                 .ignoresSafeArea()
@@ -280,8 +280,18 @@ final class WindowVisibility: ObservableObject {
     /// 这些装饰只有 4%~9% 不透明度，缩放期间撤掉几乎看不出来，松手立刻回来。
     @Published private(set) var isResizing = false
 
+    /// 是否正在做最小化 / 还原到 Dock 的动画。
+    /// 这段动画由窗口服务器 + GPU 合成，主线程整段阻塞在 `waitForTransaction` ——
+    /// 没法多线程化。能做的只是少给它几层去合成（这台机的 Metal 是 Mesa nouveau
+    /// 翻译层，genie 扭曲基本靠软件算，层越少越跟手）。
+    @Published private(set) var isMinimizing = false
+
+    /// 缩放或最小化中：两种情况下都值得把纯装饰层撤掉
+    var isBusy: Bool { isResizing || isMinimizing }
+
     private weak var window: NSWindow?
     private var observers: [NSObjectProtocol] = []
+    private var minimizeStartedAt: Date?
     /// 兜底轮询：某些路径（开机静默启动后自动收窗）不会发遮挡通知，
     /// 每秒纯属性检查一次即可，不参与任何 SwiftUI 刷新。
     private var poll: Timer?
@@ -298,12 +308,22 @@ final class WindowVisibility: ObservableObject {
             NSWindow.willCloseNotification,
             NSWindow.willStartLiveResizeNotification,
             NSWindow.didEndLiveResizeNotification,
+            NSWindow.willMiniaturizeNotification,
+            NSWindow.didDeminiaturizeNotification,
         ]
         observers = names.map { name in
             nc.addObserver(forName: name, object: window, queue: .main) { [weak self] note in
                 guard let self else { return }
-                if note.name == NSWindow.willStartLiveResizeNotification { self.isResizing = true }
-                if note.name == NSWindow.didEndLiveResizeNotification { self.isResizing = false }
+                switch note.name {
+                case NSWindow.willStartLiveResizeNotification: self.isResizing = true
+                case NSWindow.didEndLiveResizeNotification:   self.isResizing = false
+                case NSWindow.willMiniaturizeNotification:
+                    self.isMinimizing = true
+                    self.minimizeStartedAt = Date()
+                case NSWindow.didDeminiaturizeNotification:
+                    self.isMinimizing = false
+                default: break
+                }
                 self.refresh()
             }
         }
@@ -321,6 +341,13 @@ final class WindowVisibility: ObservableObject {
             && !w.isMiniaturized
             && w.occlusionState.contains(.visible)
         if visible != isVisible { isVisible = visible }
+
+        // 兜底：动画被打断（没等到 deminiaturize 通知）时别让装饰层一直缺席。
+        // 用超时判断而不是 isMiniaturized —— 动画进行中该值还没翻转，会误清。
+        if isMinimizing, let t = minimizeStartedAt, Date().timeIntervalSince(t) > 1.6,
+           w.isVisible, !w.isMiniaturized {
+            isMinimizing = false
+        }
     }
 }
 
