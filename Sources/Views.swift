@@ -240,34 +240,47 @@ struct MossGrid: View, Equatable {
     static func == (l: Self, r: Self) -> Bool { l.step == r.step }
 
     var body: some View {
-        Canvas { ctx, size in
-            var thin = Path()
-            var bold = Path()
-            var i = 1
-            var x = step
-            while x < size.width {
-                if i % 4 == 0 {
-                    bold.move(to: CGPoint(x: x, y: 0)); bold.addLine(to: CGPoint(x: x, y: size.height))
-                } else {
-                    thin.move(to: CGPoint(x: x, y: 0)); thin.addLine(to: CGPoint(x: x, y: size.height))
-                }
-                x += step; i += 1
-            }
-            i = 1
-            var y = step
-            while y < size.height {
-                if i % 4 == 0 {
-                    bold.move(to: CGPoint(x: 0, y: y)); bold.addLine(to: CGPoint(x: size.width, y: y))
-                } else {
-                    thin.move(to: CGPoint(x: 0, y: y)); thin.addLine(to: CGPoint(x: size.width, y: y))
-                }
-                y += step; i += 1
-            }
-            ctx.stroke(thin, with: .color(Color.black.opacity(0.040)), lineWidth: 1)
-            ctx.stroke(bold, with: .color(Color.black.opacity(0.070)), lineWidth: 1)
+        // ⚠️ 这里**不能用 `Canvas`**：Canvas 会被安全区挡在内容区，
+        // 而 `Color.white` 能铺到红绿灯那一行 —— 顶栏就成了「纯白无网格」，
+        // 比下面的工程纸亮一档（实测 254.7 vs 251.9），看起来色调不统一。
+        // 改成 `Shape`（`Path` 描边）就与 `Color` 同一条渲染路径，能跟着 ignoresSafeArea 铺到顶栏。
+        ZStack {
+            MossGridLines(step: step, phase: 1)
+                .stroke(Color.black.opacity(0.040), lineWidth: 1)
+            MossGridLines(step: step * 4, phase: 0)
+                .stroke(Color.black.opacity(0.070), lineWidth: 1)
         }
-        .drawingGroup()
         .allowsHitTesting(false)
+    }
+}
+
+/// 工程纸网格的线：`phase` 控制从第几格开始（细线从第 1 格起、粗线从第 4 格起）。
+struct MossGridLines: Shape {
+    var step: CGFloat = 28
+    var phase: Int = 1
+
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        guard step > 0 else { return p }
+        var i = 1
+        var x = step * CGFloat(phase)
+        while x < rect.maxX {
+            let xi = rect.minX + x
+            p.move(to: CGPoint(x: xi, y: rect.minY))
+            p.addLine(to: CGPoint(x: xi, y: rect.maxY))
+            x += step; i += 1
+        }
+        _ = i
+        var j = 1
+        var y = step * CGFloat(phase)
+        while y < rect.maxY {
+            let yi = rect.minY + y
+            p.move(to: CGPoint(x: rect.minX, y: yi))
+            p.addLine(to: CGPoint(x: rect.maxX, y: yi))
+            y += step; j += 1
+        }
+        _ = j
+        return p
     }
 }
 
@@ -471,7 +484,6 @@ struct MossScreenOverlay: View, Equatable {
             }
         }
         .ignoresSafeArea()
-        .drawingGroup()
         .allowsHitTesting(false)
     }
 }
