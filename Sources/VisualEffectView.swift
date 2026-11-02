@@ -177,11 +177,51 @@ enum WindowChrome {
         if SkinFlag.moss {
             window.isOpaque = true
             window.backgroundColor = NSColor(white: 1, alpha: 1)
-        } else if !AppEnv.selftest || AppEnv.glassInSelftest {
-            window.isOpaque = false
-            window.backgroundColor = .clear
+            hideScrollPockets(in: window)
+        } else {
+            // 切回其它主题要把口袋还回去
+            showScrollPockets(in: window)
+            if !AppEnv.selftest || AppEnv.glassInSelftest {
+                window.isOpaque = false
+                window.backgroundColor = .clear
+            }
+            // selftest 非玻璃：保持默认不透明窗，不动
         }
-        // selftest 非玻璃：保持默认不透明窗，不动
+    }
+
+    // MARK: - 滚动口袋
+
+    /// 550W：把滚动视图顶部的「口袋」藏掉。
+    ///
+    /// macOS 26 会在 `NSScrollView` 顶部盖一层 `NSScrollPocket`，里面有 **4 个
+    /// `CABackdropLayer`（实时模糊，1007×52 / 1007×80 / 822×32）** —— 每个合成帧都要重算。
+    /// 550W 是纯白不透明界面，这块模糊根本看不见，纯粹白烧：
+    /// 指针划到 Dock 上、窗口服务器逐帧重合成整屏时，它就是拖慢 Dock 放大的那部分。
+    ///
+    /// 试过更干净的 `scrollEdgeEffectHidden(true, for: .all)`（macOS 26 SwiftUI API），
+    /// 对 AppKit 这套口袋**无效**，只好直接隐藏那个视图。
+    private static func hideScrollPockets(in window: NSWindow) {
+        guard let root = window.contentView else { return }
+        func walk(_ v: NSView) {
+            let name = String(describing: type(of: v))
+            if name.contains("Pocket") || name == "BackdropView", !v.isHidden {
+                v.isHidden = true
+            }
+            for c in v.subviews { walk(c) }
+        }
+        walk(root)
+    }
+
+    private static func showScrollPockets(in window: NSWindow) {
+        guard let root = window.contentView else { return }
+        func walk(_ v: NSView) {
+            let name = String(describing: type(of: v))
+            if name.contains("Pocket") || name == "BackdropView", v.isHidden {
+                v.isHidden = false
+            }
+            for c in v.subviews { walk(c) }
+        }
+        walk(root)
     }
 
     /// 抹掉标题栏自带的背景层，只留红绿灯。

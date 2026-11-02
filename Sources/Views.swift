@@ -179,11 +179,6 @@ struct ContentView: View {
                 MossScreenOverlay()
                     .equatable()
                     .zIndex(5)
-                // 局部太阳系绘制图：圆心在左上角、弧线扫过整窗（内容背景不透明，
-                // 放在 WorkspaceBackground 里会被盖住，所以这里以 overlay 形式绘出）。
-                // 侧栏换页会换一个公转角，所以把当前页传进去。
-                MossSolarSystem(page: router.page)
-                    .zIndex(4)
             }
 
             if let kind = bootKind {
@@ -238,6 +233,7 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity)
                 .background(ScrollerAutoHide())
             }
+            .modifier(MossScrollEdgeOff())
         }
         // 整窗【一块】玻璃 + 【一层】工作区光晕。窗口开了 fullSizeContentView，
         // 所以背景用 ignoresSafeArea 就能铺到红绿灯那一行（内容布局仍被安全区挡在下面，
@@ -253,10 +249,37 @@ struct ContentView: View {
                 // 背景只剩一层纯色薄纱：不再有渐变/网格，也就没有重绘成本，
                 // 不需要 equatable / drawingGroup 那一套了。
                 WorkspaceBackground()
+
+                // 太阳系放在**卡片之后**（内容之下、白底之上）：弧线从空白处透出来，
+                // 不再压在卡片正文上。侧栏换页会换一个公转角，所以把当前页传进去。
+                if Palette.isMoss, !visibility.isBusy {
+                    MossSolarSystem(page: router.page)
+                }
             }
             .ignoresSafeArea()
         }
         .overlay(WindowAccessor())
+    }
+}
+
+/// 550W：关掉 macOS 26 的「滚动口袋」（`NSScrollPocket`）。
+///
+/// 那层里有一个 `CABackdropLayer`（1007×52 的**实时模糊**）—— 每个合成帧都要重算。
+/// 顶栏色调的问题另有其因（见 `MossScreenOverlay` 的注释），但这一层是纯合成负担：
+/// 我们的界面是纯白不透明，那块模糊既看不见又白花钱，指针在 Dock 上时尤其拖后腿。
+/// 其它主题保留系统默认。
+struct MossScrollEdgeOff: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if Palette.isMoss {
+            if #available(macOS 26.0, *) {
+                content.scrollEdgeEffectHidden(true, for: .all)
+            } else {
+                content
+            }
+        } else {
+            content
+        }
     }
 }
 
