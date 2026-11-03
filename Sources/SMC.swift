@@ -129,12 +129,6 @@ enum SMC {
         }
     }
 
-    /// 写入 16 位大端（键盘背光等 2 字节键）
-    @discardableResult
-    static func writeU16(_ key: String, _ value: Int) -> Int32 {
-        let v = UInt16(clamping: value)
-        return write(key, bytes: [UInt8(v >> 8 & 0xFF), UInt8(v & 0xFF)])
-    }
 }
 
 // MARK: - SMC 键目录（用于界面展示）

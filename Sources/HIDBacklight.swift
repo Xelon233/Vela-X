@@ -156,11 +156,6 @@ final class HIDBacklight {
     private func strProp(_ dev: IOHIDDevice, _ key: String) -> String {
         (IOHIDDeviceGetProperty(dev, key as CFString) as? String) ?? ""
     }
-
-    private func outReportSize(_ dev: IOHIDDevice) -> Int {
-        (IOHIDDeviceGetProperty(dev, kIOHIDMaxOutputReportSizeKey as CFString) as? NSNumber)?.intValue ?? 0
-    }
-
     private func featureReportSize(_ dev: IOHIDDevice) -> Int {
         (IOHIDDeviceGetProperty(dev, "MaxFeatureReportSize" as CFString) as? NSNumber)?.intValue ?? 0
     }
@@ -217,16 +212,6 @@ final class HIDBacklight {
         lock.lock(); defer { lock.unlock() }
         return openDevice() != nil
     }
-
-    /// 一次探测拿到全部状态（避免连续调用 isAvailable / needsPermission / activeProductID 各枚举一遍）
-    func probeState() -> (available: Bool, pid: Int, blocked: Bool) {
-        lock.lock(); defer { lock.unlock() }
-        if openDevice() != nil {
-            return (true, devicePID, false)
-        }
-        return (false, 0, permissionDenied)
-    }
-
     /// 综合「TCC 查询结果 + 实际能否打开设备」判断当前真实状态
     var permissionState: PermissionState {
         lock.lock(); defer { lock.unlock() }
@@ -373,24 +358,6 @@ final class HIDBacklight {
             .map { "\($0.0)=0x\(String(format: "%08X", UInt32(bitPattern: $0.1)))" }
             .joined(separator: " · ")
         return "写入 HID 报告失败（全部写法都被拒绝）\(detail.isEmpty ? "" : "｜" + detail)"
-    }
-
-    /// 调试面板：单独发第 index 种写法
-    @discardableResult
-    func debugWrite(index: Int, level: Int) -> kern_return_t {
-        lock.lock()
-        let ready = !opened.isEmpty || openDevice() != nil
-        lock.unlock()
-        guard ready else { return lastOpenResult }
-
-        let clamped = UInt8(max(0, min(Self.maxLevel, level)))
-        let all = frames(level: clamped)
-        guard index >= 0, index < all.count else { return kIOReturnBadArgument }
-        let rc = send(all[index])
-        if rc == kIOReturnSuccess {
-            lastWriteVariant = all[index].name
-        }
-        return rc
     }
 
     /// 调试面板用的写法名

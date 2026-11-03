@@ -178,10 +178,10 @@ enum WindowChrome {
         if SkinFlag.moss {
             window.isOpaque = true
             window.backgroundColor = NSColor(white: 1, alpha: 1)
-            hideScrollPockets(in: window)
+            setScrollPockets(hidden: true, in: window)
         } else {
             // 切回其它主题要把口袋还回去
-            showScrollPockets(in: window)
+            setScrollPockets(hidden: false, in: window)
             if !AppEnv.selftest || AppEnv.glassInSelftest {
                 window.isOpaque = false
                 window.backgroundColor = .clear
@@ -201,24 +201,21 @@ enum WindowChrome {
     ///
     /// 试过更干净的 `scrollEdgeEffectHidden(true, for: .all)`（macOS 26 SwiftUI API），
     /// 对 AppKit 这套口袋**无效**，只好直接隐藏那个视图。
-    private static func hideScrollPockets(in window: NSWindow) {
+    /// 550W：隐藏滚动视图顶部的「口袋」；其它主题再放出来。
+    ///
+    /// macOS 26 会在 `NSScrollView` 顶部盖一层 `NSScrollPocket`，里面藏着
+    /// **4 个 `CABackdropLayer`（实时模糊）**，每个合成帧都要重算。550W 是纯白不透明界面，
+    /// 这块模糊根本看不见，纯粹白烧 —— 指针划到 Dock 上、窗口服务器逐帧重合成整屏时，
+    /// 它就是拖慢 Dock 放大的那部分。
+    ///
+    /// 试过更干净的 `scrollEdgeEffectHidden(true, for: .all)`（macOS 26 SwiftUI API），
+    /// 对 AppKit 这套口袋**无效**，只好直接隐藏那些视图。
+    private static func setScrollPockets(hidden: Bool, in window: NSWindow) {
         guard let root = window.contentView else { return }
         func walk(_ v: NSView) {
             let name = String(describing: type(of: v))
-            if name.contains("Pocket") || name == "BackdropView", !v.isHidden {
-                v.isHidden = true
-            }
-            for c in v.subviews { walk(c) }
-        }
-        walk(root)
-    }
-
-    private static func showScrollPockets(in window: NSWindow) {
-        guard let root = window.contentView else { return }
-        func walk(_ v: NSView) {
-            let name = String(describing: type(of: v))
-            if name.contains("Pocket") || name == "BackdropView", v.isHidden {
-                v.isHidden = false
+            if name.contains("Pocket") || name == "BackdropView" {
+                v.isHidden = hidden
             }
             for c in v.subviews { walk(c) }
         }
@@ -247,34 +244,6 @@ enum WindowChrome {
                 sub.alphaValue = 0
             }
         }
-
-        // 调试：确认标题栏区域能否被我们自己的视图覆盖（ASUS_TOPBAR_TEST=1 时顶栏应变纯红）
-        if ProcessInfo.processInfo.environment["ASUS_TOPBAR_TEST"] != nil {
-            let red = NSView(frame: titlebarView.bounds)
-            red.wantsLayer = true
-            red.layer?.backgroundColor = NSColor.red.cgColor
-            red.autoresizingMask = [.width, .height]
-            titlebarView.addSubview(red)
-        }
-        if ProcessInfo.processInfo.environment["TOPBAR_DUMP"] != nil {
-            func dump(_ v: NSView, _ depth: Int) {
-                let pad = String(repeating: "  ", count: depth)
-                let cls = String(describing: type(of: v))
-                let bg = v.layer?.backgroundColor.map { "\($0.alpha)" } ?? "-"
-                let msg = pad + cls + " alpha=" + String(format: "%.2f", v.alphaValue)
-                    + " hidden=" + (v.isHidden ? "1" : "0")
-                    + " bgA=" + bg + " frame=" + NSStringFromRect(v.frame)
-                FileHandle.standardError.write(Data((msg + "\n").utf8))
-                for c in v.subviews { dump(c, depth + 1) }
-            }
-            FileHandle.standardError.write(Data("=== TOPBAR DUMP ===\n".utf8))
-            dump(titlebarView, 0)
-            if let c = titlebarView.superview {
-                FileHandle.standardError.write(Data("=== container ===\n".utf8))
-                dump(c, 0)
-            }
-        }
-
         // 装饰层挂在外面那层 container 上
         if let container = titlebarView.superview {
             for sub in container.subviews where String(describing: type(of: sub)).contains("Decoration") {

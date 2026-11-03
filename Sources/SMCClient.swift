@@ -187,14 +187,6 @@ public final class SMCClient {
     public func writeUInt8(_ name: String, _ value: UInt8) throws {
         try write(name, [value])
     }
-
-    /// SMC 的 ui32 是大端
-    public func readUInt32(_ name: String) throws -> UInt32 {
-        let b = try read(name)
-        guard b.count == 4 else { throw SMCError.ioFailed(KERN_INVALID_ARGUMENT) }
-        return (UInt32(b[0]) << 24) | (UInt32(b[1]) << 16) | (UInt32(b[2]) << 8) | UInt32(b[3])
-    }
-
     public func writeUInt32(_ name: String, _ value: UInt32) throws {
         let b: [UInt8] = [UInt8((value >> 24) & 0xFF), UInt8((value >> 16) & 0xFF),
                           UInt8((value >> 8) & 0xFF), UInt8(value & 0xFF)]

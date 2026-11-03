@@ -148,26 +148,6 @@ extension Color {
 }
 
 // MARK: - 切角面板形状
-
-struct ChamferShape: Shape {
-    var cut: CGFloat = 10
-
-    func path(in rect: CGRect) -> Path {
-        var p = Path()
-        let c = min(cut, min(rect.width, rect.height) / 2)
-        p.move(to: CGPoint(x: rect.minX + c, y: rect.minY))
-        p.addLine(to: CGPoint(x: rect.maxX - c, y: rect.minY))
-        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + c))
-        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - c))
-        p.addLine(to: CGPoint(x: rect.maxX - c, y: rect.maxY))
-        p.addLine(to: CGPoint(x: rect.minX + c, y: rect.maxY))
-        p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - c))
-        p.addLine(to: CGPoint(x: rect.minX, y: rect.minY + c))
-        p.closeSubpath()
-        return p
-    }
-}
-
 // MARK: - 面板
 
 struct Card<Content: View>: View {
@@ -502,70 +482,6 @@ struct MossTempShadow: View {
         ctx.fill(dot, with: .color(tempColor))
     }
 }
-
-/// 七段数码管（液晶体）数字：在 Canvas 里自绘，不依赖外部字体文件。
-/// 灭段留极淡的「鬼影」，读起来像一块真 LCD；on 段用传入色（默认近黑，像白底上的黑 LCD）。
-struct MossLCDNumber: View {
-    let string: String
-    /// 单个数码位高度（pt）
-    var digitHeight: CGFloat = 28
-    var color: Color = Palette.text
-
-    private var t: CGFloat { max(digitHeight * 0.15, 1.4) }      // 段粗
-    private var digitW: CGFloat { digitHeight * 0.58 }           // 数码位宽
-    private var gap: CGFloat { digitHeight * 0.12 }              // 位间距
-    private var n: CGFloat { CGFloat(string.count) }
-    private var totalW: CGFloat { n * digitW + max(n - 1, 0) * gap }
-
-    var body: some View {
-        Canvas { ctx, size in
-            let y = (size.height - digitHeight) / 2
-            var x = (size.width - totalW) / 2
-            for ch in string {
-                mossDrawDigit(ctx: ctx, ox: x, oy: y, w: digitW, h: digitHeight,
-                              t: t, ch: ch, on: color, off: color.opacity(0.09))
-                x += digitW + gap
-            }
-        }
-        .frame(width: totalW + 2, height: digitHeight + 2)
-    }
-}
-
-/// 单个数码位：七段 a~g。空格/不支持的字符全部熄灭。
-private func mossDrawDigit(ctx: GraphicsContext, ox: CGFloat, oy: CGFloat,
-                           w: CGFloat, h: CGFloat, t: CGFloat,
-                           ch: Character, on: Color, off: Color) {
-    // a 上横, b 右上竖, c 右下竖, d 下横, e 左下竖, f 左上竖, g 中横
-    let a = CGRect(x: ox + t,     y: oy,         width: w - 2*t, height: t)
-    let g = CGRect(x: ox + t,     y: oy + h/2 - t/2, width: w - 2*t, height: t)
-    let d = CGRect(x: ox + t,     y: oy + h - t, width: w - 2*t, height: t)
-    let f = CGRect(x: ox,         y: oy + t,     width: t,        height: h/2 - t)
-    let b = CGRect(x: ox + w - t, y: oy + t,     width: t,        height: h/2 - t)
-    let e = CGRect(x: ox,         y: oy + h/2,   width: t,        height: h/2 - t)
-    let c = CGRect(x: ox + w - t, y: oy + h/2,   width: t,        height: h/2 - t)
-    let rects = [a, b, c, d, e, f, g]
-
-    let seg: [Bool]
-    switch ch {
-    case "0": seg = [true,  true,  true,  true,  true,  true,  false]
-    case "1": seg = [false, true,  true,  false, false, false, false]
-    case "2": seg = [true,  true,  false, true,  true,  false, true ]
-    case "3": seg = [true,  true,  true,  true,  false, false, true ]
-    case "4": seg = [false, true,  true,  false, false, true,  true ]
-    case "5": seg = [true,  false, true,  true,  false, true,  true ]
-    case "6": seg = [true,  false, true,  true,  true,  true,  true ]
-    case "7": seg = [true,  true,  true,  false, false, false, false]
-    case "8": seg = [true,  true,  true,  true,  true,  true,  true ]
-    case "9": seg = [true,  true,  true,  true,  false, true,  true ]
-    case "-": seg = [false, false, false, false, false, false, true ]
-    default:  seg = [false, false, false, false, false, false, false]
-    }
-    for i in 0 ..< 7 {
-        ctx.fill(Path(roundedRect: rects[i], cornerRadius: t * 0.3),
-                 with: .color(seg[i] ? on : off))
-    }
-}
-
 struct LabelValue: View {
     let label: String
     let value: String
@@ -1766,8 +1682,6 @@ struct MossLogLine: View {
     var size: CGFloat = 9
     /// 每条停留几个 tick（1s/tick）
     var ticksPerLine: Int = 3
-    /// 是否允许偶尔「掉字节」崩坏（概览页关掉，去掉代码崩坏特效）
-    var glitch: Bool = true
 
     var body: some View {
         // 1s 一跳（原 0.5s）：这个窗口每跳一次都是整窗重排，日志轮播没必要那么勤
@@ -1776,13 +1690,11 @@ struct MossLogLine: View {
             let count = max(lines.count, 1)
             let idx = (tick / max(ticksPerLine, 1)) % count
             let cursorOn = tick % 2 == 0
-            // 偶尔掉几个字节：日志行每 23 秒崩一次，持续 1 秒
             let raw = lines.isEmpty ? "" : lines[idx]
-            let broken = glitch && MossGlitch.isBroken(tick: tick, period: 47, burst: 2)
             HStack(spacing: 3) {
                 Text("›")
                     .foregroundStyle(Palette.accent.opacity(0.9))
-                Text(broken ? MossGlitch.corrupt(raw, seed: tick, ratio: 16) : raw)
+                Text(raw)
                     .foregroundStyle(Palette.textTertiary)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -1863,8 +1775,6 @@ struct MossDispatchStrip: View {
 struct MossFooterStrip: View {
     var lines: [String]
     var node: String
-    /// 是否允许日志行偶尔崩坏（概览页关掉，去掉代码崩坏特效）
-    var glitch: Bool = true
 
     var body: some View {
         HStack(spacing: 0) {
@@ -1876,7 +1786,7 @@ struct MossFooterStrip: View {
             Text("│")
                 .foregroundStyle(Palette.accent.opacity(0.28))
                 .padding(.horizontal, 7)
-            MossLogLine(lines: lines, size: 9, glitch: glitch)
+            MossLogLine(lines: lines, size: 9)
             Spacer(minLength: 10)
             MossTicker(interval: 1) { _ in
                 Text("T+\(MossUptime.text())")
@@ -1939,54 +1849,3 @@ struct MossAccentPulse: View {
 }
 
 // MARK: - 550W 故障特效
-
-/// 代码崩坏：把文字按块字符打碎。
-/// 用时间取模决定「什么时候坏」，不存随机状态、不额外挂计时器；
-/// 只在极短的 burst 里出几帧，之后自动复原 —— 读起来像信号掉了几个字节。
-enum MossGlitch {
-    private static let marks = Array("▓▒░#@%&*¦")
-
-    /// seed 决定这一帧打碎哪些字符，同一次 tick 内结果稳定（不会每帧乱跳）
-    static func corrupt(_ text: String, seed: Int, ratio: Int = 24) -> String {
-        var rng = seed &* 2_654_435_761 &+ 1
-        var out = ""
-        for ch in text {
-            rng = rng &* 1_103_515_245 &+ 12_345
-            let r = abs(rng) % 100
-            if ch != " ", r < ratio {
-                out.append(marks[abs(rng >> 7) % marks.count])
-            } else {
-                out.append(ch)
-            }
-        }
-        return out
-    }
-
-    /// 这一 tick 是否该出故障：每 period 个 tick 坏 burst 个
-    static func isBroken(tick: Int, period: Int, burst: Int) -> Bool {
-        guard period > burst else { return false }
-        return tick % period < burst
-    }
-}
-
-/// 会偶尔崩坏的等宽文本
-struct MossGlitchText: View {
-    let text: String
-    /// tick 间隔（秒）
-    var tick: Double = 0.25
-    /// 每多少个 tick 崩一次
-    var period: Int = 60
-    /// 崩几个 tick
-    var burst: Int = 3
-    /// 打碎比例（%）
-    var ratio: Int = 24
-
-    var body: some View {
-        MossTicker(interval: tick) { date in
-            let t = Int(date.timeIntervalSince1970 / tick)
-            Text(MossGlitch.isBroken(tick: t, period: period, burst: burst)
-                 ? MossGlitch.corrupt(text, seed: t, ratio: ratio)
-                 : text)
-        }
-    }
-}

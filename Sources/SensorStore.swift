@@ -768,15 +768,6 @@ final class SensorStore: ObservableObject {
             }
         }
     }
-
-    /// 设置机型显示名（nil = 恢复自动识别）
-    func setProductName(_ name: String?, global: String? = nil) {
-        let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        Prefs.set(trimmed, for: ModelCatalog.overrideKey)
-        Prefs.set(global ?? "", for: ModelCatalog.overrideGlobalKey)
-        hardware = SystemProbe.hardware()
-    }
-
     // MARK: - 派生值
 
     var tempText: String {

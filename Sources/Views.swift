@@ -1288,8 +1288,7 @@ struct OverviewView: View {
                         .padding(.top, 4)
                 }
                 MossFooterStrip(lines: footerLogLines,
-                                node: store.hardware.modelCode.isEmpty ? "LOCAL" : store.hardware.modelCode,
-                                glitch: false)
+                                node: store.hardware.modelCode.isEmpty ? "LOCAL" : store.hardware.modelCode)
             }
 
             if windowState.isEditMode {
@@ -1603,26 +1602,6 @@ struct OverviewView: View {
             }
         }
     }
-
-    private func headerKPI(_ label: String, _ value: String, _ unit: String, _ color: Color) -> some View {
-        VStack(alignment: .trailing, spacing: 1) {
-            Text(label)
-                .font(.system(size: 9))
-                .tracking(0.8)
-                .foregroundStyle(Palette.textTertiary)
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text(value)
-                    .font(.system(size: 19, weight: .bold).monospacedDigit())
-                    .foregroundStyle(color)
-                    .shadow(color: color.opacity(0.5), radius: 8)
-                Text(unit)
-                    .font(.system(size: 9))
-                    .foregroundStyle(Palette.textTertiary)
-            }
-        }
-        .frame(width: 74, alignment: .trailing)
-    }
-
     private var headerDivider: some View {
         Rectangle()
             .fill(Palette.hairline)
@@ -1639,7 +1618,7 @@ struct OverviewView: View {
             VStack(alignment: .leading, spacing: 0) {
                 SectionTitle(text: "CPU", trailing: "温度 · 频率 · 功耗", color: Palette.mLoad, code: "SYS.CPU", command: "cpu --stat")
                 if Palette.isMoss {
-                    MossLogLine(lines: cpuLogLines, size: 9, glitch: false)
+                    MossLogLine(lines: cpuLogLines, size: 9)
                         .padding(.top, 4)
                 }
                 Spacer(minLength: 6)
@@ -1743,7 +1722,7 @@ struct OverviewView: View {
                     VStack(alignment: .leading, spacing: 5) {
                         terminalFanRow("FAN.0", store.fanRPM, Palette.mFan)
                         terminalFanRow("FAN.1", store.fanRPMGPU, Palette.mGPU)
-                        MossLogLine(lines: fanLogLines, size: 8.5, glitch: false)
+                        MossLogLine(lines: fanLogLines, size: 8.5)
                             .padding(.top, 1)
                     }
                     .padding(.top, 2)
@@ -1951,7 +1930,7 @@ struct OverviewView: View {
             VStack(alignment: .leading, spacing: 0) {
                 SectionTitle(text: "GPU", trailing: "温度 · 占用 · 功耗 · 显存", color: Palette.mGPU, code: "SYS.GPU", command: "gpu --stat")
                 if Palette.isMoss {
-                    MossLogLine(lines: gpuLogLines, size: 9, glitch: false)
+                    MossLogLine(lines: gpuLogLines, size: 9)
                         .padding(.top, 4)
                 }
                 Spacer(minLength: 6)
@@ -3080,93 +3059,3 @@ struct DiagnosticsView: View {
 }
 
 // MARK: - 机型改名
-
-struct ModelPickerSheet: View {
-    @EnvironmentObject var store: SensorStore
-    @Environment(\.dismiss) private var dismiss
-    @State private var customName = ""
-    @State private var filter = ""
-
-    private var filtered: [ASUSModel] {
-        guard !filter.isEmpty else { return ModelCatalog.all }
-        return ModelCatalog.all.filter {
-            $0.china.localizedCaseInsensitiveContains(filter)
-                || $0.code.localizedCaseInsensitiveContains(filter)
-                || $0.global.localizedCaseInsensitiveContains(filter)
-        }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("机型名称")
-                    .font(.system(size: 14, weight: .semibold))
-                Spacer()
-                Text(store.hardware.nameSource)
-                    .font(.system(size: 10))
-                    .foregroundStyle(Palette.textTertiary)
-            }
-
-            Text("黑苹果用 OpenCore 覆盖了 SMBIOS，macOS 里读不到真实 DMI。下面是 EC 上报的代码 \(store.hardware.modelCode) 对应的零售名，选不对可以直接输入。")
-                .font(.system(size: 11))
-                .foregroundStyle(Palette.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            TextField("搜索型号 / 名称", text: $filter)
-                .textFieldStyle(.roundedBorder)
-
-            List(filtered) { model in
-                Button {
-                    store.setProductName(model.china, global: model.global)
-                    dismiss()
-                } label: {
-                    HStack(spacing: 8) {
-                        Text(model.code).font(.system(size: 11).monospaced())
-                            .foregroundStyle(Palette.textSecondary).frame(width: 52, alignment: .leading)
-                        Text(model.china).font(.system(size: 12))
-                        Text(model.note.isEmpty ? "" : model.note)
-                            .font(.system(size: 10)).foregroundStyle(Palette.textTertiary)
-                        Spacer()
-                        Text(model.global).font(.system(size: 10)).foregroundStyle(Palette.textSecondary)
-                        if store.hardware.productName == model.china {
-                            Image(systemName: "checkmark").font(.system(size: 10))
-                                .foregroundStyle(Palette.accent)
-                        }
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-            .frame(minHeight: 200)
-
-            Divider()
-
-            HStack(spacing: 8) {
-                TextField("自定义名称", text: $customName)
-                    .textFieldStyle(.roundedBorder)
-                Button("应用") {
-                    let trimmed = customName.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !trimmed.isEmpty {
-                        store.setProductName(trimmed)
-                        dismiss()
-                    }
-                }
-                .buttonStyle(GrayButtonStyle(prominent: true))
-                .disabled(customName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-
-            HStack {
-                Button("恢复自动识别") {
-                    store.setProductName(nil)
-                    dismiss()
-                }
-                .buttonStyle(GrayButtonStyle())
-                Spacer()
-                Button("关闭") { dismiss() }
-                    .buttonStyle(GrayButtonStyle())
-            }
-        }
-        .padding(16)
-        .frame(width: 520, height: 470)
-    }
-}

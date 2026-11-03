@@ -521,11 +521,4 @@ final class AuraEffects {
         lines.append("把以上全部内容截图/复制发回来即可完成机型适配信息收集。")
         return lines.joined(separator: "\n")
     }
-
-    /// 关闭并释放设备
-    func closeAll() {
-        lock.lock(); defer { lock.unlock() }
-        for dev in opened { IOHIDDeviceClose(dev, 0) }
-        opened.removeAll()
-    }
 }
