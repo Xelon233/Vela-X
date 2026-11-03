@@ -28,7 +28,13 @@ enum CapStatus {
 }
 
 struct Capability: Identifiable {
-    let id = UUID()
+    /// ⚠️ 标识必须**稳定**，不能用 `UUID()`。
+    /// 这些条目每次 `Capabilities.all(...)` 都会重建（开机探一次、显卡驱动检查完再重建一次），
+    /// 若 id 每次都换新，5 行 `ForEach` 的身份就整体作废、每次刷新把整组行销毁重建。
+    /// 实测后果：开机约 1 秒时，这组重建会撞上 AppKit 的通知回调，SwiftUI 属性图直接
+    /// `AG::Graph::value_set` precondition failure → SIGABRT（概览页只要显示这张卡就必崩）。
+    /// 用「标题 + 后端」做身份：内容没变就是同一个视图，变了才是新的一行。
+    var id: String { title + "|" + backend }
     let title: String
     let status: CapStatus
     let summary: String

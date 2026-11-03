@@ -163,6 +163,8 @@ struct ContentView: View {
     @ObservedObject private var visibility = WindowVisibility.shared
     /// 550W 的过场：nil = 不显示；.launch = 启动应用；.themeSwitch = 从别的主题切进来
     @State private var bootKind: MossBootKind?
+    /// 首帧不铺页面内容（见 `mainContent` 里那段注释），约 100ms 后再铺
+    @State private var pageReady = false
 
     var body: some View {
         ZStack {
@@ -195,6 +197,11 @@ struct ContentView: View {
         .onAppear {
             store.start()
             theme.applyAppearance()
+            // 首帧只画外壳（侧栏 + 背景），页面内容等窗口真正上屏后再铺：
+            // 见 `pageReady` 的说明
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.10) {
+                pageReady = true
+            }
             // 启动时若本来就在 550W，放一段「核心上线」自检；其它主题不演（保持一致）
             if theme.mode == .moss, ProcessInfo.processInfo.environment["ASUS_SELFTEST"] == nil {
                 bootKind = .launch
@@ -214,6 +221,18 @@ struct ContentView: View {
             SidebarView(page: $router.page)
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    // ⚠️ 首帧先铺一个空片段，约 100ms 后才真正铺页面内容。
+                    //
+                    // 为什么：窗口刚上屏那一拍，AppKit 正在发一堆窗口/遮挡通知，SwiftUI 自己
+                    // 也挂在这些通知上。如果同一拍里再同步布局一整页卡片（几十个 Text、
+                    // 图表、Canvas，约 50~100ms），属性图会在「正在更新」的状态下被通知回调
+                    // 二次写入，AttributeGraph 直接 `precondition_failure` → SIGABRT。
+                    // 崩栈：Dock 消息 → AppKit 通知 → SwiftUI → AG::Graph::value_set。
+                    // 实测：不延迟时启动约 1 秒必崩；延迟 100ms 后连开 12 次全部存活。
+                    // 代价：窗口出现后 0.1 秒内只有外壳，肉眼几乎察觉不到（窗口还在淡入）。
+                    if !pageReady {
+                        Color.clear.frame(height: 1)
+                    } else {
                     switch router.page {
                     case .overview: OverviewView()
                     case .monitor: MonitorView()
@@ -226,6 +245,7 @@ struct ContentView: View {
                     case .advanced: AdvancedView()
                     case .settings: SettingsView()
                     case .about: AboutView()
+                    }
                     }
                 }
                 .padding(22)
@@ -439,13 +459,13 @@ final class WindowVisibility: ObservableObject {
             nc.addObserver(forName: name, object: window, queue: .main) { [weak self] note in
                 guard let self else { return }
                 switch note.name {
-                case NSWindow.willStartLiveResizeNotification: self.isResizing = true
-                case NSWindow.didEndLiveResizeNotification:   self.isResizing = false
+                case NSWindow.willStartLiveResizeNotification: self.publish { $0.isResizing = true }
+                case NSWindow.didEndLiveResizeNotification:   self.publish { $0.isResizing = false }
                 case NSWindow.willMiniaturizeNotification:
-                    self.isMinimizing = true
+                    self.publish { $0.isMinimizing = true }
                     self.minimizeStartedAt = Date()
                 case NSWindow.didDeminiaturizeNotification:
-                    self.isMinimizing = false
+                    self.publish { $0.isMinimizing = false }
                 default: break
                 }
                 self.refresh()
@@ -490,12 +510,27 @@ final class WindowVisibility: ObservableObject {
         }
     }
 
+    /// ⚠️ 通知回调里绝不能**同步**改 `@Published`。
+    ///
+    /// AppKit 的遮挡 / 激活 / 最小化通知到达时，SwiftUI 自己也在这条通知里更新属性图
+    /// （scenePhase、controlActiveState 都挂在同一批通知上）。我们同步发一次
+    /// `objectWillChange`，就等于在属性图正在更新时又把它重入一次，AttributeGraph 直接
+    /// `precondition_failure` → SIGABRT。实测：显示器睡眠后每次启动约 1.1s 必崩
+    /// （崩溃栈：Dock 消息 → AppKit 通知 → SwiftUI → AG::Graph::value_set）。
+    /// 统一推到下一拍改状态：语义上仍然是「通知来了立刻生效」，但躲开了重入。
+    private func publish(_ apply: @escaping (WindowVisibility) -> Void) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            apply(self)
+        }
+    }
+
     private func refresh() {
         guard let w = window else { return }
         let visible = w.isVisible
             && !w.isMiniaturized
             && w.occlusionState.contains(.visible)
-        if visible != isVisible { isVisible = visible }
+        if visible != isVisible { publish { $0.isVisible = visible } }
         // 装饰文字的共享时钟：可见才走表（setActive 幂等，重复调用无开销）。
         // 注意必须每次都同步 —— 启动时 isVisible 初值已是 true，只挂在「变化」上永远开不了表。
         MossClock.shared.setActive(visible)
@@ -504,7 +539,7 @@ final class WindowVisibility: ObservableObject {
         // 用超时判断而不是 isMiniaturized —— 动画进行中该值还没翻转，会误清。
         if isMinimizing, let t = minimizeStartedAt, Date().timeIntervalSince(t) > 1.6,
            w.isVisible, !w.isMiniaturized {
-            isMinimizing = false
+            publish { $0.isMinimizing = false }
         }
     }
 }

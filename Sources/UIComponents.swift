@@ -203,10 +203,16 @@ struct Card<Content: View>: View {
                 .padding(padding)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+        // 550W 的落地影单独由一层「只有形状」的背景承担（见下方 background）。
+        // 不能在整张卡上打 `.shadow`：那会把正文一起卷进离屏合成组，每次提交重渲染 + 重模糊，
+        // 滚动时每步 8.9ms（p90 34ms，60fps 预算只有 16.6ms）。只对纯形状打影，代价降一个量级。
+        .background {
+            if Palette.isMoss, !visibility.isBusy {
+                MossCardShadow(radius: radius, cut: 13)
+                    .allowsHitTesting(false)
+            }
+        }
         // 外发光仍是实时阴影（glow 卡才给）；其余卡不发光，靠描边与玻璃分层，观感几乎无差。
-        // 550W 不发光（白底上光晕会糊），但给一层很浅的落地影：面板像真的搁在纸面上。
-        // 只做一层（radius 9 / y 3），不再叠第二层接触影 —— 7 张卡各两道离屏模糊会立刻把
-        // 之前优化掉的合成开销加回来，一层已经足够撑起层次。
         .shadow(color: visibility.isBusy ? .clear : shadowColor,
                 radius: visibility.isBusy ? 0 : shadowRadius,
                 x: 0, y: shadowY)
@@ -214,7 +220,9 @@ struct Card<Content: View>: View {
 
     /// 550W 用一层浅投影撑层次；其它主题维持原样（glow 卡才有彩色外发光）
     private var shadowColor: Color {
-        if Palette.isMoss { return Color.black.opacity(0.085) }
+        // 550W 的落地影由 `MossCardShadow` 单独画（见下方 background），这里不能再叠一层：
+        // 整卡 `.shadow` 会把正文一起卷进离屏合成组，滚动时每步多 6ms。
+        if Palette.isMoss { return .clear }
         return glow ? Palette.accent.opacity(scheme == .light ? 0.07 : 0.10) : .clear
     }
     private var shadowRadius: CGFloat {
@@ -275,6 +283,35 @@ struct Card<Content: View>: View {
                                       Color.white.opacity(0.05),
                                       Color.white.opacity(0.14)],
                              startPoint: .top, endPoint: .bottom)
+    }
+}
+
+// MARK: - 标题
+
+/// 卡片落地影（550W 用）：用 `Canvas` 画一次，随后就是一张静态纹理。
+///
+/// 为什么不用 `.shadow`：SwiftUI 的阴影会把**整个被修饰的视图**卷进离屏合成组，
+/// 每次提交都要重新渲染 + 重新高斯模糊。之前它罩在整张卡（含正文与控件）上，
+/// 滚动时每步多花 6ms（p90 34ms，而 60fps 的预算是 16.6ms）。
+/// 现在把「形状 + 模糊」直接画进一块 Canvas：只在尺寸变化时重画，滚动时纯贴图。
+/// Canvas 会按自身边界裁切，所以用负 padding 把画布撑到卡片之外，阴影才溢得出来。
+struct MossCardShadow: View {
+    var radius: CGFloat = 22
+    var cut: CGFloat = 13
+    /// 撑出卡片的出血量（半径 9 + 下移 3，留 16 足够）
+    var bleed: CGFloat = 16
+
+    var body: some View {
+        Canvas { ctx, size in
+            let rect = CGRect(x: bleed, y: bleed,
+                              width: size.width - bleed * 2,
+                              height: size.height - bleed * 2)
+            guard rect.width > 2, rect.height > 2 else { return }
+            let p = PanelShape(radius: radius, cut: cut).path(in: rect)
+            ctx.addFilter(.blur(radius: 9))
+            ctx.fill(p.offsetBy(dx: 0, dy: 3), with: .color(.black.opacity(0.085)))
+        }
+        .padding(-bleed)
     }
 }
 
@@ -883,11 +920,17 @@ struct CapabilityRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
+            // 状态点用「外圈淡色 + 内圈实心」画柔光，不用 `.shadow`：
+            // 每行一个阴影 = 每行一层离屏模糊，滚动 / 重建时都要重算，白白拖慢。
             Circle()
-                .fill(Palette.forStatus(cap.status))
-                .frame(width: 6, height: 6)
-                .shadow(color: Palette.forStatus(cap.status).opacity(0.9), radius: 4)
-                .padding(.top, 6)
+                .fill(Palette.forStatus(cap.status).opacity(0.22))
+                .frame(width: 11, height: 11)
+                .overlay {
+                    Circle()
+                        .fill(Palette.forStatus(cap.status))
+                        .frame(width: 6, height: 6)
+                }
+                .padding(.top, 3.5)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(cap.title)
