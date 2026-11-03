@@ -85,6 +85,7 @@ enum WindowChrome {
 
         clearTitlebarGlass(on: window)
 
+
         // 透明窗：behindWindow 玻璃才能把桌面折射进来（默认 / Light / System 主题）。
         // 但 550W 是纯白不透明主题，用透明窗会让拖动 / 缩放时窗口服务器每帧重新
         // 采样桌面模糊，明显卡顿 —— 所以 moss 下强制不透明纯白，整窗退化成可廉价

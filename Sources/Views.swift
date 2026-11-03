@@ -923,10 +923,11 @@ struct SidebarView: View {
                 // 设置不进侧栏导航列表（避免和左下角的「设置」入口重复）；
                 // 仍保留在 Page 枚举里，由左下角按钮导航过去。
                 ForEach(Page.allCases.filter { $0 != .settings }) { p in
-                    Button {
-                        selection.select(p)
-                    } label: {
-                        HStack(spacing: 9) {
+                    // 这里**不用 `Button`**：SwiftUI 的 Button 会为每行塞一个 AppKit 焦点环
+                    // 视图（`_FocusRingView` + 一个 NSViewBackingLayer）。11 行就是 11 个
+                    // 额外图层 + 11 个 NSView，而侧栏从来不用 Tab 键聚焦。
+                    // 用 onTapGesture + accessibility 特征，语义保住、图层省掉。
+                    HStack(spacing: 9) {
                             // 发光竖条画在 SelectionGlass 里，跟着滑块一起移动；
                             // 这里留同宽的透明占位，保证没选中时文字位置不跳
                             Color.clear.frame(width: 2, height: 14)
@@ -963,9 +964,10 @@ struct SidebarView: View {
                             }
                         }
                         .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
+                    .onTapGesture { selection.select(p) }
                     .help(Palette.isMoss ? "\(p.mossTitle) · \(p.title)" : p.title)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityAddTraits(displayPage == p ? [.isButton, .isSelected] : .isButton)
                     .padding(.horizontal, 8)
                 }
             }
