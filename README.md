@@ -1,10 +1,10 @@
-# Vela X
+ # Vela X
 
 > macOS 上的华硕 / ROG 笔记本控制中心 —— [G-Helper](https://github.com/seerge/g-helper) 的 macOS 对应实现。  
 > 性能模式、风扇曲线、键盘背光与 Aura 灯效、传感器监控、菜单栏多指标、NVIDIA 驱动管理，  
 > 全部跑在原生 SwiftUI + Liquid Glass 界面里。
 
-- 版本：**1.3.0**（build 9）
+- 版本：**2.4.13**（build 91）
 - 界面：macOS 26 Liquid Glass（透明窗 + behindWindow 玻璃 + 26pt 窗口圆角）
 - 最低系统：**macOS 13.0**（Liquid Glass 效果在 macOS 26 上最完整）
 - 架构：Universal（x86_64 + arm64）
@@ -254,6 +254,7 @@ ASUS_SELFTEST=1 ASUS_PAGE=overview ASUS_THEME=dark ASUS_SELFTEST_DELAY=10 \
   `ROGLogoRed.png` 为品牌展示用图，本项目使用不构成任何授权或关联。
 - 本项目名称 **Vela X** 为独立品牌，与华硕无隶属关系。
 - 所有厂商名、产品名为其各自所有者的财产。
+- 550W主题为本人兴趣制作，与《流浪地球》官方无关。
 
 ---
 
