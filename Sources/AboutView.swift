@@ -30,37 +30,58 @@ struct AboutView: View {
 
     // MARK: - 更新日志
 
+    /// 更新日志：一条一张小卡。
+    ///
+    /// ⚠️ **不要把十几条塞进同一张卡**：卡片装饰层会拍平成一张纹理（`drawingGroup`），
+    /// 这张纹理在滚动时是**逐帧重画**的（采样里 `-[RBLayer display] → RootTexture::make_texture
+    /// → nvk_AllocateMemory`，每帧重新分配一整块 1644×3400 的表面）。
+    /// 1727pt 高的那张卡实测滚动每步 38~62ms（约 16fps，113/120 帧超预算），
+    /// 拆成一条一张之后每步 <2ms。
     private var whatsNewCard: some View {
-        Card {
-            VStack(alignment: .leading, spacing: 9) {
-                whatsNewRow("arrow.up.arrow.down", "滚动丝滑到 60fps", "把卡片落地影从 SwiftUI `.shadow` 换成画一次的静态纹理 —— 原来那个阴影会把整张卡的正文一起卷进离屏合成组，每次提交都要重新渲染 + 高斯模糊，滚动每步 8.9ms、90 分位 34ms（60fps 的预算是 16.6ms）。现在每步 1.1~1.5ms、90 分位 <3ms，连测 160 帧没有一帧超预算。深色 / 浅色主题另外藏掉了滚动视图顶部那 4 层实时模糊的「滚动口袋」（每步 8.3ms → 1.8ms）。同时修掉一个启动崩溃：窗口刚上屏那一拍不再一次性铺整页内容，避开 SwiftUI 属性图与 AppKit 通知的重入。")
-                Divider().opacity(0.35)
-                whatsNewRow("speedometer", "550W 主题性能大修", "修掉 550W 下几处常驻吃 CPU 的「活层」：窗口不可见时装饰动画自动暂停；行星公转改由 Core Animation 驱动，4fps → 60fps 且主线程零刷新；页脚扫描线改图层动画；侧栏切页把「重建新页」挪出滑动动画窗口，切换不再掉帧；指针移到 Dock 上时自动暂停这些装饰动画，Dock 放大不再卡；装饰文字改用单一共享时钟，每秒只重排一次；侧栏去掉每行多余的 AppKit 焦点环视图，整窗图层 437 → 338，并清掉滚动区 4 层实时模糊。实测后台占用 9% → 1.5%、窗口可见 34% → 7%，空闲单核 5.7% → 2.2%。")
-                Divider().opacity(0.35)
-                whatsNewRow("bolt.shield", "修复「开机静默下发不生效」", "三层问题叠在一起：① 免密规则的版本号被存成字符串、读取却按整数取，永远判定「未授权」，函数直接返回，连失败记录都没写；② 授权是否可用只看标志位、不看 `sudo -n` 真能不能跑通，规则被移走或改了指向也察觉不到；③ 从 build 目录直接运行 App 时会把免密规则改指到 build 路径，正式安装版反而失去权限。现在启动时先做一次非交互自检：通就自愈标记、不通且确认在 /Applications 才重装；结果与原因都会写在「设置」里。")
-                Divider().opacity(0.35)
-                whatsNewRow("eye.fill", "新增「550W」限定主题", "《流浪地球》550W / MOSS 风格限定皮肤，在「设置 → 外观」切换：白底 + 警示红，切角工程面板、网格底纹与机号标 / 字幕条；概览改为终端形态（命令行标题、滚动输出、运行时长、扫描线），侧栏按电影术语命名，说明标签换大写英文缩写；背景是一层很淡的太阳系透图，侧栏可开关其公转；启动与切进主题各有过场。其余主题不受影响。")
-                Divider().opacity(0.35)
-                whatsNewRow("bolt.shield", "开机静默应用配置", "登录与睡眠唤醒时自动、无密码框地下发当前功耗墙和风扇曲线（首次开启授权一次即可）。同时修复 1.8.5 因 sudoers 规则写法非法导致静默下发完全失效、并每次登录都弹一次密码框的问题。")
-                Divider().opacity(0.35)
-                whatsNewRow("network", "网络统计", "新增「网络」页，显示实时速率与累计流量。总量改读内核 64 位网卡计数器，基线存在本地 —— 退出或重启程序后接着算，只有重启系统或手动重置才归零。")
-                Divider().opacity(0.35)
-                whatsNewRow("menubar.rectangle", "菜单栏新增 GPU 功耗 / 显存占用", "两个可勾选的菜单栏指标，与温度、占用率一样可排序、可选合并显示；未装 SMCNvidiaGPU 驱动时标为不可用并说明原因。")
-                Divider().opacity(0.35)
-                whatsNewRow("powerplug.fill", "新增「整机功耗」监测", "监控页「实时」新增整机功耗卡：CPU 整包 + GPU 合计（macOS 没有系统级功耗接口，只能把两路相加）。缺一路时自动退化为单项，并在副标题里注明「仅 CPU / 仅 GPU」，不会虚报。")
-                Divider().opacity(0.35)
-                whatsNewRow("sparkles", "渲染与缩放性能优化", "每张卡片的装饰层拍平成单张纹理，滚动与缩放时复用，窗口动画不再掉帧。")
-                Divider().opacity(0.35)
-                whatsNewRow("bolt.fill", "新增「功耗墙」档位", "替代原先不可用的「性能模式」：静音 25W / 平衡 30W / 性能 35W 随时可切，自定义 15–50W 默认上锁，需在「高级功能」确认风险后解锁。")
-                Divider().opacity(0.35)
-                whatsNewRow("display", "新增「高级功能」页", "一键开启 / 还原 HiDPI：写入显示器 Override，只改用户数据区、不动系统卷。")
-                Divider().opacity(0.35)
-                whatsNewRow("fanblades", "自定义风扇曲线", "可拖拽 8 点曲线，CPU / GPU 分别编辑与下发；默认关闭，需在「高级功能」确认风险后解锁。")
-                Divider().opacity(0.35)
-                whatsNewRow("slider.horizontal.3", "诊断能力判断修正", "风扇曲线 / Aura RGB / 性能模式（功耗墙）改按实际通道判断，不再写死「不可用」。")
+        // LazyVStack：切进这一页时只构建视口内的几张卡。13 条长文案的排版（逐行断行）很贵，
+        // 一次全建完实测切页 200~560ms，改成按需构建后只算看得见的那几张。
+        LazyVStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(Self.releaseCards.enumerated()), id: \.offset) { _, group in
+                Card(padding: 14) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(group.enumerated()), id: \.offset) { i, note in
+                            if i > 0 { Divider().opacity(0.30) }
+                            whatsNewRow(note.icon, note.title, note.detail)
+                        }
+                    }
+                }
             }
         }
     }
+
+    /// 每张卡放几条：卡太多会碎，太少又会退化成「一张巨卡」（见上面的注释）
+    private static let releaseCards: [[(icon: String, title: String, detail: String)]] = {
+        let all = releaseNotes
+        var out: [[(icon: String, title: String, detail: String)]] = []
+        var i = 0
+        while i < all.count {
+            out.append(Array(all[i..<min(i + 3, all.count)]))
+            i += 3
+        }
+        return out
+    }()
+
+    private static let releaseNotes: [(icon: String, title: String, detail: String)] = [
+        ("rectangle.stack", "关于页不再卡顿", "更新日志原来全塞在一张 1727pt 高的卡里：卡片装饰层会拍平成一张纹理，而这张纹理在滚动时是逐帧重画的（每帧重新分配一整块 1644×3400 的表面），实测滚动每步 38~62ms，约 16fps。改成三条一张、并按需构建后，每步 5ms、90 分位 11ms，100 帧无一超 16.6ms。"),
+        ("arrow.up.arrow.down", "滚动丝滑到 60fps", "把卡片落地影从 SwiftUI `.shadow` 换成画一次的静态纹理 —— 原来那个阴影会把整张卡的正文一起卷进离屏合成组，每次提交都要重新渲染 + 高斯模糊，滚动每步 8.9ms、90 分位 34ms（60fps 的预算是 16.6ms）。现在每步 1.1~1.5ms、90 分位 <3ms，连测 160 帧没有一帧超预算。深色 / 浅色主题另外藏掉了滚动视图顶部那 4 层实时模糊的「滚动口袋」（每步 8.3ms → 1.8ms）。同时修掉一个启动崩溃：窗口刚上屏那一拍不再一次性铺整页内容，避开 SwiftUI 属性图与 AppKit 通知的重入。"),
+        ("speedometer", "550W 主题性能大修", "修掉 550W 下几处常驻吃 CPU 的「活层」：窗口不可见时装饰动画自动暂停；行星公转改由 Core Animation 驱动，4fps → 60fps 且主线程零刷新；页脚扫描线改图层动画；侧栏切页把「重建新页」挪出滑动动画窗口，切换不再掉帧；指针移到 Dock 上时自动暂停这些装饰动画，Dock 放大不再卡；装饰文字改用单一共享时钟，每秒只重排一次；侧栏去掉每行多余的 AppKit 焦点环视图，整窗图层 437 → 338，并清掉滚动区 4 层实时模糊。实测后台占用 9% → 1.5%、窗口可见 34% → 7%，空闲单核 5.7% → 2.2%。"),
+        ("bolt.shield", "修复「开机静默下发不生效」", "三层问题叠在一起：① 免密规则的版本号被存成字符串、读取却按整数取，永远判定「未授权」，函数直接返回，连失败记录都没写；② 授权是否可用只看标志位、不看 `sudo -n` 真能不能跑通，规则被移走或改了指向也察觉不到；③ 从 build 目录直接运行 App 时会把免密规则改指到 build 路径，正式安装版反而失去权限。现在启动时先做一次非交互自检：通就自愈标记、不通且确认在 /Applications 才重装；结果与原因都会写在「设置」里。"),
+        ("eye.fill", "新增「550W」限定主题", "《流浪地球》550W / MOSS 风格限定皮肤，在「设置 → 外观」切换：白底 + 警示红，切角工程面板、网格底纹与机号标 / 字幕条；概览改为终端形态（命令行标题、滚动输出、运行时长、扫描线），侧栏按电影术语命名，说明标签换大写英文缩写；背景是一层很淡的太阳系透图，侧栏可开关其公转；启动与切进主题各有过场。其余主题不受影响。"),
+        ("bolt.shield", "开机静默应用配置", "登录与睡眠唤醒时自动、无密码框地下发当前功耗墙和风扇曲线（首次开启授权一次即可）。同时修复 1.8.5 因 sudoers 规则写法非法导致静默下发完全失效、并每次登录都弹一次密码框的问题。"),
+        ("network", "网络统计", "新增「网络」页，显示实时速率与累计流量。总量改读内核 64 位网卡计数器，基线存在本地 —— 退出或重启程序后接着算，只有重启系统或手动重置才归零。"),
+        ("menubar.rectangle", "菜单栏新增 GPU 功耗 / 显存占用", "两个可勾选的菜单栏指标，与温度、占用率一样可排序、可选合并显示；未装 SMCNvidiaGPU 驱动时标为不可用并说明原因。"),
+        ("powerplug.fill", "新增「整机功耗」监测", "监控页「实时」新增整机功耗卡：CPU 整包 + GPU 合计（macOS 没有系统级功耗接口，只能把两路相加）。缺一路时自动退化为单项，并在副标题里注明「仅 CPU / 仅 GPU」，不会虚报。"),
+        ("sparkles", "渲染与缩放性能优化", "每张卡片的装饰层拍平成单张纹理，滚动与缩放时复用，窗口动画不再掉帧。"),
+        ("bolt.fill", "新增「功耗墙」档位", "替代原先不可用的「性能模式」：静音 25W / 平衡 30W / 性能 35W 随时可切，自定义 15–50W 默认上锁，需在「高级功能」确认风险后解锁。"),
+        ("display", "新增「高级功能」页", "一键开启 / 还原 HiDPI：写入显示器 Override，只改用户数据区、不动系统卷。"),
+        ("fanblades", "自定义风扇曲线", "可拖拽 8 点曲线，CPU / GPU 分别编辑与下发；默认关闭，需在「高级功能」确认风险后解锁。"),
+        ("slider.horizontal.3", "诊断能力判断修正", "风扇曲线 / Aura RGB / 性能模式（功耗墙）改按实际通道判断，不再写死「不可用」。"),
+    ]
 
     private func whatsNewRow(_ icon: String, _ title: String, _ detail: String) -> some View {
         HStack(alignment: .top, spacing: 12) {
