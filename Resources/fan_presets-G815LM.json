@@ -1,0 +1,106 @@
+{
+  "schema": "asus-rog-fan-presets/1",
+  "generated_by": "Vela X 机型适配 · EC 直读（AsusECTool deviceGet 0x00110024 / 0x00110025 / 0x00110032）",
+  "generated_at": "2026-11-03T15:30:00+08:00",
+  "device": {
+    "model": "ASUS ROG Strix G18 G815LM",
+    "ec": "ITE IT5571（DSDT 的 IT55 窗口 0xFE700600 + 0xCE = CMMV）",
+    "ec_firmware": "BIOS G815LM.338",
+    "mmio": {
+      "it55": "0xFE700600",
+      "mb00": "0xFE700B00",
+      "mc00": "0xFE700C00"
+    },
+    "note": "本机三风扇：CPU(FA1=IT55+0x02) / 中置(FA3=IT55+0x22) / GPU(FA2=IT55+0x24)。balanced 档为 EC 槽位实测原样；实测三档 CMMV 下槽位内容完全相同，说明性能模式改的是风扇响应策略而不是曲线本身。silent / performance 是在实测曲线上做温度平移 + 占空缩放得到的派生物，首次下发请盯转速。"
+  },
+  "mailbox": {
+    "opcodes": {
+      "write_curve": 0,
+      "read_curve": 1,
+      "read_limits": 2
+    },
+    "fan_id": {
+      "cpu": "0x00110024",
+      "gpu": "0x00110025",
+      "center": "0x00110032"
+    },
+    "fan_id_rpm": {
+      "cpu": "0x00110013",
+      "gpu": "0x00110014",
+      "note": "读实时转速用这一对；本机走 EC tach 更直接：IT55+0x02 / +0x24 / +0x22"
+    },
+    "registers": {
+      "arg1": "0x5C",
+      "arg2": "0x60",
+      "arg3": "0x64",
+      "arg4": "0x68",
+      "result": "0x6C",
+      "busy": "0x7C",
+      "opcode": "0x7D"
+    }
+  },
+  "curve_format": {
+    "points": 8,
+    "layout": "temps[8] 在前，duties[8] 在后；打包成 4 个 u32（小端）",
+    "temp_unit": "degC",
+    "duty_unit": "percent",
+    "constraints": {
+      "temps": "单调不减，20..110",
+      "duties": "单调不减，0..100"
+    }
+  },
+  "presets": {
+    "silent": {
+      "label": "静音",
+      "desc": "在 EC 实测曲线上整体后移 6°C、占空 ×0.75：温度上来了才起步，噪音优先",
+      "cpu": {
+        "temp": [56, 63, 66, 70, 74, 78, 82, 86],
+        "duty": [8, 13, 18, 22, 27, 32, 35, 44]
+      },
+      "gpu": {
+        "temp": [56, 63, 66, 70, 74, 78, 82, 86],
+        "duty": [18, 22, 28, 31, 34, 41, 47, 58]
+      }
+    },
+    "balanced": {
+      "label": "平衡",
+      "desc": "EC 槽位实测原样（2026-11-03 读，CMMV=0 平衡档）",
+      "cpu": {
+        "temp": [50, 57, 60, 64, 68, 72, 76, 80],
+        "duty": [10, 17, 24, 29, 36, 42, 47, 59]
+      },
+      "gpu": {
+        "temp": [50, 57, 60, 64, 68, 72, 76, 80],
+        "duty": [24, 29, 38, 41, 46, 55, 63, 77]
+      }
+    },
+    "performance": {
+      "label": "增强",
+      "desc": "在 EC 实测曲线上整体前移 6°C、占空 ×1.15：同温度下转得更快，压得住长时负载",
+      "cpu": {
+        "temp": [44, 51, 54, 58, 62, 66, 70, 74],
+        "duty": [12, 20, 28, 33, 41, 48, 54, 68]
+      },
+      "gpu": {
+        "temp": [44, 51, 54, 58, 62, 66, 70, 74],
+        "duty": [28, 33, 44, 47, 53, 63, 72, 89]
+      }
+    }
+  },
+  "center_fan": {
+    "label": "中置风扇",
+    "devid": "0x00110032",
+    "tach_offset": "0x22",
+    "note": "本机特有的第三颗风扇，EC 自己管；当前界面只下发 CPU / GPU 两条曲线，这里留档供以后扩展",
+    "measured": {
+      "temp": [50, 57, 60, 64, 68, 72, 76, 80],
+      "duty": [7, 11, 30, 37, 39, 41, 45, 49]
+    }
+  },
+  "measured_rpm": {
+    "note": "切档后 2.5 秒读数，仅作对照：三档之间的差异体现在响应速度上",
+    "silent": { "cpu": 3960, "gpu": 4080, "center": 4320 },
+    "balanced": { "cpu": 4020, "gpu": 4080, "center": 4440 },
+    "performance": { "cpu": 4140, "gpu": 4200, "center": 4620 }
+  }
+}

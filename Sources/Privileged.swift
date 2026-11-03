@@ -74,36 +74,67 @@ enum SelfExec {
 // MARK: - 风扇探测
 
 enum FanProbe {
-    /// VirtualSMC / AsusSMC 上报的风扇数量（可能是不靠谱的占位值，例如 8）
-    static var count: Int { Int(SMC.read("FNum")?.number ?? 0) }
+    /// VirtualSMC / AsusSMC 上报的风扇数量（可能是不靠谱的占位值，例如 8）。
+    /// 本机 FNum=0（VirtualSMC 没接管风扇），此时退回 AsusECTool 实际存在几颗 tach。
+    static var count: Int {
+        let n = Int(SMC.read("FNum")?.number ?? 0)
+        if n > 0 { return n }
+        let ec = ECFanBridge.shared
+        guard ec.isAvailable else { return 0 }
+        return [ECFanBridge.Channel.cpu, .gpu, .center].reduce(0) { acc, ch in
+            acc + ((ec.rpm(ch) ?? 0) > 0 ? 1 : 0)
+        }
+    }
 
-    /// 只在数值合理时才认为可用：0–6 个风扇、200–8000 RPM
-    /// 本机实测 F0Ac 恒为 0x9c40（10000 RPM）且不随负载变化，属于占位值
+    /// 只在数值合理时才认为可用：200–8000 RPM。
+    /// 本机实测 F0Ac 恒为 0x9c40（10000 RPM）且不随负载变化，属于占位值，
+    /// 所以 SMC 读不到合理值时要退回 EC 的 tach（IT55 + 0x02）。
     static var rpm: Double? {
-        guard let v = SMC.read("F0Ac")?.number, v >= 200, v <= 8000 else { return nil }
-        return v
+        if let v = SMC.read("F0Ac")?.number, v >= 200, v <= 8000 { return v }
+        if let ec = ECFanBridge.shared.rpm(.cpu), ec >= 200, ec <= 8000 {
+            return Double(ec)
+        }
+        return nil
     }
 
-    /// GPU 风扇转速（F1Ac）。待机可能为 0（风扇停转），属正常，所以下限取 0。
+    /// GPU 风扇转速（F1Ac / EC tach FA2）。待机可能为 0（风扇停转），属正常，下限取 0。
     static var gpuRPM: Double? {
-        guard let v = SMC.read("F1Ac")?.number, v >= 0, v <= 8000 else { return nil }
-        return v
+        if let v = SMC.read("F1Ac")?.number, v >= 0, v <= 8000, v > 0 { return v }
+        if let ec = ECFanBridge.shared.rpm(.gpu), ec <= 8000 { return Double(ec) }
+        return nil
     }
 
+    /// 第三颗（中置）风扇 —— 18 寸机型才有，只能走 EC
+    static var centerRPM: Double? {
+        guard let ec = ECFanBridge.shared.rpm(.center), ec > 0, ec <= 8000 else { return nil }
+        return Double(ec)
+    }
+
+    /// 转速读数是否可用：SMC 值合理，或 EC tach 有值
     static var isAvailable: Bool {
-        (1...6).contains(count) && rpm != nil
+        guard rpm != nil else { return false }
+        return count > 0 || ECFanBridge.shared.isAvailable
+    }
+
+    /// 当前转速读数来自哪条通道
+    static var backendLabel: String {
+        if let v = SMC.read("F0Ac")?.number, v >= 200, v <= 8000 { return "AppleSMC → F0Ac" }
+        if ECFanBridge.shared.isAvailable { return "AsusECTool.kext → EC tach（IT55）" }
+        return "不可用"
     }
 }
 
 // MARK: - 控制层
 
 enum BacklightMode {
+    case nkeyd              // 交给 nkeyd 的控制口代发（键盘被 daemon 独占时唯一可行）
     case hid(pid: Int)      // Aura HID 输出报告，免 root
     case smc                // VirtualSMC LKSB → AsusSMC → ATK.SKBV，需要 root
     case none
 
     var maxLevel: Int {
         switch self {
+        case .nkeyd: return NKeydBridge.maxLevel  // 0...3
         case .hid: return HIDBacklight.maxLevel   // 0...3
         case .smc: return 16                      // 0...16
         case .none: return 0
@@ -112,20 +143,36 @@ enum BacklightMode {
 
     var label: String {
         switch self {
+        case .nkeyd: return "nkeyd 转发 (0x0B05:0x19B6)"
         case .hid(let pid): return String(format: "Aura HID (0x%04X)", pid)
         case .smc: return "SMC · LKSB"
         case .none: return "不可用"
         }
     }
 
+    /// 走 Aura 报文（0x5A / 0x5D）的通道，只有 4 档
+    var isAura: Bool {
+        switch self {
+        case .nkeyd, .hid: return true
+        case .smc, .none: return false
+        }
+    }
+
+    var isNKeyd: Bool {
+        if case .nkeyd = self { return true }
+        return false
+    }
+
     var detail: String {
         switch self {
+        case .nkeyd:
+            return "键盘已被 nkeyd 独占，背光与灯效报文经它的控制口转发（report 0x5A / 0x5D），无需 root，也不影响打字"
         case .hid:
             return "通过键盘控制器的 Aura HID 输出报告（report 0x5A）直接下发，无需 root"
         case .smc:
             return "写入 AppleSMC 的 LKSB，由 AsusSMC 转发给 ACPI 的 SKBV 方法"
         case .none:
-            return "既没有 Aura HID 控制器，AsusSMC 也没拿到 SKBV 方法"
+            return "既没有 nkeyd 控制口与 Aura HID 控制器，AsusSMC 也没拿到 SKBV 方法"
         }
     }
 }
@@ -154,6 +201,9 @@ enum Control {
     private static let cacheLock = NSLock()
 
     static var mode: BacklightMode {
+        // nkeyd 的探测只是一次本地 socket 连接（几十微秒），不参与 60 秒缓存：
+        // daemon 重启或退出后界面能立刻反映真实状态。
+        if NKeydBridge.shared.isAvailable { return .nkeyd }
         cacheLock.lock()
         if let cachedMode, Date().timeIntervalSince(cachedAt) < cacheTTL {
             cacheLock.unlock()
@@ -166,6 +216,15 @@ enum Control {
     /// 重新探测通道（授权变化、插拔键盘、切换机型后调用）
     @discardableResult
     static func refreshMode() -> BacklightMode {
+        if NKeydBridge.shared.isAvailable {
+            cacheLock.lock()
+            cachedMode = .nkeyd
+            cachedPermission = .granted
+            cachedBlocked = false
+            cachedAt = Date()
+            cacheLock.unlock()
+            return .nkeyd
+        }
         // 一次探测同时拿到「能不能用 / 哪个 PID / 卡在哪种权限状态」，避免重复枚举
         let permission = HIDBacklight.shared.permissionState
         let pid = HIDBacklight.shared.activeProductID
@@ -224,6 +283,8 @@ enum Control {
     /// 当前档位（尽力而为：SMC 直接读，HID 用程序记录值）
     static func currentLevel() -> Int {
         switch mode {
+        case .nkeyd:
+            return min(max(lastHIDLevel, 0), NKeydBridge.maxLevel)
         case .hid:
             return min(max(lastHIDLevel, 0), HIDBacklight.maxLevel)
         case .smc:
@@ -241,6 +302,15 @@ enum Control {
     /// 设置背光（0...maxLevel）。返回 nil 表示成功，否则是错误描述
     static func setBacklight(_ level: Int) -> String? {
         switch mode {
+        case .nkeyd:
+            let clamped = max(0, min(NKeydBridge.maxLevel, level))
+            if NKeydBridge.shared.setLevel(clamped) {
+                lastHIDLevel = clamped
+                return nil
+            }
+            NKeydBridge.shared.invalidateAvailability()
+            return "nkeyd 通道：背光报文下发失败（连接 \(NKeydBridge.socketPath) 出错）"
+
         case .hid:
             let clamped = max(0, min(HIDBacklight.maxLevel, level))
             if let err = HIDBacklight.shared.setLevel(clamped) { return err }

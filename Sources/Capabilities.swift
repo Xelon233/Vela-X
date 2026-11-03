@@ -60,12 +60,13 @@ enum Capabilities {
     }
 
     private static func isHID(_ mode: BacklightMode) -> Bool {
-        if case .hid = mode { return true }
-        return false
+        mode.isAura
     }
 
     private static func backlightSummary(_ mode: BacklightMode) -> String {
         switch mode {
+        case .nkeyd:
+            return "键盘已被 nkeyd 独占，背光与灯效报文经它的控制口转发（report 0x5A / 0x5D），共 4 个状态，不需要 root"
         case .hid:
             return "Aura HID 输出报告（report 0x5A）直接控键盘控制器，共 4 个状态，不需要 root"
         case .smc:
@@ -77,6 +78,8 @@ enum Capabilities {
 
     private static func backlightBackend(_ mode: BacklightMode) -> String {
         switch mode {
+        case .nkeyd:
+            return "nkeyd 控制口 → \(NKeydBridge.socketPath)"
         case .hid(let pid):
             return String(format: "IOHIDManager → ASUS 0x0B05:0x%04X → 键盘控制器", pid)
         case .smc:
@@ -129,12 +132,19 @@ enum Capabilities {
         let kbdMode = Control.mode
         let fanCount = Double(FanProbe.count)
         let fanUsable = FanProbe.isAvailable
-        // 曲线写入通道存在（kext 暴露了选风扇 + 触发键）→ 可改曲线
-        let fanCurveReady = SMC.exists("AFWg") && SMC.exists("AFMf")
+        // 曲线写入通道：SMC 键（kext 暴露选风扇 + 触发键）或 EC 直写（AsusECTool）任一可用
+        let fanSMCReady = SMC.exists("AFWg") && SMC.exists("AFMf")
+        let fanCurveReady = fanSMCReady || ECFanBridge.shared.isAvailable
         // Aura RGB 以「能否打开 Aura HID 控制器」为准
         let auraReady = AuraEffects.shared.isAvailable
-        // 功耗墙通道存在（kext 暴露了 SMU 消息号 + 瓦数键）→ 可下发功耗上限
-        let perfReady = SMC.exists(PowerLimitSpec.keyCmd) && SMC.exists(PowerLimitSpec.keyWatts)
+        // 功耗墙通道：SMC 的 AFsC / AFsw，或 AsusECTool 的 MSR（RAPL 0x610）
+        let powerBackend = PowerWallProbe.backend
+        let powerWallReady = powerBackend != .none
+        // 性能模式是另一回事：EC 的 CMMV 只要 AsusECTool 在线就能切三档，
+        // 跟 SMC 的 AFsC / AFsw 无关。之前把两者混在一条里，EC 机器会误报「不可用」。
+        let ecReady = ECFanBridge.shared.isAvailable
+        let ecMode = ecReady ? ECFanBridge.shared.thermalMode() : nil
+        let perfReady = ecReady || powerWallReady
         let bat = SystemProbe.battery()
 
         var list: [Capability] = [
@@ -184,25 +194,66 @@ enum Capabilities {
                 title: "风扇转速读数",
                 status: fanUsable ? .available : .unavailable,
                 summary: fanUsable
-                    ? "检测到 \(Int(fanCount)) 个风扇，F0Ac 读数合理"
+                    ? "检测到 \(Int(fanCount)) 个风扇，转速读数合理"
                     : "FNum 上报 \(Int(fanCount))、F0Ac 恒为 10000 RPM 且不随负载变化，判定为占位值",
-                backend: "AppleSMC → F0Ac"
+                backend: FanProbe.backendLabel
             ),
             Capability(
                 title: "风扇曲线 / 手动转速",
                 status: fanCurveReady ? .available : .unavailable,
-                summary: fanCurveReady
+                summary: fanSMCReady
                     ? "SMCAsusFan.kext 已暴露 AFMf / AFW1–4 / AFWg，可读写 CPU / GPU 风扇曲线"
-                    : "未检测到曲线写入通道（AFWg / AFMf），当前机型只能读转速",
-                backend: "SMCAsusFan.kext → AFMf / AFW1–4 / AFWg"
+                    : (ECFanBridge.shared.isAvailable
+                        ? "AsusECTool.kext 的 EC 直写通道可用，可读写 CPU / GPU / 中置风扇曲线"
+                        : "未检测到曲线写入通道（AFWg / AFMf），当前机型只能读转速"),
+                backend: fanSMCReady
+                    ? "SMCAsusFan.kext → AFMf / AFW1–4 / AFWg"
+                    : (ECFanBridge.shared.isAvailable
+                        ? "AsusECTool.kext → DEFC / WMNB（EC 直写）"
+                        : "无")
             ),
             Capability(
-                title: "性能模式 / 功耗墙（静音·平衡·性能）",
+                title: "性能模式（静音 · 平衡 · 性能）",
                 status: perfReady ? .available : .unavailable,
-                summary: perfReady
-                    ? "SMCAsusFan.kext 已暴露 AFsC / AFsw，可下发 25 / 30 / 35W 与自定义 15–50W 功耗墙，一键恢复默认"
-                    : "未检测到功耗墙通道（AFsC / AFsw，需要 kext v20-stapm 及以上），当前只能读功耗、不能限制",
-                backend: "SMCAsusFan.kext → SMU STAPM"
+                summary: {
+                    let current = ecMode.flatMap(ThermalMode.init(rawValue:))
+                        .map { "，当前「\($0.title)」" } ?? ""
+                    switch (ecReady, powerWallReady) {
+                    case (true, true):
+                        return "EC 的 CMMV（0xCE）可直接切三档，写后回读校验\(current)；另有 SMU 功耗墙可限定 15–50W"
+                    case (true, false):
+                        return "通过 AsusECTool 直写 EC 的 CMMV 切三档（静音=2 / 平衡=0 / 增强=1），写后回读校验\(current)"
+                    case (false, true):
+                        return "SMCAsusFan.kext 已暴露 AFsC / AFsw，按 25 / 30 / 35W 功耗墙实现三档"
+                    case (false, false):
+                        return "既没有 AsusECTool 的 EC 通道，也没有 kext 的 AFsC / AFsw，无法切性能模式"
+                    }
+                }(),
+                backend: ecReady
+                    ? "AsusECTool.kext → EC CMMV (0xCE)"
+                    : "SMCAsusFan.kext → SMU STAPM"
+            ),
+            Capability(
+                title: "功耗墙（手动限定 \(PowerLimitSpec.minW)–\(PowerLimitSpec.maxW)W）",
+                status: powerWallReady ? .available : .unavailable,
+                summary: {
+                    switch powerBackend {
+                    case .smc:
+                        return "可下发 15–50W 任意值并一键恢复默认；只降不升，重启或睡眠唤醒后回到 EC 默认"
+                    case .rapl:
+                        let hw = RAPLBridge.shared.reading().map {
+                            "当前 PL1 \(Int($0.pl1W.rounded()))W / PL2 \(Int($0.pl2W.rounded()))W"
+                                + ($0.locked ? "，lock 位已置位（写入会被忽略）" : "")
+                        } ?? ""
+                        return "写 CPU 的 RAPL 寄存器（MSR 0x610），PL1 与 PL2 一起压，立即生效。"
+                            + (hw.isEmpty ? "" : "硬件回读：\(hw)。")
+                    case .none:
+                        return ECFanBridge.shared.isAvailable
+                            ? "本机没有可写的功耗墙键（AFsC / AFsw），AsusECTool.kext 也没有 MSR 通道；临时可用 EC 的三档性能模式"
+                            : "未检测到功耗墙通道（AFsC / AFsw 或 MSR 0x610），当前只能读功耗、不能限制"
+                    }
+                }(),
+                backend: powerBackend.label
             ),
             Capability(
                 title: "Aura RGB / Anime Matrix",

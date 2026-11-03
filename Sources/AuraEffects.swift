@@ -129,6 +129,19 @@ struct AuraEffect {
 }
 
 /// 灯效控制入口
+/// 灯效模式 → nkeyd 报文字段
+extension AuraEffect {
+    var bridgeState: NKeydBridge.RGBState {
+        NKeydBridge.RGBState(zone: zone,
+                             mode: mode.rawValue,
+                             r: color1.r, g: color1.g, b: color1.b,
+                             speed: speed.rawValue,
+                             direction: direction.rawValue,
+                             flag: Int(mode.flag),
+                             r2: color2.r, g2: color2.g, b2: color2.b)
+    }
+}
+
 final class AuraEffects {
 
     static let shared = AuraEffects()
@@ -268,8 +281,56 @@ final class AuraEffects {
 
     // MARK: - 对外接口
 
-    /// 是否可用（能打开设备）
-    var isAvailable: Bool { openAll() > 0 }
+    // MARK: - 通道解析
+
+    /// 报文通道
+    enum Backend {
+        case nkeyd
+        case hid
+        case none
+
+        var title: String {
+            switch self {
+            case .nkeyd: return "nkeyd 转发 · 0x5D"
+            case .hid:   return "Aura HID · 0x5D"
+            case .none:  return "不可用"
+            }
+        }
+
+        var detail: String {
+            switch self {
+            case .nkeyd:
+                return "经 nkeyd 的控制口（\(NKeydBridge.socketPath)）转发，与打字通路共用同一份设备句柄"
+            case .hid:
+                return "IOHIDDevice 直连 ASUS Aura 控制器"
+            case .none:
+                return "没有可用通道"
+            }
+        }
+    }
+
+    private(set) var backend: Backend = .none
+
+    /// 解析当前可用的报文通道。
+    /// 顺序：nkeyd 优先 —— 键盘被 nkeyd 独占时 IOHIDDevice 根本枚举不到设备。
+    @discardableResult
+    func resolveBackend() -> Backend {
+        if NKeydBridge.shared.isAvailable {
+            backend = .nkeyd
+            return .nkeyd
+        }
+        if openAll() > 0 {
+            backend = .hid
+            return .hid
+        }
+        backend = .none
+        return .none
+    }
+
+    /// 是否可用
+    var isAvailable: Bool { resolveBackend() != .none }
+
+    var backendTitle: String { resolveBackend().title }
 
     var needsPermission: Bool {
         lock.lock(); defer { lock.unlock() }
@@ -280,6 +341,30 @@ final class AuraEffects {
 
     /// 应用一个灯效。返回 nil 表示成功，否则是错误描述
     func apply(_ effect: AuraEffect) -> String? {
+        switch resolveBackend() {
+        case .nkeyd: return applyViaNKeyd(effect)
+        case .hid:   return applyViaHID(effect)
+        case .none:  return unavailableReason()
+        }
+    }
+
+    // MARK: nkeyd 通道
+
+    private func applyViaNKeyd(_ effect: AuraEffect) -> String? {
+        guard NKeydBridge.shared.ensureLEDInit() else {
+            return "nkeyd 通道：LED 接口初始化没有被接受（守护进程可能在忙，或者设备刚重连）"
+        }
+        guard NKeydBridge.shared.applyRGB(effect.bridgeState) else {
+            NKeydBridge.shared.invalidateAvailability()
+            return "nkeyd 通道：灯效报文下发失败（连接 \(NKeydBridge.socketPath) 出错）"
+        }
+        lastError = nil
+        return nil
+    }
+
+    // MARK: IOHIDDevice 通道
+
+    private func applyViaHID(_ effect: AuraEffect) -> String? {
         lock.lock()
         let ready = !opened.isEmpty || openAll() > 0
         lock.unlock()
@@ -297,14 +382,42 @@ final class AuraEffects {
         return nil
     }
 
-    /// 原始发送（调试用）
+    private func unavailableReason() -> String {
+        if NKeydBridge.shared.socketPresent {
+            return "nkeyd 控制口存在但连不上：守护进程可能已退出，重启 nkeyd 后再试"
+        }
+        if permissionDenied {
+            return "macOS 拒绝访问键盘类 HID 设备：需要「输入监控」权限（或让 nkeyd 接管）"
+        }
+        return "没有可用通道：nkeyd 未运行（\(NKeydBridge.socketPath) 不存在），系统里也没有 ASUS Aura HID 设备"
+    }
+
+    /// 原始发送（调试用）。nkeyd 通道统一走 Feature 报告，返回 kIOReturnSuccess 表示成功。
     @discardableResult
     func raw(_ msg: [UInt8], useOutput: Bool = true) -> kern_return_t {
-        lock.lock()
-        let ready = !opened.isEmpty || openAll() > 0
-        lock.unlock()
-        guard ready else { return kIOReturnNotPermitted }
-        return useOutput ? writeOutput(msg) : writeFeature(msg, reportID: Self.auraID)
+        switch resolveBackend() {
+        case .nkeyd:
+            let ok = NKeydBridge.shared.setReport(msg, type: .feature)
+            return ok ? kIOReturnSuccess : kIOReturnError
+        case .hid:
+            lock.lock()
+            let ready = !opened.isEmpty || openAll() > 0
+            lock.unlock()
+            guard ready else { return kIOReturnNotPermitted }
+            return useOutput ? writeOutput(msg) : writeFeature(msg, reportID: Self.auraID)
+        case .none:
+            return kIOReturnNotPermitted
+        }
+    }
+
+    /// 重新做一次 LED 接口初始化（灯效突然不生效时用）
+    @discardableResult
+    func reinitializeLED() -> Bool {
+        switch resolveBackend() {
+        case .nkeyd: return NKeydBridge.shared.ensureLEDInit(force: true)
+        case .hid:   primeAuraChannel(); return true
+        case .none:  return false
+        }
     }
 
     /// 探测到的 Aura 接口 PID 列表

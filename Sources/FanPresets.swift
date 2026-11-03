@@ -140,8 +140,38 @@ public final class FanController {
     }
 
     private let smc = SMCClient.shared
+    private let ec = ECFanBridge.shared
 
     public init() {}
+
+    /// Fan → EC WMI 设备号（与 ACPI 里 DEFC 的 Arg0 一致）
+    static func channel(_ fan: Fan) -> ECFanBridge.Channel {
+        fan == .cpu ? .cpu : .gpu
+    }
+
+    /// 曲线写入走哪条通道
+    public enum Backend {
+        /// SMCAsusFan.kext 的 AFMf / AFWg（上游默认）
+        case smc
+        /// AsusECTool.kext 的 WMI 设备号直写（本机走这条）
+        case ec
+        case none
+
+        public var label: String {
+            switch self {
+            case .smc: return "SMCAsusFan（SMC 键）"
+            case .ec: return "AsusECTool（EC 直写）"
+            case .none: return "不可用"
+            }
+        }
+    }
+
+    /// 当前实际可用的写入通道：优先 SMC 键，否则退回 EC 直写
+    public var backend: Backend {
+        if SMC.exists("AFWg"), SMC.exists("AFMf") { return .smc }
+        if ec.isAvailable { return .ec }
+        return .none
+    }
 
     /// 把 8 个温度 + 8 个占空打包成 EC 邮箱要求的四个 u32（小端字节序）
     public static func pack(_ curve: FanCurve) -> [UInt32] {
@@ -168,24 +198,60 @@ public final class FanController {
             ])
         }
 
-        try smc.writeUInt8("AFMf", fan.rawValue)
-        let args = Self.pack(curve)
-        for (i, value) in args.enumerated() {
-            try smc.writeUInt32("AFW\(i + 1)", value)
+        switch backend {
+        case .smc:
+            try smc.writeUInt8("AFMf", fan.rawValue)
+            let args = Self.pack(curve)
+            for (i, value) in args.enumerated() {
+                try smc.writeUInt32("AFW\(i + 1)", value)
+            }
+            try smc.writeUInt8("AFWg", 1)
+
+        case .ec:
+            // 走 DSDT 的 DEFC（WMNB 设备号 + 16 字节载荷）。EC 不回显，
+            // 返回 true 只说明 ACPI 侧接受，是否生效必须看转速。
+            let ok = ec.writeCurve(curve, to: Self.channel(fan))
+            guard ok else {
+                throw NSError(domain: "VelaX", code: 3, userInfo: [
+                    NSLocalizedDescriptionKey: "EC 写入失败：AsusECTool 没有返回成功（检查 kext 是否加载）"
+                ])
+            }
+
+        case .none:
+            throw NSError(domain: "VelaX", code: 4, userInfo: [
+                NSLocalizedDescriptionKey:
+                    "没有可用的曲线写入通道：既没装 SMCAsusFan.kext，也没检测到 AsusECTool.kext"
+            ])
         }
-        try smc.writeUInt8("AFWg", 1)
     }
 
     /// 双风扇转速（fpe2 换算成 RPM）。普通权限即可。
     public func rpms() -> (cpu: Int, gpu: Int) {
+        // 优先走 EC 的 tach：本机 AppleSMC 的 F0Ac 恒为 10000 占位值，不可用
+        if ec.isAvailable,
+           let c = ec.rpm(.cpu), let g = ec.rpm(.gpu), c > 0 || g > 0 {
+            return (c, g)
+        }
         let cpu = (try? smc.readRPM("F0Ac")) ?? 0
         let gpu = (try? smc.readRPM("F1Ac")) ?? 0
         return (cpu, gpu)
     }
 
-    /// kext 是否已加载 —— 用 SMC 键 AFMd 是否存在来判断（最可靠）
+    /// 第三颗（中置）风扇 —— 18 寸机型才有，只能走 EC tach
+    public func centerRPM() -> Int? {
+        guard ec.isAvailable else { return nil }
+        return ec.rpm(.center)
+    }
+
+    /// 读一组风扇曲线（只读）。本机走 EC 的 DSTS。
+    public func curve(fan: Fan) -> FanCurve? {
+        ec.isAvailable ? ec.readCurve(Self.channel(fan)) : nil
+    }
+
+    /// 曲线写入通道是否就绪 —— SMC 键 AFMd 或 EC 桥任一可用即可
     public var isKextLoaded: Bool {
-        (try? smc.keyInfo("AFMd")) != nil
+        if (try? smc.keyInfo("AFMd")) != nil { return true }
+        return ec.isAvailable
     }
 
     /// 在注册表里找出带 AFBuild 属性的节点（我们的 kext 没有 registerService，

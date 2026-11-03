@@ -353,6 +353,46 @@ public enum ECProfiles {
                 cpuFamilyCodes: ["7945", "7845", "7745"],
                 batteryWh: 80...96
             )
+        ),
+        ECProfile(
+            // 魔霸9 Plus / 枪神9 Plus（2025，18 寸）。判定代码取 DMI 里读到的真值
+            // （OpCore-Simplify 的 SysReport：ROG STRIX G18 G815LM_G815LM，BIOS G815LM.338）。
+            //
+            // familyPrefixes 收窄到 "G815"：同代的 G615（16 寸）虽然是同一套 EC 布局，
+            // 但 16 寸只有两颗风扇、散热结构也不同，曲线不能互套 —— 落在 unknown 比误放行安全。
+            modelCodes: ["G815LM"],
+            familyPrefixes: ["G815"],
+            familyName: "ROG Strix G18 / 枪神9 Plus (2025)",
+            ecChip: "ITE IT5571",
+            ecFirmware: "G815LM.338",
+            curvePoints: 8, tempMin: 20, tempMax: 110, dutyMin: 0, dutyMax: 100,
+            mmio: ["it55": "0xFE700600", "mb00": "0xFE700B00", "mc00": "0xFE700C00"],
+            note: """
+                本机实测（不是逆向推测）：ACPI DSDT 转储 + 三档散热模式各一份 EC 镜像，
+                外加 2026-11-02 的曲线下发实测（占空 100% → CPU 风扇 4320 → 5640 RPM）。
+                布局：tach CPU=IT55+0x02(FA1L) / 中置=IT55+0x22(FA3L) / GPU=IT55+0x24(FA2L)；
+                散热模式 CMMV=IT55+0xCE（**编码不是 UI 顺序**：静音=2 / 平衡=0 / 增强=1，
+                由三档 EC 镜像逐字节差分得出，0xCE 是唯一随模式变成 2/0/1 的字节）；
+                充电上限 MBF3=MB00+0xF3；曲线邮箱=MC00 0x58/0x5C/0x60/0x64/0x68/0x6C/0x7C/0x7D。
+                WMI devid：曲线 0x00110024(CPU)/0x00110025(GPU)/0x00110032(中置)、
+                转速 0x00110013/14、限速 0x00110026/27。
+                本机是**三风扇**（CPU / 中置 / GPU），但界面只下发 CPU 与 GPU 两条曲线，
+                中置由 EC 自管 —— 别把 0x00110032 当成第二颗 GPU 风扇。
+                另一条实测结论：三档模式下 EC 返回的曲线槽位完全相同，
+                说明性能模式改的是风扇响应策略，不是曲线本身；
+                所以 fan_presets-G815LM.json 里只有平衡档是槽位原样，另两档是按它缩放的派生物。
+                """,
+            source: "本机转储（ec.rar：DSDT + 静音/平衡/增强 三份 EC 镜像，2026-10-30）",
+            verification: .verifiedOnDevice,
+            fingerprint: ModelFingerprint(
+                // 独显闸门：G815LM 是 RTX 5060 款（同模具的 G815LR 是 5070 Ti，
+                // TGP 与散热标定不同，没验证过就不放行 → 会落到「未识别」）
+                gpuHints: ["RTX 5060"],
+                // CPU 世代佐证（前缀匹配）：2025 Arrow Lake-HX，Ultra 9 275HX
+                // （cpuCode 现在能认出 3 位数字 + 后缀的 Core Ultra 型号，见 SystemProbe.cpuCode）
+                cpuFamilyCodes: ["275", "285"],
+                batteryWh: 80...96
+            )
         )
     ]
 
