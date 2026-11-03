@@ -1685,14 +1685,52 @@ struct CodeRow: View {
 
 // MARK: - 550W 动态终端
 
-/// 装饰动画的统一节拍器。
+/// 550W 装饰文本的**共享时钟**。
 ///
-/// 窗口可见时才挂 `TimelineView`；不可见（被遮挡 / 最小化 / 别的 Space）时
-/// 直接渲染静态一帧 —— 一整个 moss 概览有十几个小定时器（光标、日志轮播、
-/// 卡片呼吸边、扫描线…），窗口看不见时它们全都在白烧 CPU。
+/// 为什么要有它：这些「每秒跳一下」的小组件（光标、日志轮播、运行时长、轮播标语…）
+/// 原来各挂一个 `TimelineView(.periodic(by: 1))`。`TimelineView` 的相位从各自出现时
+/// 算起，彼此的跳变点错开 → 每秒会分成 **4~5 个独立的显示周期**，而本窗口每个显示周期
+/// 都是「整窗 AppKit 重排 + SwiftUI 属性图更新」，实测约 7ms/次。也就是说光是这些
+/// 装饰文字就要吃掉 3~4% 单核。
+///
+/// 改成一个定时器 + 一个 `@Published` 时间戳后，所有组件在同一次状态变更里更新，
+/// 落进**同一个事务**，每秒只剩一次整窗重排。窗口不可见时直接停表（保持最后一帧）。
+final class MossClock: ObservableObject {
+    static let shared = MossClock()
+
+    @Published private(set) var tick = Date()
+
+    private var timer: Timer?
+    private init() {}
+
+    /// 窗口可见才走表；不可见时保留最后一个时间戳，界面就停在那一帧
+    func setActive(_ on: Bool) {
+        if on {
+            guard timer == nil else { return }
+            let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+                self?.tick = Date()
+            }
+            RunLoop.main.add(t, forMode: .common)
+            timer = t
+        } else {
+            timer?.invalidate()
+            timer = nil
+        }
+    }
+
+    /// 把当前节拍对齐到 `interval` 的整数倍：
+    /// 需要 6 秒轮播的组件看着 6s 才变一次，但仍然只共用这一个时钟。
+    func beat(_ interval: TimeInterval) -> Date {
+        guard interval > 0 else { return tick }
+        let s = tick.timeIntervalSince1970
+        return Date(timeIntervalSince1970: (s / interval).rounded(.down) * interval)
+    }
+}
+
+/// 装饰动画的统一节拍器（读 `MossClock`，不再自己挂 `TimelineView`）。
 struct MossTicker<Content: View>: View {
     var interval: TimeInterval
-    @ObservedObject private var visibility = WindowVisibility.shared
+    @ObservedObject private var clock = MossClock.shared
     private let content: (Date) -> Content
 
     init(interval: TimeInterval, @ViewBuilder content: @escaping (Date) -> Content) {
@@ -1701,13 +1739,7 @@ struct MossTicker<Content: View>: View {
     }
 
     var body: some View {
-        if visibility.isVisible {
-            TimelineView(.periodic(from: .now, by: interval)) { ctx in
-                content(ctx.date)
-            }
-        } else {
-            content(Date())
-        }
+        content(clock.beat(interval))
     }
 }
 

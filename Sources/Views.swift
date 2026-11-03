@@ -496,6 +496,9 @@ final class WindowVisibility: ObservableObject {
             && !w.isMiniaturized
             && w.occlusionState.contains(.visible)
         if visible != isVisible { isVisible = visible }
+        // 装饰文字的共享时钟：可见才走表（setActive 幂等，重复调用无开销）。
+        // 注意必须每次都同步 —— 启动时 isVisible 初值已是 true，只挂在「变化」上永远开不了表。
+        MossClock.shared.setActive(visible)
 
         // 兜底：动画被打断（没等到 deminiaturize 通知）时别让装饰层一直缺席。
         // 用超时判断而不是 isMiniaturized —— 动画进行中该值还没翻转，会误清。
