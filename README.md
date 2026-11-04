@@ -275,6 +275,7 @@ ASUS_SELFTEST=1 ASUS_PAGE=overview ASUS_THEME=dark ASUS_SELFTEST_DELAY=10 \
 - 奥创中心（Armoury Crate）— 设备协议参考
 - [NullMoth](https://github.com/nullmoth/nvidia-macos-driver) — macOS NVIDIA 驱动
 - angus666888 — EC 灯效修复思路
+- [zzzyy678](https://github.com/zzzyy678/SMCNvidiaGPU) - GPU功耗及显存占用
 
 ## 捐赠
 本项目用全程开源，如果您觉得好用，可以请我喝杯快乐水助力我后续开发，谢谢！
