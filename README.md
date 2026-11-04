@@ -4,7 +4,7 @@
 > 性能模式、风扇曲线、键盘背光与 Aura 灯效、传感器监控、菜单栏多指标、NVIDIA 驱动管理，  
 > 全部跑在原生 SwiftUI + Liquid Glass 界面里。
 
-- 版本：**2.4.13**（build 91）
+- 版本：**2.4.24**（build 102）
 - 界面：macOS 26 Liquid Glass（透明窗 + behindWindow 玻璃 + 26pt 窗口圆角）
 - 最低系统：**macOS 13.0**（Liquid Glass 效果在 macOS 26 上最完整）
 - 架构：Universal（x86_64 + arm64）
@@ -14,8 +14,9 @@
 
 ---
 ## 截图预览
-<img width="2000" height="1460" alt="QQ_1793296894476" src="https://github.com/user-attachments/assets/c4911f27-caf3-470f-ac4d-ea12167151a0" />
-<img width="2000" height="1460" alt="QQ_1793296905554" src="https://github.com/user-attachments/assets/d3f64068-1f57-44a5-af37-156e78f1773d" />
+<img width="2000" height="1460" alt="QQ_2026-11-04_14-44-05" src="https://github.com/user-attachments/assets/c3c38b2b-aa1c-43a7-a99f-76c68c943282" />
+<img width="2000" height="1460" alt="QQ_2026-11-04_14-43-57" src="https://github.com/user-attachments/assets/97ecfc5f-b9fc-4e3c-97a3-c569482a68c3" />
+
 
 ## 功能
 
@@ -119,13 +120,6 @@ vela model set G513RM          # 手动选择机型（不匹配时会打印免�
 vela model set G513RM --i-understand   # 不匹配但确认风险，强制写入
 vela model clear               # 清除手动选择，回到自动检测
 ```
-
-### 已收录机型
-
-| 机型代码 | 机型 | EC | 曲线可信度 |
-|---|---|---|---|
-| `G513RM` `G513` `GA50358` `GA503Q` `GA503` | ROG Strix G15 / 幻15 (2022) | ITE IT5571 · `TI5825_G513_1027` | ✅ 实机已验证 |
-| `G713PV` `G713PI` `G713PY` `G713P` | ROG Strix G17 / **魔霸7 Plus** (2023) | ITE IT5571 · `ITE EC-V14.6` | ✅ 实机已验证 |
 
 **「机型能对上」不等于「曲线在这台机器上跑过」**，所以每个机型还带一个 `verification` 标记：
 
